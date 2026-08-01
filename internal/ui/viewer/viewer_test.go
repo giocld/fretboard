@@ -206,3 +206,25 @@ func TestLoadTabRestoresAudioOffset(t *testing.T) {
 		t.Fatalf("restored offset: got %v want 2.5", m.audioOffset)
 	}
 }
+
+func TestMaxPanOffsetGridAware(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{
+		Title:   "Wide",
+		Artist:  "Test",
+		Tuning:  model.ParseTuning("EADGBE"),
+		Bars: []model.Bar{
+			{Number: 1, Strings: []model.StringLine{{Segments: []model.Segment{{Position: 0, Width: 24}}}}},
+		},
+	}
+	m.LoadTab(tab, "", 0)
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 86, Height: 30})
+	if got := m.maxPanOffset(); got != 0 {
+		t.Fatalf("maxPanOffset on wide terminal = %d, want 0 (grid fits)", got)
+	}
+	tab.Bars[0].Strings[0].Segments[0].Width = 80
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 40, Height: 30})
+	if got := m.maxPanOffset(); got <= 0 {
+		t.Fatalf("maxPanOffset on narrow terminal with wide bar = %d, want > 0", got)
+	}
+}

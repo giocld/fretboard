@@ -56,6 +56,7 @@ const (
 // BarGridMetrics describes the page layout for a tab at a given width.
 type BarGridMetrics struct {
 	BarsPerRow int
+	BarWidth   int // width of each bar column (padded; ≥ widest bar's content)
 	RowHeight  int // lines occupied by one row of bars (header + strings + blank)
 }
 
@@ -94,7 +95,7 @@ func BarGridLayout(tab *model.Tab, availWidth int) BarGridMetrics {
 			}
 		}
 	}
-	return BarGridMetrics{BarsPerRow: barsPerRow, RowHeight: rowHeight}
+	return BarGridMetrics{BarsPerRow: barsPerRow, BarWidth: barWidth, RowHeight: rowHeight}
 }
 
 func maxNaturalBarWidth(tab *model.Tab) int {
@@ -142,7 +143,7 @@ func RenderTabGrid(tab *model.Tab, width int, offset int, cur *TabCursor) string
 	}
 
 	metrics := BarGridLayout(tab, width)
-	barWidth := width / metrics.BarsPerRow
+	barWidth := metrics.BarWidth
 
 	for rowStart := 0; rowStart < len(tab.Bars); rowStart += metrics.BarsPerRow {
 		rowEnd := rowStart + metrics.BarsPerRow

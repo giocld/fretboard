@@ -537,20 +537,16 @@ func (m *ViewerModel) maxPanOffset() int {
 	if m.tab == nil {
 		return 0
 	}
-	maxCol := 0
-	for _, bar := range m.tab.Bars {
-		if c := maxBarColumns(bar); c > maxCol {
-			maxCol = c
-		}
-	}
+	metrics := kit.BarGridLayout(m.tab, m.viewport.Width)
+	gridWidth := metrics.BarsPerRow * metrics.BarWidth
 	visible := m.viewport.Width - 10
 	if visible < 20 {
 		visible = 20
 	}
-	if maxCol <= visible {
+	if gridWidth <= visible {
 		return 0
 	}
-	return maxCol - visible
+	return gridWidth - visible
 }
 
 func (m *ViewerModel) ensureCursorVisible() {
@@ -580,17 +576,6 @@ func barGridLineOffset(tab *model.Tab, barIdx, availWidth int) int {
 	return offset + row*metrics.RowHeight
 }
 
-func maxBarColumns(bar model.Bar) int {
-	max := 0
-	for _, str := range bar.Strings {
-		for _, seg := range str.Segments {
-			if seg.Position > max {
-				max = seg.Position
-			}
-		}
-	}
-	return max + 1
-}
 
 // View is part of the tea.Model interface.
 func (m ViewerModel) View() string {
