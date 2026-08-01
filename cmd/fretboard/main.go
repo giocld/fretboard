@@ -16,7 +16,8 @@ import (
 	"github.com/YOUR_USERNAME/fretboard/internal/parser"
 	"github.com/YOUR_USERNAME/fretboard/internal/player"
 	"github.com/YOUR_USERNAME/fretboard/internal/scraper"
-	"github.com/YOUR_USERNAME/fretboard/internal/tui"
+	apppkg "github.com/YOUR_USERNAME/fretboard/internal/ui/app"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
 )
 
 func main() {
@@ -28,7 +29,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "config: %v\n", err)
 		os.Exit(1)
 	}
-	tui.SetTheme(cfg.ThemeName)
+	kit.SetTheme(cfg.ThemeName)
 
 	if *ugDelay == 0 {
 		*ugDelay = time.Duration(cfg.UGDelayMs) * time.Millisecond
@@ -76,17 +77,17 @@ func main() {
 
 	client := scraper.NewClient(*ugDelay)
 
-	var app tui.AppModel
+	var app apppkg.AppModel
 	if filePath != "" {
 		tab, err := parser.ParsePath(filePath)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "parse: %v\n", err)
 			os.Exit(1)
 		}
-		app = tui.NewAppWithOptions(store, client, cfg.AutoImportPath, cfg.AudioSearchPaths)
+		app = apppkg.NewAppWithOptions(store, client, cfg.AutoImportPath, cfg.AudioSearchPaths)
 		app.LoadViewerTab(tab, filePath)
 	} else {
-		app = tui.NewAppWithOptions(store, client, cfg.AutoImportPath, cfg.AudioSearchPaths)
+		app = apppkg.NewAppWithOptions(store, client, cfg.AutoImportPath, cfg.AudioSearchPaths)
 	}
 	app.SetVolume(cfg.VolumePercent)
 	sf := cfg.Soundfont
@@ -111,14 +112,14 @@ func main() {
 	// Cleanup runs against the live model returned by p.Run() below.
 
 	if mFinal, err := p.Run(); err != nil {
-		if appModel, ok := mFinal.(tui.AppModel); ok {
+		if appModel, ok := mFinal.(apppkg.AppModel); ok {
 			appModel.Shutdown()
 		}
 		if !errors.Is(err, tea.ErrInterrupted) {
 			fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 			os.Exit(1)
 		}
-	} else if appModel, ok := mFinal.(tui.AppModel); ok {
+	} else if appModel, ok := mFinal.(apppkg.AppModel); ok {
 		appModel.Shutdown()
 	}
 }

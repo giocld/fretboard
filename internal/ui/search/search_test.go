@@ -1,4 +1,4 @@
-package tui
+package search
 
 import (
 	"fmt"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/YOUR_USERNAME/fretboard/internal/scraper"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -48,7 +49,7 @@ func TestSearchResetClearsState(t *testing.T) {
 
 func TestSearchPerformedWithResultsMovesToResults(t *testing.T) {
 	m := NewSearchModel(nil)
-	m, _ = m.Update(SearchPerformedMsg{Results: []scraper.SearchResult{{SongName: "A", ArtistName: "B"}}})
+	m, _ = m.Update(msgs.SearchPerformedMsg{Results: []scraper.SearchResult{{SongName: "A", ArtistName: "B"}}})
 	if m.inputActive {
 		t.Fatal("results should receive focus after successful search")
 	}
@@ -106,7 +107,7 @@ func TestSearchImportShowsFetchingMessage(t *testing.T) {
 func TestSearchIgnoresStaleSearchResults(t *testing.T) {
 	m := NewSearchModel(nil)
 	m.reqGen = 2
-	m, _ = m.Update(SearchPerformedMsg{
+	m, _ = m.Update(msgs.SearchPerformedMsg{
 		Results: []scraper.SearchResult{{SongName: "Layla", ArtistName: "Clapton"}},
 		Gen:     1,
 	})
@@ -130,7 +131,7 @@ func TestSearchImportErrorKeepsResultsFocus(t *testing.T) {
 	m := NewSearchModel(nil)
 	m.results = []scraper.SearchResult{{SongName: "Layla", ArtistName: "Clapton"}}
 	m.focusResults()
-	m, _ = m.Update(TabImportErrorMsg{Err: fmt.Errorf("network down")})
+	m, _ = m.Update(msgs.TabImportErrorMsg{Err: fmt.Errorf("network down")})
 	if m.inputActive {
 		t.Fatal("import error should keep results focus")
 	}
@@ -175,7 +176,7 @@ func TestSearchResetInvalidatesInFlight(t *testing.T) {
 	if m.reqGen != 2 {
 		t.Fatalf("reset should bump reqGen, got %d", m.reqGen)
 	}
-	m, _ = m.Update(SearchPerformedMsg{
+	m, _ = m.Update(msgs.SearchPerformedMsg{
 		Results: []scraper.SearchResult{{SongName: "Layla", ArtistName: "Clapton"}},
 		Gen:     1,
 	})
@@ -189,7 +190,7 @@ func TestSearchResultsResetViewport(t *testing.T) {
 	m.results = []scraper.SearchResult{{SongName: "Old"}}
 	m.viewport.SetYOffset(5)
 	m.reqGen = 1
-	m, _ = m.Update(SearchPerformedMsg{
+	m, _ = m.Update(msgs.SearchPerformedMsg{
 		Results: []scraper.SearchResult{{SongName: "Layla", ArtistName: "Clapton"}},
 		Gen:     1,
 	})

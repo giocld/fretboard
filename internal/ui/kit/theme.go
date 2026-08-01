@@ -1,4 +1,6 @@
-package tui
+// Package kit provides the shared presentational layer for the fretboard TUI:
+// themes, styles, layout chrome, tab rendering, and key definitions.
+package kit
 
 import "github.com/charmbracelet/lipgloss"
 
@@ -113,8 +115,8 @@ var Themes = map[string]Theme{
 // themeOrder preserves declaration order for deterministic theme cycling.
 var themeOrder = []string{DefaultTheme.Name, OneDarkTheme.Name, DraculaTheme.Name}
 
-// GetTheme returns a theme by name, falling back to the default.
-func GetTheme(name string) Theme {
+// getTheme returns a theme by name, falling back to the default.
+func getTheme(name string) Theme {
 	if t, ok := Themes[name]; ok {
 		return t
 	}

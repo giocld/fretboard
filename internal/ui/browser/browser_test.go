@@ -1,4 +1,4 @@
-package tui
+package browser
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/YOUR_USERNAME/fretboard/internal/library"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -61,7 +62,7 @@ func TestFormatRowTuning(t *testing.T) {
 
 func TestBrowserTabsLoadErrorShowsMessage(t *testing.T) {
 	m := NewBrowserModel(nil)
-	m, _ = m.Update(TabsLoadErrorMsg{Err: fmt.Errorf("disk full")})
+	m, _ = m.Update(msgs.TabsLoadErrorMsg{Err: fmt.Errorf("disk full")})
 	if m.errMsg == "" {
 		t.Fatal("expected load error message")
 	}

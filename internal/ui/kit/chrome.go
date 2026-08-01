@@ -1,4 +1,4 @@
-package tui
+package kit
 
 import (
 	"strings"
@@ -24,7 +24,7 @@ func TermTooSmall(width, height int) bool {
 
 // RenderTooSmall shows a resize prompt when the terminal is too small.
 func RenderTooSmall(width, height int) string {
-	msg := tooSmallStyle.Render(
+	msg := TooSmallStyle.Render(
 		"Terminal too small\n\n" +
 			"Resize to at least " + itoa(minTermWidth) + "×" + itoa(minTermHeight) +
 			" (currently " + itoa(width) + "×" + itoa(height) + ")",
@@ -42,16 +42,16 @@ func FormatBreadcrumb(parts ...string) string {
 
 // RenderAppHeader renders the top chrome bar with logo and breadcrumb.
 func RenderAppHeader(width int, breadcrumb string) string {
-	logo := logoStyle.Render("♪ fretboard")
-	theme := mutedStyle.Render(CurrentTheme().Name)
-	crumb := breadcrumbStyle.Render(breadcrumb)
+	logo := LogoStyle.Render("♪ fretboard")
+	theme := MutedStyle.Render(CurrentTheme().Name)
+	crumb := BreadcrumbStyle.Render(breadcrumb)
 
 	gap := width - lipgloss.Width(logo) - lipgloss.Width(theme) - lipgloss.Width(crumb) - 4
 	if gap < 1 {
 		gap = 1
 	}
 	line := logo + strings.Repeat(" ", gap) + crumb + "  " + theme
-	return headerStyle.Render(line)
+	return HeaderStyle.Render(line)
 }
 
 // RenderFooter renders a contextual shortcut bar.
@@ -61,10 +61,10 @@ func RenderFooter(width int, hints []KeyHint) string {
 	}
 	var parts []string
 	for _, h := range hints {
-		parts = append(parts, footerKeyStyle.Render("["+h.Key+"]")+footerHintStyle.Render(h.Label))
+		parts = append(parts, FooterKeyStyle.Render("["+h.Key+"]")+FooterHintStyle.Render(h.Label))
 	}
 	content := strings.Join(parts, "  ")
-	return statusBarStyle.Render(content)
+	return StatusBarStyle.Render(content)
 }
 
 // RenderPanel wraps content in a titled bordered panel.
@@ -73,9 +73,9 @@ func RenderPanel(width int, title, content string) string {
 	if innerW < 10 {
 		innerW = 10
 	}
-	titleLine := panelTitleStyle.Render(title)
+	titleLine := PanelTitleStyle.Render(title)
 	body := lipgloss.NewStyle().MaxWidth(innerW).Render(content)
-	return panelStyle.Width(width).Render(titleLine + "\n" + body)
+	return PanelStyle.Width(width).Render(titleLine + "\n" + body)
 }
 
 // LayoutScreen stacks header, body, and footer into a full-screen view.
@@ -97,8 +97,8 @@ func LayoutScreen(width, height int, breadcrumb, body, footer string) string {
 
 // RenderStatBox renders a compact dashboard stat cell.
 func RenderStatBox(width int, label, value string) string {
-	inner := statLabelStyle.Render(label) + "\n" + statValueStyle.Render(value)
-	return panelStyle.Width(width).Render(inner)
+	inner := StatLabelStyle.Render(label) + "\n" + StatValueStyle.Render(value)
+	return PanelStyle.Width(width).Render(inner)
 }
 
 func itoa(n int) string {

@@ -1,4 +1,4 @@
-package tui
+package viewer
 
 import (
 	"fmt"
@@ -9,6 +9,8 @@ import (
 
 	"github.com/YOUR_USERNAME/fretboard/internal/model"
 	"github.com/YOUR_USERNAME/fretboard/internal/player"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -89,11 +91,11 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 
 func (m *ViewerModel) refresh() {
 	if m.tab == nil {
-		m.viewport.SetContent(mutedStyle.Render("No tab loaded."))
+		m.viewport.SetContent(kit.MutedStyle.Render("No tab loaded."))
 		return
 	}
-	cur := &TabCursor{Bar: m.cursorBar, Col: m.cursorCol, Playing: m.playing}
-	m.viewport.SetContent(RenderTabWithCursor(m.tab, m.panOffset, cur))
+	cur := &kit.TabCursor{Bar: m.cursorBar, Col: m.cursorCol, Playing: m.playing}
+	m.viewport.SetContent(kit.RenderTabWithCursor(m.tab, m.panOffset, cur))
 }
 
 // Init is part of the tea.Model interface.
@@ -114,7 +116,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		}
 		m.viewport.Height = bodyH
 		m.refresh()
-	case AudioFetchedMsg:
+	case msgs.AudioFetchedMsg:
 		if m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
 			wantPlay := m.pendingPlay
 			m.fetchingAudio = false
@@ -146,7 +148,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			}
 			m.refresh()
 		}
-	case AudioCatalogMsg:
+	case msgs.AudioCatalogMsg:
 		if m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
 			m.fetchingCatalog = false
 			if msg.Err == nil && len(msg.Catalog.Sources) > 0 {
@@ -174,7 +176,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			}
 			m.refresh()
 		}
-	case PlaybackStartedMsg:
+	case msgs.PlaybackStartedMsg:
 		m.playing = true
 		m.schedule = msg.Schedule
 		m.stepIdx = msg.StepIdx
@@ -188,11 +190,11 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		}
 		m.refresh()
 		return m, tea.Batch(tickCmd(m.tickDur), monitorPlaybackCmd(m.engine))
-	case PlaybackErrorMsg:
+	case msgs.PlaybackErrorMsg:
 		m.stopPlayback()
 		m.errMsg = msg.Err.Error()
 		m.refresh()
-	case PlaybackMonitorMsg:
+	case msgs.PlaybackMonitorMsg:
 		if m.engine.ShutdownRequested() {
 			m.stopPlayback()
 			return m, nil
@@ -233,7 +235,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			}
 		}
 		return m, monitorPlaybackCmd(m.engine)
-	case PlaybackTickMsg:
+	case msgs.PlaybackTickMsg:
 		if !m.playing || len(m.schedule) == 0 {
 			return m, nil
 		}
@@ -276,17 +278,17 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case KeyQuit, KeyQuit2:
+	case kit.KeyQuit, kit.KeyQuit2:
 		m.stopPlayback()
 		return m, tea.Quit
 	case "b":
 		m.stopPlayback()
 		m.jumpBuffer = ""
-		return m, func() tea.Msg { return viewLibraryMsg{} }
+		return m, func() tea.Msg { return msgs.ViewLibraryMsg{} }
 	case "H":
 		m.stopPlayback()
 		m.jumpBuffer = ""
-		return m, func() tea.Msg { return viewHomeMsg{} }
+		return m, func() tea.Msg { return msgs.ViewHomeMsg{} }
 	case "a":
 		return m.openAudioPicker()
 	case " ", "p":
@@ -375,7 +377,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			return m, nil
 		}
 		m.stopPlayback()
-		return m, func() tea.Msg { return viewLibraryMsg{} }
+		return m, func() tea.Msg { return msgs.ViewLibraryMsg{} }
 	case "j", "down":
 		m.jumpBuffer = ""
 		m.stopPlaybackForNav()
@@ -401,13 +403,6 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	return m, cmd
 }
 
-type viewLibraryMsg struct{}
-
-type viewHomeMsg struct{}
-
-// TabPrefsSaveMsg asks the app to persist viewer tab preferences.
-type TabPrefsSaveMsg struct{}
-
 func (m ViewerModel) matchesAudioTab(tabID int64, tabPath, artist, title string) bool {
 	if m.tab == nil {
 		return false
@@ -431,13 +426,14 @@ func (m *ViewerModel) resetPlayback() {
 	m.pendingPlay = false
 }
 
-// stopPlayback halts audio and clears UI playback state.
+// stopPlaybackForNav halts audio before navigating away from the viewer.
 func (m *ViewerModel) stopPlaybackForNav() {
 	if m.playing {
 		m.stopPlayback()
 	}
 }
 
+// stopPlayback halts audio and clears UI playback state.
 func (m *ViewerModel) stopPlayback() {
 	m.resetPlayback()
 	_ = m.engine.Stop()
@@ -464,7 +460,7 @@ func (m ViewerModel) saveTabPrefsCmd() tea.Cmd {
 	if m.tabID <= 0 && strings.TrimSpace(m.tabPath) == "" {
 		return nil
 	}
-	return func() tea.Msg { return TabPrefsSaveMsg{} }
+	return func() tea.Msg { return msgs.TabPrefsSaveMsg{} }
 }
 
 func (m *ViewerModel) togglePlayback() tea.Cmd {
@@ -555,10 +551,10 @@ func maxBarColumns(bar model.Bar) int {
 
 // View is part of the tea.Model interface.
 func (m ViewerModel) View() string {
-	crumb := FormatBreadcrumb("home", "library", "viewer")
+	crumb := kit.FormatBreadcrumb("home", "library", "viewer")
 	panelTitle := "Tab"
 	if m.tab != nil {
-		crumb = FormatBreadcrumb("home", "library", m.tab.Title)
+		crumb = kit.FormatBreadcrumb("home", "library", m.tab.Title)
 		panelTitle = fmt.Sprintf("%s · %s · bar %d/%d · %d BPM", m.tab.Title, m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm)
 		if m.playing {
 			label := m.engine.ActiveDriver
@@ -566,34 +562,34 @@ func (m ViewerModel) View() string {
 				if label == "" {
 					label = "audio"
 				}
-				panelTitle += successStyle.Render("  ▶ " + label)
+				panelTitle += kit.SuccessStyle.Render("  ▶ " + label)
 			} else if label != "" {
-				panelTitle += successStyle.Render("  ▶ midi:" + label)
+				panelTitle += kit.SuccessStyle.Render("  ▶ midi:" + label)
 			} else {
-				panelTitle += successStyle.Render("  ▶ midi")
+				panelTitle += kit.SuccessStyle.Render("  ▶ midi")
 			}
 		}
 		if src := m.selectedSource(); !m.playing {
 			if m.fetchingCatalog || m.fetchingAudio {
-				panelTitle += mutedStyle.Render("  … finding audio")
+				panelTitle += kit.MutedStyle.Render("  … finding audio")
 			} else if src.Kind == player.SourceMIDI {
-				panelTitle += mutedStyle.Render("  ♪ midi")
+				panelTitle += kit.MutedStyle.Render("  ♪ midi")
 			} else if m.resolvedAudio != "" {
-				panelTitle += mutedStyle.Render("  ♪ " + filepath.Base(m.resolvedAudio))
+				panelTitle += kit.MutedStyle.Render("  ♪ " + filepath.Base(m.resolvedAudio))
 			}
 		}
 		if !m.showAudioPicker {
-			panelTitle += mutedStyle.Render("  [a] source")
+			panelTitle += kit.MutedStyle.Render("  [a] source")
 		}
 	}
 	if m.jumpBuffer != "" {
-		panelTitle += mutedStyle.Render("  [jump " + m.jumpBuffer + "]")
+		panelTitle += kit.MutedStyle.Render("  [jump " + m.jumpBuffer + "]")
 	}
 	if m.errMsg != "" {
-		panelTitle += "  " + errorStyle.Render("⚠ "+truncateErr(m.errMsg, 48))
+		panelTitle += "  " + kit.ErrorStyle.Render("⚠ "+kit.Truncate(m.errMsg, 48))
 	}
 
-	body := "\n" + RenderPanel(m.width-2, panelTitle, m.viewport.View())
+	body := "\n" + kit.RenderPanel(m.width-2, panelTitle, m.viewport.View())
 	if m.showAudioPicker {
 		body += RenderAudioPicker(m.width, m.audioCatalog, m.audioCursor, m.fetchingCatalog)
 	}
@@ -602,7 +598,7 @@ func (m ViewerModel) View() string {
 	if m.playing {
 		playLabel = "pause"
 	}
-	footer := RenderFooter(m.width, []KeyHint{
+	footer := kit.RenderFooter(m.width, []kit.KeyHint{
 		{Key: "a", Label: "audio"},
 		{Key: "Space/p", Label: playLabel},
 		{Key: "+/-", Label: "BPM"},
@@ -613,7 +609,7 @@ func (m ViewerModel) View() string {
 		{Key: "Esc", Label: "back"},
 		{Key: "q", Label: "quit"},
 	})
-	return LayoutScreen(m.width, m.height, crumb, body, footer)
+	return kit.LayoutScreen(m.width, m.height, crumb, body, footer)
 }
 
 // SetAudioDirs configures extra directories to search for backing tracks.
@@ -621,6 +617,7 @@ func (m *ViewerModel) SetAudioDirs(dirs []string) {
 	m.audioDirs = append([]string(nil), dirs...)
 }
 
+// SetAllowOnline controls whether online audio sources may be used.
 func (m *ViewerModel) SetAllowOnline(v bool) {
 	m.allowOnline = v
 }
@@ -669,7 +666,7 @@ func (m *ViewerModel) applySelectedSource(deriveBPM bool) {
 	if deriveBPM && m.tab != nil && path != "" {
 		if dur, err := player.ProbeDuration(path); err == nil && dur > 0 {
 			schedule := player.BuildSchedule(m.tab)
-			if meta := m.tab.Metadata; meta == nil || strings.TrimSpace(meta["bpm"]) == "" {
+			if meta := m.tab.Metadata; meta == nil || strings.TrimSpace(meta[model.MetaKeyBPM]) == "" {
 				m.bpm = player.DeriveBPMFromAudio(schedule, dur)
 			}
 		}
@@ -743,7 +740,7 @@ func (m ViewerModel) downloadSelectedSourceCmd() tea.Cmd {
 	src := m.selectedSource()
 	return func() tea.Msg {
 		path, err := player.EnsureAudioSource(tab, src)
-		return AudioFetchedMsg{Path: path, Err: err, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
+		return msgs.AudioFetchedMsg{Path: path, Err: err, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
 	}
 }
 
@@ -771,19 +768,34 @@ func (m *ViewerModel) BeginAudioFetch(allowOnline bool) tea.Cmd {
 	return fetchAudioCatalogCmd(m.tab, m.tabPath, m.tabID, m.audioDirs, allowOnline)
 }
 
-func truncateErr(s string, max int) string {
-	if max < 4 || lipglossWidth(s) <= max {
-		return s
+// StopPlayback halts any running audio.
+func (m *ViewerModel) StopPlayback() { m.stopPlayback() }
+
+// ShutdownAudio releases the synthesizer engine.
+func (m *ViewerModel) ShutdownAudio() { m.engine.Shutdown() }
+
+// SetVolume sets the synthesizer volume (0-100).
+func (m *ViewerModel) SetVolume(v int) {
+	if v < 0 {
+		v = 0
 	}
-	limit := max - 1
-	var b strings.Builder
-	for _, r := range s {
-		w := lipglossWidth(string(r))
-		if w > limit {
-			break
-		}
-		b.WriteRune(r)
-		limit -= w
+	if v > 100 {
+		v = 100
 	}
-	return b.String() + "…"
+	m.engine.Volume = v
 }
+
+// SetSoundfont sets the soundfont used by the synthesizer.
+func (m *ViewerModel) SetSoundfont(path string) { m.engine.Soundfont = path }
+
+// SetError sets the viewer error banner.
+func (m *ViewerModel) SetError(msg string) { m.errMsg = msg }
+
+// Tab returns the currently loaded tab, or nil.
+func (m *ViewerModel) Tab() *model.Tab { return m.tab }
+
+// TabPath returns the path of the currently loaded tab.
+func (m *ViewerModel) TabPath() string { return m.tabPath }
+
+// TabID returns the library id of the currently loaded tab.
+func (m *ViewerModel) TabID() int64 { return m.tabID }

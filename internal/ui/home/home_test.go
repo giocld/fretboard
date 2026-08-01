@@ -1,4 +1,4 @@
-package tui
+package home
 
 import (
 	"fmt"
@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	"github.com/YOUR_USERNAME/fretboard/internal/library"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/lipgloss"
 )
 
 func TestHomeTabsLoadErrorShowsMessage(t *testing.T) {
 	m := NewHomeModel(nil)
-	m, _ = m.Update(TabsLoadErrorMsg{Err: fmt.Errorf("disk full")})
+	m, _ = m.Update(msgs.TabsLoadErrorMsg{Err: fmt.Errorf("disk full")})
 	if !m.loaded {
 		t.Fatal("should mark loaded after error")
 	}
@@ -65,7 +66,7 @@ func TestHomePreviewRenderedInBody(t *testing.T) {
 
 func TestHomeClampCursorOnTabsLoaded(t *testing.T) {
 	m := HomeModel{loaded: true, cursor: 10}
-	m, _ = m.Update(TabsLoadedMsg{Tabs: []library.TabRow{{ID: 1, Title: "Only"}}})
+	m, _ = m.Update(msgs.TabsLoadedMsg{Tabs: []library.TabRow{{ID: 1, Title: "Only"}}})
 	if m.cursor > m.maxCursor() {
 		t.Fatalf("cursor=%d should be clamped to max=%d", m.cursor, m.maxCursor())
 	}

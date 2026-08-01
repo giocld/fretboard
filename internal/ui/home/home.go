@@ -1,4 +1,4 @@
-package tui
+package home
 
 import (
 	"fmt"
@@ -7,6 +7,8 @@ import (
 
 	"github.com/YOUR_USERNAME/fretboard/internal/library"
 	"github.com/YOUR_USERNAME/fretboard/internal/player"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -40,39 +42,28 @@ func NewHomeModel(store *library.Store) HomeModel {
 func (m HomeModel) Init() tea.Cmd {
 	return func() tea.Msg {
 		if m.store == nil {
-			return TabsLoadedMsg{Tabs: nil}
+			return msgs.TabsLoadedMsg{Tabs: nil}
 		}
 		tabs, err := m.store.List()
 		if err != nil {
-			return TabsLoadErrorMsg{Err: err}
+			return msgs.TabsLoadErrorMsg{Err: err}
 		}
-		return TabsLoadedMsg{Tabs: tabs}
+		return msgs.TabsLoadedMsg{Tabs: tabs}
 	}
-}
-
-// HomeLibraryMsg navigates to the library browser.
-type HomeLibraryMsg struct{}
-
-// HomeSearchMsg navigates to online search.
-type HomeSearchMsg struct{}
-
-// AutoImportWarnMsg surfaces watcher startup failures.
-type AutoImportWarnMsg struct {
-	Msg string
 }
 
 // Update handles landing page input.
 func (m HomeModel) Update(msg tea.Msg) (HomeModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case TabsLoadedMsg:
+	case msgs.TabsLoadedMsg:
 		m.tabs = msg.Tabs
 		m.loaded = true
 		m.errMsg = ""
 		m.clampCursor()
 		m.preview = m.loadPreview()
-	case AutoImportWarnMsg:
+	case msgs.AutoImportWarnMsg:
 		m.autoImportWarn = msg.Msg
-	case TabsLoadErrorMsg:
+	case msgs.TabsLoadErrorMsg:
 		m.loaded = true
 		if msg.Err != nil {
 			m.errMsg = "Could not load library: " + msg.Err.Error()
@@ -89,7 +80,7 @@ func (m HomeModel) Update(msg tea.Msg) (HomeModel, tea.Cmd) {
 		}
 	case tea.KeyMsg:
 		switch msg.String() {
-		case KeyQuit, KeyQuit2:
+		case kit.KeyQuit, kit.KeyQuit2:
 			return m, tea.Quit
 		case "esc":
 			if m.showImportHelp {
@@ -101,9 +92,9 @@ func (m HomeModel) Update(msg tea.Msg) (HomeModel, tea.Cmd) {
 		case "k", "up":
 			m.moveCursor(-1)
 		case "l":
-			return m, func() tea.Msg { return HomeLibraryMsg{} }
+			return m, func() tea.Msg { return msgs.HomeLibraryMsg{} }
 		case "o":
-			return m, func() tea.Msg { return HomeSearchMsg{} }
+			return m, func() tea.Msg { return msgs.HomeSearchMsg{} }
 		case "i":
 			m.showImportHelp = !m.showImportHelp
 		case "enter":
@@ -150,9 +141,9 @@ func (m HomeModel) activate() tea.Cmd {
 	if m.cursor < homeActionCount {
 		switch m.cursor {
 		case 0:
-			return func() tea.Msg { return HomeLibraryMsg{} }
+			return func() tea.Msg { return msgs.HomeLibraryMsg{} }
 		case 1:
-			return func() tea.Msg { return HomeSearchMsg{} }
+			return func() tea.Msg { return msgs.HomeSearchMsg{} }
 		case 2:
 			return nil // import help toggled via showImportHelp in Update
 		}
@@ -161,7 +152,7 @@ func (m HomeModel) activate() tea.Cmd {
 	idx := m.cursor - homeActionCount
 	if idx >= 0 && idx < len(recent) {
 		id := recent[idx].ID
-		return func() tea.Msg { return TabSelectedMsg{ID: id} }
+		return func() tea.Msg { return msgs.TabSelectedMsg{ID: id} }
 	}
 	return nil
 }
@@ -203,7 +194,7 @@ func (m *HomeModel) loadPreview() string {
 	if title == "" {
 		title = "Preview"
 	}
-	return RenderPanel(m.width-4, "Preview · "+title, RenderTabPreview(tab, 10))
+	return kit.RenderPanel(m.width-4, "Preview · "+title, kit.RenderTabPreview(tab, 10))
 }
 
 func (m HomeModel) favoriteCount() int {
@@ -218,12 +209,12 @@ func (m HomeModel) favoriteCount() int {
 
 func (m HomeModel) renderBody() string {
 	if !m.loaded {
-		return infoStyle.Render("Loading library stats…")
+		return kit.InfoStyle.Render("Loading library stats…")
 	}
 
 	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(mutedStyle.Render("Guitar tabs in your terminal — browse, play, and search."))
+	b.WriteString(kit.MutedStyle.Render("Guitar tabs in your terminal — browse, play, and search."))
 	b.WriteString("\n\n")
 
 	available := m.width - 8
@@ -247,33 +238,33 @@ func (m HomeModel) renderBody() string {
 	favLabel := fmt.Sprintf("%d ★", m.favoriteCount())
 	lastLabel := "—"
 	if recent := m.recentTabs(); len(recent) > 0 {
-		lastLabel = truncate(recent[0].Title, boxW-2)
+		lastLabel = kit.Truncate(recent[0].Title, boxW-2)
 	}
 	var stats string
 	if stacked {
 		stats = lipgloss.JoinVertical(lipgloss.Top,
-			RenderStatBox(boxW, "Library", tabLabel),
-			RenderStatBox(boxW, "Favorites", favLabel),
-			RenderStatBox(boxW, "Recent", lastLabel),
+			kit.RenderStatBox(boxW, "Library", tabLabel),
+			kit.RenderStatBox(boxW, "Favorites", favLabel),
+			kit.RenderStatBox(boxW, "Recent", lastLabel),
 		)
 	} else {
 		stats = lipgloss.JoinHorizontal(lipgloss.Top,
-			RenderStatBox(boxW, "Library", tabLabel),
+			kit.RenderStatBox(boxW, "Library", tabLabel),
 			" ",
-			RenderStatBox(boxW, "Favorites", favLabel),
+			kit.RenderStatBox(boxW, "Favorites", favLabel),
 			" ",
-			RenderStatBox(boxW, "Recent", lastLabel),
+			kit.RenderStatBox(boxW, "Recent", lastLabel),
 		)
 	}
 	b.WriteString(stats)
 	b.WriteString("\n\n")
 
 	if m.autoImportWarn != "" {
-		b.WriteString(warningStyle.Render(m.autoImportWarn))
+		b.WriteString(kit.WarningStyle.Render(m.autoImportWarn))
 		b.WriteString("\n\n")
 	}
 	if m.errMsg != "" {
-		b.WriteString(errorStyle.Render(m.errMsg))
+		b.WriteString(kit.ErrorStyle.Render(m.errMsg))
 		b.WriteString("\n\n")
 	}
 
@@ -289,9 +280,9 @@ func (m HomeModel) renderBody() string {
 	for i, a := range actions {
 		line := fmt.Sprintf("%s  %s", a.title, a.desc)
 		if i == m.cursor {
-			b.WriteString(actionSelectedStyle.Render("▸ "+line) + mutedStyle.Render("  ["+a.key+"]"))
+			b.WriteString(kit.ActionSelectedStyle.Render("▸ "+line) + kit.MutedStyle.Render("  ["+a.key+"]"))
 		} else {
-			b.WriteString("  " + actionTitleStyle.Render(a.title) + "  " + actionDescStyle.Render(a.desc))
+			b.WriteString("  " + kit.ActionTitleStyle.Render(a.title) + "  " + kit.ActionDescStyle.Render(a.desc))
 		}
 		b.WriteString("\n")
 	}
@@ -299,7 +290,7 @@ func (m HomeModel) renderBody() string {
 	recent := m.recentTabs()
 	if len(recent) > 0 {
 		b.WriteString("\n")
-		b.WriteString(panelTitleStyle.Render("Recent tabs"))
+		b.WriteString(kit.PanelTitleStyle.Render("Recent tabs"))
 		b.WriteString("\n")
 		for i, row := range recent {
 			idx := homeActionCount + i
@@ -309,27 +300,27 @@ func (m HomeModel) renderBody() string {
 			}
 			line := fmt.Sprintf("  %s %s — %s", star, row.Title, row.Artist)
 			if m.cursor == idx {
-				b.WriteString(listSelected.Render("▸ "+line) + "\n")
+				b.WriteString(kit.ListSelected.Render("▸ "+line) + "\n")
 			} else {
-				b.WriteString(listNormal.Render(line) + "\n")
+				b.WriteString(kit.ListNormal.Render(line) + "\n")
 			}
 		}
 	} else if len(m.tabs) == 0 {
 		b.WriteString("\n")
-		b.WriteString(warningStyle.Render("No tabs yet — import one:"))
+		b.WriteString(kit.WarningStyle.Render("No tabs yet — import one:"))
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render("  fretboard import samples/sultans.txt"))
+		b.WriteString(kit.MutedStyle.Render("  fretboard import samples/sultans.txt"))
 		b.WriteString("\n")
 	}
 
 	if m.showImportHelp {
 		b.WriteString("\n")
-		b.WriteString(RenderPanel(m.width-4, "Import tabs", infoStyle.Render("Run from your shell:")+"\n"+
-			successStyle.Render("  fretboard import path/to/tab.txt")+"\n"+
-			mutedStyle.Render("  fretboard import path/to/tabs/")+"\n\n"+
-			infoStyle.Render("Backing tracks (optional):")+"\n"+
-			mutedStyle.Render("  ~/.config/fretboard/audio/Artist - Title.mp3")+"\n"+
-			mutedStyle.Render("  or beside the tab file: layla.mp3")))
+		b.WriteString(kit.RenderPanel(m.width-4, "Import tabs", kit.InfoStyle.Render("Run from your shell:")+"\n"+
+			kit.SuccessStyle.Render("  fretboard import path/to/tab.txt")+"\n"+
+			kit.MutedStyle.Render("  fretboard import path/to/tabs/")+"\n\n"+
+			kit.InfoStyle.Render("Backing tracks (optional):")+"\n"+
+			kit.MutedStyle.Render("  ~/.config/fretboard/audio/Artist - Title.mp3")+"\n"+
+			kit.MutedStyle.Render("  or beside the tab file: layla.mp3")))
 		b.WriteString("\n")
 	}
 
@@ -341,7 +332,7 @@ func (m HomeModel) renderBody() string {
 
 	if warn := m.audioWarning(); warn != "" {
 		b.WriteString("\n")
-		b.WriteString(warningStyle.Render(warn))
+		b.WriteString(kit.WarningStyle.Render(warn))
 		b.WriteString("\n")
 	}
 	return b.String()
@@ -362,7 +353,7 @@ func (m HomeModel) audioWarning() string {
 
 // View renders the landing page.
 func (m HomeModel) View() string {
-	footer := RenderFooter(m.width, []KeyHint{
+	footer := kit.RenderFooter(m.width, []kit.KeyHint{
 		{Key: "j/k", Label: "navigate"},
 		{Key: "Enter", Label: "select"},
 		{Key: "l", Label: "library"},
@@ -372,22 +363,10 @@ func (m HomeModel) View() string {
 		{Key: "t", Label: "theme"},
 		{Key: "q", Label: "quit"},
 	})
-	return LayoutScreen(m.width, m.height, FormatBreadcrumb("home"), m.renderBody(), footer)
+	return kit.LayoutScreen(m.width, m.height, kit.FormatBreadcrumb("home"), m.renderBody(), footer)
 }
 
-func truncate(s string, max int) string {
-	if max < 4 || lipglossWidth(s) <= max {
-		return s
-	}
-	limit := max - 1
-	var b strings.Builder
-	for _, r := range s {
-		w := lipglossWidth(string(r))
-		if w > limit {
-			break
-		}
-		b.WriteRune(r)
-		limit -= w
-	}
-	return b.String() + "…"
+// SetAutoImportWarn updates the auto-import warning banner shown on home.
+func (m *HomeModel) SetAutoImportWarn(msg string) {
+	m.autoImportWarn = msg
 }

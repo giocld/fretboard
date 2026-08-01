@@ -1,4 +1,4 @@
-package tui
+package kit
 
 import (
 	"reflect"
@@ -27,18 +27,6 @@ func TestThemeNamesDeterministic(t *testing.T) {
 	for name := range Themes {
 		if !seen[name] {
 			t.Fatalf("theme %q missing from ThemeNames()", name)
-		}
-	}
-}
-
-func TestCycleThemeIsStable(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // keep cycleTheme's config.Save out of the real user config
-	names := ThemeNames()
-	app := NewApp()
-	for i := 0; i < 6; i++ {
-		app.cycleTheme()
-		if got := CurrentTheme().Name; got != names[(i+1)%len(names)] {
-			t.Fatalf("after %d cycles theme = %q, want %q (stable order)", i+1, got, names[(i+1)%len(names)])
 		}
 	}
 }

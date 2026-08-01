@@ -1,0 +1,133 @@
+// Package msgs defines the messages flowing between screens and the app
+// router. It is a pure data-contract package: no behavior lives here.
+package msgs
+
+import (
+	"time"
+
+	"github.com/YOUR_USERNAME/fretboard/internal/library"
+	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"github.com/YOUR_USERNAME/fretboard/internal/player"
+	"github.com/YOUR_USERNAME/fretboard/internal/scraper"
+)
+
+// Navigation and selection.
+
+// HomeLibraryMsg navigates to the library browser.
+type HomeLibraryMsg struct{}
+
+// HomeSearchMsg navigates to online search.
+type HomeSearchMsg struct{}
+
+// SearchBackMsg is sent when the user leaves online search.
+type SearchBackMsg struct{}
+
+// GoHomeMsg navigates back to the landing page.
+type GoHomeMsg struct{}
+
+// ViewLibraryMsg is sent by screens that want to return to the library.
+type ViewLibraryMsg struct{}
+
+// ViewHomeMsg is sent by screens that want to return home.
+type ViewHomeMsg struct{}
+
+// CloseHelpMsg is sent when the user closes the help screen.
+type CloseHelpMsg struct{}
+
+// TabPrefsSaveMsg asks the router to persist viewer metadata changes.
+type TabPrefsSaveMsg struct{}
+
+// TabSelectedMsg is sent when the user opens a tab.
+type TabSelectedMsg struct {
+	ID int64
+}
+
+// ShutdownMsg requests a clean shutdown (audio + watcher) followed by quit.
+// It is delivered by the signal handler in the CLI entrypoint so external
+// SIGINT/SIGTERM run cleanup against the live model, not a stale copy.
+type ShutdownMsg struct{}
+
+// Library data.
+
+// TabsLoadedMsg is sent when the library list has been loaded.
+type TabsLoadedMsg struct {
+	Tabs []library.TabRow
+}
+
+// TabsLoadErrorMsg is sent when the library list fails to load.
+type TabsLoadErrorMsg struct {
+	Err error
+}
+
+// AutoImportWarnMsg surfaces watcher startup failures.
+type AutoImportWarnMsg struct {
+	Msg string
+}
+
+// Online search and import.
+
+// SearchPerformedMsg is sent when a search completes.
+type SearchPerformedMsg struct {
+	Results []scraper.SearchResult
+	Err     error
+	Gen     int
+}
+
+// TabFetchedMsg is sent when an online tab has been fetched and parsed.
+type TabFetchedMsg struct {
+	Tab    *model.Tab
+	Source scraper.SearchResult
+	Gen    int
+}
+
+// TabImportErrorMsg is sent when fetching an online tab fails.
+type TabImportErrorMsg struct {
+	Err error
+	Gen int
+}
+
+// Playback.
+
+// PlaybackTickMsg is sent by the playback goroutine on each step.
+type PlaybackTickMsg struct {
+	Bar      int
+	Col      int
+	StepIdx  int
+	Duration time.Duration
+}
+
+// PlaybackStartedMsg is sent when audio playback has begun.
+type PlaybackStartedMsg struct {
+	Schedule  []player.PlaybackStep
+	StepIdx   int
+	Duration  time.Duration
+	AudioSync bool
+}
+
+// PlaybackErrorMsg is sent when audio playback fails to start.
+type PlaybackErrorMsg struct {
+	Err error
+}
+
+// PlaybackMonitorMsg checks whether the external synth is still running.
+type PlaybackMonitorMsg struct{}
+
+// AudioFetchedMsg is sent when a background audio lookup finishes.
+type AudioFetchedMsg struct {
+	Path    string
+	Err     error
+	Artist  string
+	Title   string
+	TabID   int64
+	TabPath string
+}
+
+// AudioCatalogMsg delivers ranked audio options for the current tab.
+type AudioCatalogMsg struct {
+	Catalog player.AudioCatalog
+	Err     error
+	Artist  string
+	Title   string
+	TabID   int64
+	TabPath string
+}

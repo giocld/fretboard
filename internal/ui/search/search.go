@@ -1,11 +1,12 @@
-package tui
+package search
 
 import (
 	"fmt"
 	"strings"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
 	"github.com/YOUR_USERNAME/fretboard/internal/scraper"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -63,29 +64,6 @@ func (m SearchModel) Init() tea.Cmd {
 	return textinput.Blink
 }
 
-// SearchPerformedMsg is sent when a search completes.
-type SearchPerformedMsg struct {
-	Results []scraper.SearchResult
-	Err     error
-	Gen     int
-}
-
-// TabFetchedMsg is sent when an online tab has been fetched and parsed.
-type TabFetchedMsg struct {
-	Tab    *model.Tab
-	Source scraper.SearchResult
-	Gen    int
-}
-
-// SearchBackMsg is sent when the user leaves online search.
-type SearchBackMsg struct{}
-
-// TabImportErrorMsg is sent when fetching an online tab fails.
-type TabImportErrorMsg struct {
-	Err error
-	Gen int
-}
-
 // Update handles input, search, and result selection.
 func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 	var cmd tea.Cmd
@@ -102,11 +80,11 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 	case tea.KeyMsg:
 		key := msg.String()
 		switch key {
-		case KeyQuit:
+		case kit.KeyQuit:
 			if !m.inputActive {
 				return m, tea.Quit
 			}
-		case KeyQuit2:
+		case kit.KeyQuit2:
 			return m, tea.Quit
 		case "esc":
 			if m.loading {
@@ -136,7 +114,7 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 				m.refresh()
 				return m, nil
 			}
-			return m, func() tea.Msg { return SearchBackMsg{} }
+			return m, func() tea.Msg { return msgs.SearchBackMsg{} }
 		case "enter":
 			if m.inputActive {
 				if m.client == nil {
@@ -212,13 +190,13 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 			m.focusQuery()
 		case "h":
 			if !m.inputActive && m.input.Value() == "" && len(m.results) == 0 && m.errMsg == "" {
-				return m, func() tea.Msg { return SearchBackMsg{} }
+				return m, func() tea.Msg { return msgs.SearchBackMsg{} }
 			}
 			if !m.inputActive {
 				m.focusQuery()
 			}
 		}
-	case SearchPerformedMsg:
+	case msgs.SearchPerformedMsg:
 		if msg.Gen != m.reqGen {
 			return m, nil
 		}
@@ -239,7 +217,7 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 			}
 		}
 		m.refresh()
-	case TabImportErrorMsg:
+	case msgs.TabImportErrorMsg:
 		if msg.Gen != m.reqGen {
 			return m, nil
 		}
@@ -252,7 +230,7 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 		}
 		m.focusResults()
 		m.refresh()
-	case TabFetchedMsg:
+	case msgs.TabFetchedMsg:
 		if msg.Gen != m.reqGen {
 			return m, nil
 		}
@@ -287,7 +265,7 @@ func (m *SearchModel) focusResults() {
 func (m *SearchModel) searchCmd(query string, gen int) tea.Cmd {
 	return func() tea.Msg {
 		res, err := m.client.Search(query)
-		return SearchPerformedMsg{Results: res, Err: err, Gen: gen}
+		return msgs.SearchPerformedMsg{Results: res, Err: err, Gen: gen}
 	}
 }
 
@@ -318,13 +296,13 @@ func (m *SearchModel) ensureCursorVisible() {
 func (m *SearchModel) importCmd(result scraper.SearchResult, gen int) tea.Cmd {
 	return func() tea.Msg {
 		if m.client == nil {
-			return TabImportErrorMsg{Err: fmt.Errorf("online search is not configured"), Gen: gen}
+			return msgs.TabImportErrorMsg{Err: fmt.Errorf("online search is not configured"), Gen: gen}
 		}
 		tab, err := m.client.Fetch(result)
 		if err != nil {
-			return TabImportErrorMsg{Err: err, Gen: gen}
+			return msgs.TabImportErrorMsg{Err: err, Gen: gen}
 		}
-		return TabFetchedMsg{Tab: tab, Source: result, Gen: gen}
+		return msgs.TabFetchedMsg{Tab: tab, Source: result, Gen: gen}
 	}
 }
 
@@ -340,43 +318,43 @@ func (m *SearchModel) refresh() {
 func (m SearchModel) renderResults() string {
 	if m.loading {
 		if m.importing {
-			return infoStyle.Render("⠋ Fetching tab…")
+			return kit.InfoStyle.Render("⠋ Fetching tab…")
 		}
-		return infoStyle.Render("⠋ Searching…")
+		return kit.InfoStyle.Render("⠋ Searching…")
 	}
 	if m.errMsg != "" {
-		return errorStyle.Render(m.errMsg)
+		return kit.ErrorStyle.Render(m.errMsg)
 	}
 	if len(m.results) == 0 {
 		hint := "Type a query and press Enter to search."
 		if m.inputActive {
 			hint += "  Tab/j/k move through results after a search."
 		}
-		return mutedStyle.Render(hint)
+		return kit.MutedStyle.Render(hint)
 	}
 	var b strings.Builder
 	for i, r := range m.results {
 		line := formatResult(r)
 		if i == m.cursor {
-			b.WriteString(listSelected.Render("▸ " + line))
+			b.WriteString(kit.ListSelected.Render("▸ " + line))
 		} else {
-			b.WriteString(listNormal.Render("  " + line))
+			b.WriteString(kit.ListNormal.Render("  " + line))
 		}
 		b.WriteString("\n")
 	}
 	if !m.inputActive {
 		b.WriteString("\n")
-		b.WriteString(mutedStyle.Render("/ or i — edit query   Enter — open tab"))
+		b.WriteString(kit.MutedStyle.Render("/ or i — edit query   Enter — open tab"))
 	}
 	return b.String()
 }
 
 func formatResult(r scraper.SearchResult) string {
-	badge := infoStyle.Render("[UG]")
+	badge := kit.InfoStyle.Render("[UG]")
 	if r.Source == scraper.SourceSongsterr {
-		badge = successStyle.Render("[ST]")
+		badge = kit.SuccessStyle.Render("[ST]")
 	}
-	meta := mutedStyle.Render(r.Type)
+	meta := kit.MutedStyle.Render(r.Type)
 	return badge + " " + r.SongName + " — " + r.ArtistName + "  " + meta
 }
 
@@ -384,16 +362,16 @@ func formatResult(r scraper.SearchResult) string {
 func (m SearchModel) View() string {
 	queryTitle := "Query"
 	if m.inputActive {
-		queryTitle += successStyle.Render("  ●")
+		queryTitle += kit.SuccessStyle.Render("  ●")
 	}
-	searchBox := RenderPanel(m.width-2, queryTitle, m.input.View())
+	searchBox := kit.RenderPanel(m.width-2, queryTitle, m.input.View())
 	resultsTitle := "Results"
 	if !m.inputActive && len(m.results) > 0 {
-		resultsTitle += successStyle.Render("  ●")
+		resultsTitle += kit.SuccessStyle.Render("  ●")
 	}
-	results := RenderPanel(m.width-2, resultsTitle, m.viewport.View())
+	results := kit.RenderPanel(m.width-2, resultsTitle, m.viewport.View())
 	body := "\n" + searchBox + "\n" + results
-	footer := RenderFooter(m.width, []KeyHint{
+	footer := kit.RenderFooter(m.width, []kit.KeyHint{
 		{Key: "Enter", Label: "search/open"},
 		{Key: "Tab", Label: "results"},
 		{Key: "/", Label: "query"},
@@ -401,5 +379,23 @@ func (m SearchModel) View() string {
 		{Key: "Esc", Label: "back"},
 		{Key: "q", Label: "quit"},
 	})
-	return LayoutScreen(m.width, m.height, FormatBreadcrumb("home", "search"), body, footer)
+	return kit.LayoutScreen(m.width, m.height, kit.FormatBreadcrumb("home", "search"), body, footer)
+}
+
+// HasClient reports whether an online search client is configured.
+func (m *SearchModel) HasClient() bool { return m.client != nil }
+
+// IsInputActive reports whether the query box has focus.
+func (m *SearchModel) IsInputActive() bool { return m.inputActive }
+
+// QueryValue returns the current query text.
+func (m *SearchModel) QueryValue() string { return m.input.Value() }
+
+// AcceptsGen reports whether msg generation matches the current request.
+func (m *SearchModel) AcceptsGen(gen int) bool { return gen == m.reqGen }
+
+// SetBusy updates the loading/importing flags after a search or import completes.
+func (m *SearchModel) SetBusy(loading, importing bool) {
+	m.loading = loading
+	m.importing = importing
 }

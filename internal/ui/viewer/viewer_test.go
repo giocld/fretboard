@@ -1,13 +1,14 @@
-package tui
+package viewer
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/YOUR_USERNAME/fretboard/internal/model"
 	"github.com/YOUR_USERNAME/fretboard/internal/player"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestAudioFetchedMsgUpdatesCatalogPath(t *testing.T) {
@@ -28,7 +29,7 @@ func TestAudioFetchedMsgUpdatesCatalogPath(t *testing.T) {
 		},
 	}
 
-	updated, _ := m.Update(AudioFetchedMsg{
+	updated, _ := m.Update(msgs.AudioFetchedMsg{
 		Path:    path,
 		Artist:  "Clapton",
 		Title:   "Layla",
@@ -136,7 +137,6 @@ func TestTogglePlaybackIgnoresWhileFetching(t *testing.T) {
 	}
 }
 
-
 func TestAudioFetchedMsgIgnoresStaleTabID(t *testing.T) {
 	m := NewViewerModel()
 	m.tab = &model.Tab{Title: "Layla", Artist: "Clapton"}
@@ -148,7 +148,7 @@ func TestAudioFetchedMsgIgnoresStaleTabID(t *testing.T) {
 			{ID: "yt:abc", Kind: player.SourceOnline, Label: "YouTube", VideoID: "abc"},
 		},
 	}
-	updated, _ := m.Update(AudioFetchedMsg{
+	updated, _ := m.Update(msgs.AudioFetchedMsg{
 		Path:   "/tmp/stale.mp3",
 		Artist: "Clapton",
 		Title:  "Layla",

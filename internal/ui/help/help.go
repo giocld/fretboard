@@ -1,8 +1,10 @@
-package tui
+package help
 
 import (
 	"strings"
 
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -40,8 +42,8 @@ func (m HelpModel) Update(msg tea.Msg) (HelpModel, tea.Cmd) {
 		m.viewport.Height = bodyH
 	case tea.KeyMsg:
 		switch msg.String() {
-		case KeyQuit, KeyQuit2, "?", "esc":
-			return m, func() tea.Msg { return CloseHelpMsg{} }
+		case kit.KeyQuit, kit.KeyQuit2, "?", "esc":
+			return m, func() tea.Msg { return msgs.CloseHelpMsg{} }
 		}
 	}
 	var cmd tea.Cmd
@@ -51,18 +53,15 @@ func (m HelpModel) Update(msg tea.Msg) (HelpModel, tea.Cmd) {
 
 // View is part of the tea.Model interface.
 func (m HelpModel) View() string {
-	panel := RenderPanel(m.width-2, "Keyboard reference", m.viewport.View())
+	panel := kit.RenderPanel(m.width-2, "Keyboard reference", m.viewport.View())
 	body := "\n" + panel
-	footer := RenderFooter(m.width, []KeyHint{
+	footer := kit.RenderFooter(m.width, []kit.KeyHint{
 		{Key: "Esc", Label: "close"},
 		{Key: "j/k", Label: "scroll"},
 		{Key: "q", Label: "quit"},
 	})
-	return LayoutScreen(m.width, m.height, FormatBreadcrumb("help"), body, footer)
+	return kit.LayoutScreen(m.width, m.height, kit.FormatBreadcrumb("help"), body, footer)
 }
-
-// CloseHelpMsg is sent when the user closes the help screen.
-type CloseHelpMsg struct{}
 
 var helpText = strings.TrimSpace(`
 fretboard — keyboard reference

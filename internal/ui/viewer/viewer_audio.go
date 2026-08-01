@@ -1,4 +1,4 @@
-package tui
+package viewer
 
 import (
 	"fmt"
@@ -6,26 +6,18 @@ import (
 
 	"github.com/YOUR_USERNAME/fretboard/internal/model"
 	"github.com/YOUR_USERNAME/fretboard/internal/player"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-// AudioCatalogMsg delivers ranked audio options for the current tab.
-type AudioCatalogMsg struct {
-	Catalog player.AudioCatalog
-	Err     error
-	Artist  string
-	Title   string
-	TabID   int64
-	TabPath string
-}
 
 func fetchAudioCatalogCmd(tab *model.Tab, tabPath string, tabID int64, audioDirs []string, allowOnline bool) tea.Cmd {
 	return func() tea.Msg {
 		if tab == nil {
-			return AudioCatalogMsg{}
+			return msgs.AudioCatalogMsg{}
 		}
 		cat, err := player.BuildAudioCatalog(tab, tabPath, audioDirs, allowOnline)
-		return AudioCatalogMsg{
+		return msgs.AudioCatalogMsg{
 			Catalog: cat,
 			Err:     err,
 			Artist:  tab.Artist,
@@ -43,15 +35,15 @@ func RenderAudioPicker(width int, catalog player.AudioCatalog, cursor int, fetch
 		title += "  … searching"
 	}
 	body := renderAudioPickerBody(catalog, cursor, fetching)
-	return "\n" + RenderPanel(width-2, title, body)
+	return "\n" + kit.RenderPanel(width-2, title, body)
 }
 
 func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching bool) string {
 	if fetching && len(catalog.Sources) <= 1 {
-		return mutedStyle.Render("Searching for matching recordings…")
+		return kit.MutedStyle.Render("Searching for matching recordings…")
 	}
 	if len(catalog.Sources) == 0 {
-		return mutedStyle.Render("No audio sources found. Press Esc to use MIDI.")
+		return kit.MutedStyle.Render("No audio sources found. Press Esc to use MIDI.")
 	}
 	var lines []string
 	for i, src := range catalog.Sources {
@@ -62,19 +54,19 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 		kind := string(src.Kind)
 		line := fmt.Sprintf("%s[%s] %s", prefix, kind, src.Label)
 		if src.Detail != "" {
-			line += mutedStyle.Render("  · " + src.Detail)
+			line += kit.MutedStyle.Render("  · " + src.Detail)
 		}
 		if src.Score != 0 && src.Kind == player.SourceOnline {
-			line += mutedStyle.Render(fmt.Sprintf("  · match %d", src.Score))
+			line += kit.MutedStyle.Render(fmt.Sprintf("  · match %d", src.Score))
 		}
 		if i == cursor {
-			line = listSelected.Render(line)
+			line = kit.ListSelected.Render(line)
 		} else {
-			line = listNormal.Render(line)
+			line = kit.ListNormal.Render(line)
 		}
 		lines = append(lines, line)
 	}
 	lines = append(lines, "")
-	lines = append(lines, mutedStyle.Render("j/k move  Enter select  r refresh  Esc cancel"))
+	lines = append(lines, kit.MutedStyle.Render("j/k move  Enter select  r refresh  Esc cancel"))
 	return strings.Join(lines, "\n")
 }

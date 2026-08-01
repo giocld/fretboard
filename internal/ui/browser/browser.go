@@ -1,4 +1,4 @@
-package tui
+package browser
 
 import (
 	"encoding/json"
@@ -8,6 +8,8 @@ import (
 
 	"github.com/YOUR_USERNAME/fretboard/internal/library"
 	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sahilm/fuzzy"
@@ -57,46 +59,28 @@ func NewBrowserModel(store *library.Store) BrowserModel {
 func (m BrowserModel) Init() tea.Cmd {
 	return func() tea.Msg {
 		if m.store == nil {
-			return TabsLoadedMsg{Tabs: nil}
+			return msgs.TabsLoadedMsg{Tabs: nil}
 		}
 		tabs, err := m.store.List()
 		if err != nil {
-			return TabsLoadErrorMsg{Err: err}
+			return msgs.TabsLoadErrorMsg{Err: err}
 		}
-		return TabsLoadedMsg{Tabs: tabs}
+		return msgs.TabsLoadedMsg{Tabs: tabs}
 	}
 }
-
-// TabsLoadedMsg is sent when the library list has been loaded.
-type TabsLoadedMsg struct {
-	Tabs []library.TabRow
-}
-
-// TabsLoadErrorMsg is sent when the library list fails to load.
-type TabsLoadErrorMsg struct {
-	Err error
-}
-
-// TabSelectedMsg is sent when the user opens a tab.
-type TabSelectedMsg struct {
-	ID int64
-}
-
-// GoHomeMsg navigates back to the landing page.
-type GoHomeMsg struct{}
 
 // Update handles key events and library messages.
 func (m BrowserModel) Update(msg tea.Msg) (BrowserModel, tea.Cmd) {
 	switch msg := msg.(type) {
-	case TabsLoadedMsg:
+	case msgs.TabsLoadedMsg:
 		m.tabs = msg.Tabs
 		m.loaded = true
 		m.loading = false
 		m.errMsg = ""
 		m.apply()
-	case AutoImportWarnMsg:
+	case msgs.AutoImportWarnMsg:
 		m.autoImportWarn = msg.Msg
-	case TabsLoadErrorMsg:
+	case msgs.TabsLoadErrorMsg:
 		m.loaded = true
 		m.loading = false
 		if msg.Err != nil {
@@ -132,18 +116,18 @@ func (m BrowserModel) handleSearchKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 			m.apply()
 		} else {
 			m.searchActive = false
-			return m, func() tea.Msg { return GoHomeMsg{} }
+			return m, func() tea.Msg { return msgs.GoHomeMsg{} }
 		}
 	case "o":
 		m.searchActive = false
 		m.searchInput = ""
-		return m, func() tea.Msg { return HomeSearchMsg{} }
+		return m, func() tea.Msg { return msgs.HomeSearchMsg{} }
 	case "enter":
 		if m.cursor >= 0 && m.cursor < len(m.filtered) {
 			m.searchActive = false
 			m.searchInput = ""
 			return m, func() tea.Msg {
-				return TabSelectedMsg{ID: m.filtered[m.cursor].ID}
+				return msgs.TabSelectedMsg{ID: m.filtered[m.cursor].ID}
 			}
 		}
 		// Stay in search mode so the user can keep typing.
@@ -159,7 +143,7 @@ func (m BrowserModel) handleSearchKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 			m.cursor = 0
 			m.apply()
 		}
-	case KeyQuit2:
+	case kit.KeyQuit2:
 		return m, tea.Quit
 	default:
 		if len(msg.String()) == 1 && msg.String()[0] >= 32 && msg.String()[0] < 127 {
@@ -194,16 +178,16 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case KeyQuit, KeyQuit2:
+	case kit.KeyQuit, kit.KeyQuit2:
 		return m, tea.Quit
-	case "down", KeyDown:
+	case "down", kit.KeyDown:
 		m.moveCursor(1)
-	case "up", KeyUp:
+	case "up", kit.KeyUp:
 		m.moveCursor(-1)
 	case "enter":
 		if m.cursor >= 0 && m.cursor < len(m.filtered) {
 			return m, func() tea.Msg {
-				return TabSelectedMsg{ID: m.filtered[m.cursor].ID}
+				return msgs.TabSelectedMsg{ID: m.filtered[m.cursor].ID}
 			}
 		}
 	case "f":
@@ -252,7 +236,7 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 			m.apply()
 			return m, nil
 		}
-		return m, func() tea.Msg { return GoHomeMsg{} }
+		return m, func() tea.Msg { return msgs.GoHomeMsg{} }
 	}
 	return m, nil
 }
@@ -365,39 +349,39 @@ func (m *BrowserModel) refresh() {
 
 func (m BrowserModel) renderList() string {
 	if m.loading {
-		return infoStyle.Render("⠋ Reloading library…")
+		return kit.InfoStyle.Render("⠋ Reloading library…")
 	}
 	if !m.loaded {
-		return infoStyle.Render("Loading library…")
+		return kit.InfoStyle.Render("Loading library…")
 	}
 	if len(m.tabs) == 0 {
-		return warningStyle.Render("No tabs in library.") + "\n" +
-			mutedStyle.Render("Import one with: fretboard import <file>")
+		return kit.WarningStyle.Render("No tabs in library.") + "\n" +
+			kit.MutedStyle.Render("Import one with: fretboard import <file>")
 	}
 	var b strings.Builder
 	if m.searchActive {
-		b.WriteString(infoStyle.Render("Search: ") + m.searchInput + mutedStyle.Render("_"))
+		b.WriteString(kit.InfoStyle.Render("Search: ") + m.searchInput + kit.MutedStyle.Render("_"))
 		b.WriteString("\n\n")
 	} else if m.searchInput != "" {
-		b.WriteString(mutedStyle.Render("Filter: " + m.searchInput))
+		b.WriteString(kit.MutedStyle.Render("Filter: " + m.searchInput))
 		b.WriteString("\n\n")
 	}
 	if len(m.filtered) == 0 {
-		b.WriteString(warningStyle.Render("No matches."))
+		b.WriteString(kit.WarningStyle.Render("No matches."))
 		b.WriteString("\n")
 		return b.String()
 	}
 	for i, row := range m.filtered {
-		star := mutedStyle.Render(" ")
+		star := kit.MutedStyle.Render(" ")
 		if row.Favorite {
-			star = successStyle.Render("★")
+			star = kit.SuccessStyle.Render("★")
 		}
-		meta := mutedStyle.Render(formatRowTuning(row.Tuning))
+		meta := kit.MutedStyle.Render(formatRowTuning(row.Tuning))
 		line := fmt.Sprintf("%s  %s — %s", star, row.Title, row.Artist)
 		if i == m.cursor {
-			b.WriteString(listSelected.Render("▸ "+line) + "  " + meta)
+			b.WriteString(kit.ListSelected.Render("▸ "+line) + "  " + meta)
 		} else {
-			b.WriteString(listNormal.Render(line) + "  " + meta)
+			b.WriteString(kit.ListNormal.Render(line) + "  " + meta)
 		}
 		b.WriteString("\n")
 	}
@@ -407,19 +391,19 @@ func (m BrowserModel) renderList() string {
 // View renders the browser.
 func (m BrowserModel) View() string {
 	count := fmt.Sprintf("%d tabs · sort: %s", len(m.filtered), sortLabel(m.sortMode))
-	panel := RenderPanel(m.width-2, count, m.viewport.View())
+	panel := kit.RenderPanel(m.width-2, count, m.viewport.View())
 	body := "\n" + panel
 	if m.confirmDelete != nil {
-		body += "\n" + warningStyle.Render(fmt.Sprintf(
+		body += "\n" + kit.WarningStyle.Render(fmt.Sprintf(
 			"Delete %q? [y]es [n]o (irreversible)", m.confirmDelete.Title))
 	}
 	if m.autoImportWarn != "" {
-		body += "\n" + warningStyle.Render(m.autoImportWarn)
+		body += "\n" + kit.WarningStyle.Render(m.autoImportWarn)
 	}
 	if m.errMsg != "" {
-		body += "\n" + errorStyle.Render(m.errMsg)
+		body += "\n" + kit.ErrorStyle.Render(m.errMsg)
 	}
-	hints := []KeyHint{
+	hints := []kit.KeyHint{
 		{Key: "j/k", Label: "move"},
 		{Key: "Enter", Label: "open"},
 		{Key: "/", Label: "filter"},
@@ -432,12 +416,12 @@ func (m BrowserModel) View() string {
 		{Key: "q", Label: "quit"},
 	}
 	if m.confirmDelete != nil {
-		hints = []KeyHint{
+		hints = []kit.KeyHint{
 			{Key: "y", Label: "delete"},
 			{Key: "n/Esc", Label: "cancel"},
 		}
 	} else if m.searchActive {
-		hints = []KeyHint{
+		hints = []kit.KeyHint{
 			{Key: "type", Label: "filter"},
 			{Key: "↑/↓", Label: "move"},
 			{Key: "Enter", Label: "open"},
@@ -446,8 +430,8 @@ func (m BrowserModel) View() string {
 			{Key: "q", Label: "quit"},
 		}
 	}
-	footer := RenderFooter(m.width, hints)
-	return LayoutScreen(m.width, m.height, FormatBreadcrumb("home", "library"), body, footer)
+	footer := kit.RenderFooter(m.width, hints)
+	return kit.LayoutScreen(m.width, m.height, kit.FormatBreadcrumb("home", "library"), body, footer)
 }
 
 func sortLabel(s SortMode) string {
@@ -485,3 +469,18 @@ func (m *BrowserModel) resetFilter() {
 	m.errMsg = ""
 	m.apply()
 }
+
+// ResetFilter clears the search filter and returns to the full list.
+func (m *BrowserModel) ResetFilter() { m.resetFilter() }
+
+// SetAutoImportWarn updates the auto-import warning banner.
+func (m *BrowserModel) SetAutoImportWarn(msg string) { m.autoImportWarn = msg }
+
+// IsSearchActive reports whether the filter is being typed.
+func (m *BrowserModel) IsSearchActive() bool { return m.searchActive }
+
+// SetSearchActive forces the filter on/off (used by the router's tests).
+func (m *BrowserModel) SetSearchActive(v bool) { m.searchActive = v }
+
+// FilterValue returns the current filter text.
+func (m *BrowserModel) FilterValue() string { return m.searchInput }

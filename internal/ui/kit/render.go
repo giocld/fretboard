@@ -1,4 +1,4 @@
-package tui
+package kit
 
 import (
 	"fmt"
@@ -24,14 +24,14 @@ func RenderTab(tab *model.Tab) string {
 // RenderTabPreview renders the first few lines of a tab for dashboard previews.
 func RenderTabPreview(tab *model.Tab, maxLines int) string {
 	if tab == nil || len(tab.Bars) == 0 {
-		return mutedStyle.Render("No preview available.")
+		return MutedStyle.Render("No preview available.")
 	}
 	full := RenderTabWithOffset(tab, 0)
 	lines := strings.Split(full, "\n")
 	if len(lines) <= maxLines {
 		return full
 	}
-	return strings.Join(lines[:maxLines], "\n") + "\n" + mutedStyle.Render("…")
+	return strings.Join(lines[:maxLines], "\n") + "\n" + MutedStyle.Render("…")
 }
 
 // RenderTabWithOffset renders a tab starting at the given horizontal column offset.
@@ -47,22 +47,22 @@ func RenderTabWithCursor(tab *model.Tab, offset int, cur *TabCursor) string {
 
 	var b strings.Builder
 	if tab.Title != "" {
-		b.WriteString(fretDigitStyle.Render(tab.Title))
+		b.WriteString(FretDigitStyle.Render(tab.Title))
 		if tab.Artist != "" {
-			b.WriteString("  " + restStyle.Render(tab.Artist))
+			b.WriteString("  " + RestStyle.Render(tab.Artist))
 		}
 		if tab.Tuning.Label() != "" {
-			b.WriteString("  " + infoStyle.Render(tab.Tuning.Label()))
+			b.WriteString("  " + InfoStyle.Render(tab.Tuning.Label()))
 		}
 		if bpm := tab.Metadata[model.MetaKeyBPM]; bpm != "" {
-			b.WriteString("  " + mutedStyle.Render(bpm+" BPM"))
+			b.WriteString("  " + MutedStyle.Render(bpm+" BPM"))
 		}
 		b.WriteString("\n\n")
 	}
 
 	for barIdx, bar := range tab.Bars {
-		b.WriteString(barNumberStyle.Render(fmt.Sprintf("│ %d ", bar.Number)))
-		b.WriteString(mutedStyle.Render(strings.Repeat("─", 12)))
+		b.WriteString(BarNumberStyle.Render(fmt.Sprintf("│ %d ", bar.Number)))
+		b.WriteString(MutedStyle.Render(strings.Repeat("─", 12)))
 		b.WriteString("\n")
 
 		highlight := cur != nil && barIdx == cur.Bar
@@ -75,10 +75,10 @@ func RenderTabWithCursor(tab *model.Tab, offset int, cur *TabCursor) string {
 			if label == "" {
 				label = "?"
 			}
-			style := stringLabel.Copy().Foreground(StringColor(s))
-			b.WriteString(mutedStyle.Render("│"))
+			style := StringLabel.Copy().Foreground(StringColor(s))
+			b.WriteString(MutedStyle.Render("│"))
 			b.WriteString(style.Render(label[:1]))
-			b.WriteString(mutedStyle.Render("│"))
+			b.WriteString(MutedStyle.Render("│"))
 			b.WriteString(renderStringContent(line, s, offset, curCol(cur, highlight), highlight))
 			b.WriteString("\n")
 		}
@@ -99,7 +99,7 @@ func renderPlayheadRuler(col, offset int) string {
 		return ""
 	}
 	pad := col - offset
-	return "   " + strings.Repeat(" ", pad) + playheadStyle.Render("┊") + "\n"
+	return "   " + strings.Repeat(" ", pad) + PlayheadStyle.Render("┊") + "\n"
 }
 
 func renderStringContent(line model.StringLine, stringIdx, offset, cursorCol int, highlight bool) string {
@@ -113,7 +113,7 @@ func renderStringContent(line model.StringLine, stringIdx, offset, cursorCol int
 	var b strings.Builder
 	for col := offset; col < maxCol; {
 		if highlight && col == cursorCol {
-			b.WriteString(playheadStyle.Render("┊"))
+			b.WriteString(PlayheadStyle.Render("┊"))
 			col++
 			continue
 		}
@@ -125,7 +125,7 @@ func renderStringContent(line model.StringLine, stringIdx, offset, cursorCol int
 		}
 		rendered := renderSegment(seg, stringIdx)
 		if highlight && cursorCol >= seg.Position && cursorCol < seg.Position+seg.Width {
-			rendered = cursorStyle.Render(rendered)
+			rendered = CursorStyle.Render(rendered)
 		}
 		b.WriteString(rendered)
 		col = seg.Position + seg.Width
@@ -152,11 +152,11 @@ func renderSegment(seg model.Segment, stringIdx int) string {
 	base := lipgloss.NewStyle().Foreground(StringColor(stringIdx))
 	switch {
 	case seg.Char >= '0' && seg.Char <= '9':
-		return fretDigitStyle.Render(str)
+		return FretDigitStyle.Render(str)
 	case seg.Char == '-':
 		return base.Render(str)
 	case seg.Char == 'h', seg.Char == 'p', seg.Char == 'b', seg.Char == '/', seg.Char == '\\', seg.Char == '~', seg.Char == 'x', seg.Char == 's', seg.Char == 'u':
-		return techniqueStyle.Render(str)
+		return TechniqueStyle.Render(str)
 	default:
 		return base.Render(str)
 	}
@@ -186,17 +186,28 @@ func RenderStatusBar(width int, info StatusInfo) string {
 		playStr = "Space:pause"
 	}
 	right := fmt.Sprintf("j/k:scroll  %s  /:search  q:quit", playStr)
-	fill := width - lipglossWidth(left) - lipglossWidth(right) - 2
+	fill := width - lipgloss.Width(left) - lipgloss.Width(right) - 2
 	if fill < 0 {
 		fill = 0
 	}
 	content := left + strings.Repeat(" ", fill) + right
-	return statusBarStyle.Width(width).Render(content)
+	return StatusBarStyle.Width(width).Render(content)
 }
 
-func lipglossWidth(s string) int {
-	return lipgloss.Width(s)
+// Truncate shortens s to fit max display columns, appending an ellipsis.
+func Truncate(s string, max int) string {
+	if max < 4 || lipgloss.Width(s) <= max {
+		return s
+	}
+	limit := max - 1
+	var b strings.Builder
+	for _, r := range s {
+		w := lipgloss.Width(string(r))
+		if w > limit {
+			break
+		}
+		b.WriteRune(r)
+		limit -= w
+	}
+	return b.String() + "…"
 }
-
-// _ keeps fmt imported.
-var _ = fmt.Sprintf

@@ -1,4 +1,8 @@
-package tui
+// Package app implements the top-level Bubble Tea router that switches
+// between the home, library browser, tab viewer, online search, and help
+// screens, and owns the cross-screen state: the library store, the
+// auto-import watcher, and the active theme.
+package app
 
 import (
 	"fmt"
@@ -9,14 +13,16 @@ import (
 	"github.com/YOUR_USERNAME/fretboard/internal/library"
 	"github.com/YOUR_USERNAME/fretboard/internal/model"
 	"github.com/YOUR_USERNAME/fretboard/internal/scraper"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/browser"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/help"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/home"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/search"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/viewer"
 	"github.com/YOUR_USERNAME/fretboard/internal/watcher"
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-// ShutdownMsg requests a clean shutdown (audio + watcher) followed by quit.
-// It is delivered by the signal handler in main so external SIGINT/SIGTERM
-// run cleanup against the live model, not a stale copy.
-type ShutdownMsg struct{}
 
 type viewType int
 
@@ -31,20 +37,20 @@ const (
 // AppModel is the top-level Bubble Tea model that routes between the landing
 // page, library browser, tab viewer, online search view, and help screen.
 type AppModel struct {
-	view           viewType
-	prev           viewType
-	home           HomeModel
-	library        BrowserModel
-	viewer         ViewerModel
-	search         SearchModel
-	help           HelpModel
-	watcher        *watcher.Watcher
+	view             viewType
+	prev             viewType
+	store            *library.Store
+	home             home.HomeModel
+	library          browser.BrowserModel
+	viewer           viewer.ViewerModel
+	search           search.SearchModel
+	help             help.HelpModel
+	watcher          *watcher.Watcher
 	autoImportPath   string
-	autoImportWarn   string
 	audioSearchPaths []string
-	width          int
-	height         int
-	startupCmd     tea.Cmd
+	width            int
+	height           int
+	startupCmd       tea.Cmd
 }
 
 // NewApp creates a new TUI app for e2e tests and external callers that don't
@@ -52,32 +58,29 @@ type AppModel struct {
 func NewApp() AppModel {
 	return AppModel{
 		view:    viewHome,
-		home:    NewHomeModel(nil),
-		library: NewBrowserModel(nil),
-		viewer:  NewViewerModel(),
-		search:  NewSearchModel(nil),
-		help:    NewHelpModel(),
+		home:    home.NewHomeModel(nil),
+		library: browser.NewBrowserModel(nil),
+		viewer:  viewer.NewViewerModel(),
+		search:  search.NewSearchModel(nil),
+		help:    help.NewHelpModel(),
 		width:   80,
 		height:  24,
 	}
 }
 
-// NewAppWithStore creates a new TUI app bound to a library store, optional
-// online scraper, and optional auto-import directory.
-func NewAppWithStore(store *library.Store, scraper *scraper.Client, autoImportPath string) AppModel {
-	return NewAppWithOptions(store, scraper, autoImportPath, nil)
-}
-
+// NewAppWithOptions creates a new TUI app bound to a library store, optional
+// online scraper, optional auto-import directory, and audio search paths.
 func NewAppWithOptions(store *library.Store, client *scraper.Client, autoImportPath string, audioSearchPaths []string) AppModel {
-	viewer := NewViewerModel()
-	viewer.SetAudioDirs(audioSearchPaths)
+	v := viewer.NewViewerModel()
+	v.SetAudioDirs(audioSearchPaths)
 	return AppModel{
 		view:             viewHome,
-		home:             NewHomeModel(store),
-		library:          NewBrowserModel(store),
-		viewer:           viewer,
-		search:           NewSearchModel(client),
-		help:             NewHelpModel(),
+		store:            store,
+		home:             home.NewHomeModel(store),
+		library:          browser.NewBrowserModel(store),
+		viewer:           v,
+		search:           search.NewSearchModel(client),
+		help:             help.NewHelpModel(),
 		autoImportPath:   autoImportPath,
 		audioSearchPaths: append([]string(nil), audioSearchPaths...),
 		width:            80,
@@ -89,10 +92,10 @@ func NewAppWithOptions(store *library.Store, client *scraper.Client, autoImportP
 func (m AppModel) Init() tea.Cmd {
 	var cmds []tea.Cmd
 	cmds = append(cmds, m.home.Init())
-	if m.library.store != nil {
+	if m.store != nil {
 		cmds = append(cmds, m.library.Init())
 	}
-	if m.search.client != nil {
+	if m.search.HasClient() {
 		cmds = append(cmds, m.search.Init())
 	}
 	if m.autoImportPath != "" && m.watcher == nil {
@@ -110,7 +113,7 @@ func (m AppModel) Init() tea.Cmd {
 // Update handles top-level routing and global keys.
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case ShutdownMsg:
+	case msgs.ShutdownMsg:
 		m.Shutdown()
 		return m, tea.Quit
 
@@ -126,10 +129,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		switch msg.String() {
-		case KeyQuit2:
+		case kit.KeyQuit2:
 			m.Shutdown()
 			return m, tea.Quit
-		case KeyQuit:
+		case kit.KeyQuit:
 			if m.textInputActive() {
 				break
 			}
@@ -155,27 +158,27 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-	case TabSelectedMsg:
+	case msgs.TabSelectedMsg:
 		return m, m.openTab(msg.ID)
 
-	case HomeLibraryMsg:
+	case msgs.HomeLibraryMsg:
 		m.prev = m.view
 		m.view = viewLibrary
 		return m, m.library.Init()
 
-	case HomeSearchMsg:
+	case msgs.HomeSearchMsg:
 		m.prev = m.view
 		m.search.Reset()
 		m.view = viewSearch
 		return m, m.search.Init()
 
-	case GoHomeMsg:
+	case msgs.GoHomeMsg:
 		m.stopPlayback()
-		m.library.resetFilter()
+		m.library.ResetFilter()
 		m.view = viewHome
 		return m, m.home.Init()
 
-	case SearchBackMsg:
+	case msgs.SearchBackMsg:
 		m.search.Reset()
 		m.view = m.prev
 		if m.view == viewHome {
@@ -186,44 +189,42 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case TabImportErrorMsg:
-		if msg.Gen != m.search.reqGen {
+	case msgs.TabImportErrorMsg:
+		if !m.search.AcceptsGen(msg.Gen) {
 			return m, nil
 		}
-		m.search.loading = false
-		m.search.importing = false
+		m.search.SetBusy(false, false)
 		newSearch, cmd := m.search.Update(msg)
 		m.search = newSearch
 		return m, cmd
 
-	case TabFetchedMsg:
-		if msg.Gen != m.search.reqGen {
+	case msgs.TabFetchedMsg:
+		if !m.search.AcceptsGen(msg.Gen) {
 			return m, nil
 		}
-		m.search.loading = false
-		m.search.importing = false
+		m.search.SetBusy(false, false)
 		m.stopPlayback()
 		if msg.Tab == nil {
 			m.viewer.LoadTab(nil, "", 0)
-			m.viewer.errMsg = "Could not load tab"
+			m.viewer.SetError("Could not load tab")
 			m.view = viewViewer
 			return m, nil
 		}
 		var cmds []tea.Cmd
-		tabPath := OnlineTabPath(msg.Source)
+		tabPath := search.OnlineTabPath(msg.Source)
 		tabID := int64(0)
-		if m.library.store != nil {
-			id, err := m.library.store.Import(tabPath, msg.Tab)
+		if m.store != nil {
+			id, err := m.store.Import(tabPath, msg.Tab)
 			if err != nil {
 				m.viewer.LoadTab(msg.Tab, tabPath, 0)
-				m.viewer.errMsg = fmt.Sprintf("Tab opened but not saved: %v", err)
+				m.viewer.SetError(fmt.Sprintf("Tab opened but not saved: %v", err))
 				m.view = viewViewer
 				cfg, _ := config.Load()
 				return m, m.viewer.BeginAudioFetch(cfg.AutoFetchAudio)
 			}
 			tabID = id
-			_ = m.library.store.RecordPlay(id)
-			if row, rowErr := m.library.store.GetRow(id); rowErr == nil && row != nil {
+			_ = m.store.RecordPlay(id)
+			if row, rowErr := m.store.GetRow(id); rowErr == nil && row != nil {
 				tabPath = row.Filepath
 			}
 			cmds = append(cmds, m.library.Init(), m.home.Init())
@@ -237,34 +238,34 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case viewLibraryMsg:
+	case msgs.ViewLibraryMsg:
 		m.stopPlayback()
 		m.view = viewLibrary
 		return m, m.library.Init()
 
-	case viewHomeMsg:
+	case msgs.ViewHomeMsg:
 		m.stopPlayback()
-		m.library.resetFilter()
+		m.library.ResetFilter()
 		m.view = viewHome
 		return m, m.home.Init()
 
-	case TabPrefsSaveMsg:
-		if m.library.store != nil && m.viewer.tab != nil {
-			path := strings.TrimSpace(m.viewer.tabPath)
-			if path == "" && m.viewer.tabID > 0 {
-				if row, err := m.library.store.GetRow(m.viewer.tabID); err == nil && row != nil {
+	case msgs.TabPrefsSaveMsg:
+		if m.store != nil && m.viewer.Tab() != nil {
+			path := strings.TrimSpace(m.viewer.TabPath())
+			if path == "" && m.viewer.TabID() > 0 {
+				if row, err := m.store.GetRow(m.viewer.TabID()); err == nil && row != nil {
 					path = row.Filepath
 				}
 			}
 			if path != "" {
-				if _, err := m.library.store.Import(path, m.viewer.tab); err != nil {
-					m.viewer.errMsg = "Could not save tab preferences: " + err.Error()
+				if _, err := m.store.Import(path, m.viewer.Tab()); err != nil {
+					m.viewer.SetError("Could not save tab preferences: " + err.Error())
 				}
 			}
 		}
 		return m, nil
 
-	case CloseHelpMsg:
+	case msgs.CloseHelpMsg:
 		m.view = m.prev
 		return m, nil
 
@@ -273,17 +274,15 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.watcher != nil {
 			cmd = m.watcher.NextEventCmd()
 		}
-		if m.library.store != nil {
-			if _, err := m.library.store.ImportFile(msg.Path); err != nil {
+		if m.store != nil {
+			if _, err := m.store.ImportFile(msg.Path); err != nil {
 				warn := fmt.Sprintf("Auto-import failed for %s: %v", filepath.Base(msg.Path), err)
-				m.autoImportWarn = warn
-				m.home.autoImportWarn = warn
-				m.library.autoImportWarn = warn
+				m.home.SetAutoImportWarn(warn)
+				m.library.SetAutoImportWarn(warn)
 				return m, cmd
 			}
-			m.autoImportWarn = ""
-			m.home.autoImportWarn = ""
-			m.library.autoImportWarn = ""
+			m.home.SetAutoImportWarn("")
+			m.library.SetAutoImportWarn("")
 			return m, tea.Batch(cmd, m.library.Init(), m.home.Init())
 		}
 		return m, cmd
@@ -291,14 +290,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case watcher.WatcherStartedMsg:
 		if msg.Err != nil {
 			warn := fmt.Sprintf("Auto-import disabled: %v", msg.Err)
-			m.autoImportWarn = warn
-			m.home.autoImportWarn = warn
-			m.library.autoImportWarn = warn
+			m.home.SetAutoImportWarn(warn)
+			m.library.SetAutoImportWarn(warn)
 			return m, nil
 		}
-		m.autoImportWarn = ""
-		m.home.autoImportWarn = ""
-		m.library.autoImportWarn = ""
+		m.home.SetAutoImportWarn("")
+		m.library.SetAutoImportWarn("")
 		m.watcher = msg.Watcher
 		return m, m.watcher.NextEventCmd()
 	}
@@ -336,49 +333,49 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // Shutdown stops audio and releases background resources.
 func (m *AppModel) Shutdown() {
-	m.viewer.stopPlayback()
-	m.viewer.engine.Shutdown()
+	m.viewer.StopPlayback()
+	m.viewer.ShutdownAudio()
 	if m.watcher != nil {
 		m.watcher.Close()
 	}
 }
 
 func (m AppModel) textInputActive() bool {
-	if m.view == viewSearch && m.search.inputActive {
+	if m.view == viewSearch && m.search.IsInputActive() {
 		return true
 	}
-	if m.view == viewLibrary && m.library.searchActive {
+	if m.view == viewLibrary && m.library.IsSearchActive() {
 		return true
 	}
 	return false
 }
 
 func (m *AppModel) stopPlayback() {
-	m.viewer.stopPlayback()
+	m.viewer.StopPlayback()
 }
 
 func (m *AppModel) openTab(id int64) tea.Cmd {
-	if m.library.store == nil {
-		m.viewer.errMsg = "Library is not available"
+	if m.store == nil {
+		m.viewer.SetError("Library is not available")
 		m.view = viewViewer
 		return nil
 	}
-	tab, err := m.library.store.Get(id)
+	tab, err := m.store.Get(id)
 	if err != nil || tab == nil {
 		m.viewer.LoadTab(nil, "", 0)
 		if err != nil {
-			m.viewer.errMsg = fmt.Sprintf("Could not open tab: %v", err)
+			m.viewer.SetError(fmt.Sprintf("Could not open tab: %v", err))
 		} else {
-			m.viewer.errMsg = "Could not open tab"
+			m.viewer.SetError("Could not open tab")
 		}
 		m.view = viewViewer
 		return nil
 	}
 	path := ""
-	if row, err := m.library.store.GetRow(id); err == nil && row != nil {
+	if row, err := m.store.GetRow(id); err == nil && row != nil {
 		path = row.Filepath
 	}
-	_ = m.library.store.RecordPlay(id)
+	_ = m.store.RecordPlay(id)
 	m.stopPlayback()
 	m.viewer.LoadTab(tab, path, id)
 	m.view = viewViewer
@@ -386,17 +383,16 @@ func (m *AppModel) openTab(id int64) tea.Cmd {
 	return tea.Batch(m.viewer.BeginAudioFetch(cfg.AutoFetchAudio), m.library.Init(), m.home.Init())
 }
 
-
 func (m *AppModel) cycleTheme() {
-	names := ThemeNames()
+	names := kit.ThemeNames()
 	idx := 0
 	for i, n := range names {
-		if n == CurrentTheme().Name {
+		if n == kit.CurrentTheme().Name {
 			idx = (i + 1) % len(names)
 			break
 		}
 	}
-	SetTheme(names[idx])
+	kit.SetTheme(names[idx])
 	cfg, _ := config.Load()
 	cfg.ThemeName = names[idx]
 	_ = config.Save(cfg)
@@ -432,19 +428,10 @@ func (m *AppModel) LoadViewerTab(tab *model.Tab, tabPath string) tea.Cmd {
 
 // SetVolume sets the synthesizer volume (0-100).
 func (m *AppModel) SetVolume(v int) {
-	if v < 0 {
-		v = 0
-	}
-	if v > 100 {
-		v = 100
-	}
-	m.viewer.engine.Volume = v
+	m.viewer.SetVolume(v)
 }
 
 // SetSoundfont sets the path to the soundfont used by the synthesizer.
 func (m *AppModel) SetSoundfont(path string) {
-	m.viewer.engine.Soundfont = path
+	m.viewer.SetSoundfont(path)
 }
-
-// _ prevents unused import.
-var _ = model.Standard

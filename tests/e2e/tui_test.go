@@ -5,7 +5,8 @@ import (
 	"testing"
 
 	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/internal/tui"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/app"
+	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
 	"github.com/YOUR_USERNAME/fretboard/tests/helpers"
 )
 
@@ -14,7 +15,7 @@ func TestTUIViewerRender(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	rendered := tui.RenderTab(tab)
+	rendered := kit.RenderTab(tab)
 	if !strings.Contains(rendered, "Sultans of Swing") {
 		t.Errorf("rendered tab should contain title, got:\n%s", rendered)
 	}
@@ -33,13 +34,13 @@ func TestTUIStatusBar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	info := tui.StatusInfo{
+	info := kit.StatusInfo{
 		Filename: "sultans.txt",
 		Tuning:   tab.Tuning.Label(),
 		BPM:      120,
 		Playing:  false,
 	}
-	bar := tui.RenderStatusBar(80, info)
+	bar := kit.RenderStatusBar(80, info)
 	if !strings.Contains(bar, "sultans.txt") {
 		t.Errorf("status bar should contain filename, got: %s", bar)
 	}
@@ -49,7 +50,7 @@ func TestTUIStatusBar(t *testing.T) {
 }
 
 func TestTUIAppModel(t *testing.T) {
-	app := tui.NewApp()
+	app := app.NewApp()
 	view := app.View()
 	if view == "" {
 		t.Fatalf("initial view should not be empty")
@@ -66,7 +67,7 @@ func TestTUIAppModel(t *testing.T) {
 }
 
 func TestTUIHomeLayout(t *testing.T) {
-	view := tui.NewApp().View()
+	view := app.NewApp().View()
 	for _, want := range []string{"fretboard", "home", "[l]", "[o]", "[i]", "[q]"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("home view should contain %q, got:\n%s", want, view)
@@ -75,7 +76,7 @@ func TestTUIHomeLayout(t *testing.T) {
 }
 
 func TestTUIChromeLayout(t *testing.T) {
-	screen := tui.LayoutScreen(80, 24, tui.FormatBreadcrumb("home", "library"), "body", "")
+	screen := kit.LayoutScreen(80, 24, kit.FormatBreadcrumb("home", "library"), "body", "")
 	if !strings.Contains(screen, "fretboard") {
 		t.Errorf("layout should include header branding, got: %s", screen)
 	}
@@ -85,7 +86,7 @@ func TestTUIChromeLayout(t *testing.T) {
 }
 
 func TestLayoutScreenDoesNotFillTallTerminal(t *testing.T) {
-	screen := tui.LayoutScreen(80, 1568, tui.FormatBreadcrumb("home"), "\nHello library\n", "[q]quit")
+	screen := kit.LayoutScreen(80, 1568, kit.FormatBreadcrumb("home"), "\nHello library\n", "[q]quit")
 	lines := strings.Split(strings.TrimRight(screen, "\n"), "\n")
 	if len(lines) > 40 {
 		t.Fatalf("tall terminal should not produce stripe fill (%d lines)", len(lines))
@@ -100,7 +101,7 @@ func TestTUIViewerMultiDigitFret(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	rendered := tui.RenderTab(tab)
+	rendered := kit.RenderTab(tab)
 	if !strings.Contains(rendered, "12") {
 		t.Errorf("rendered multi-digit fret should contain '12', got:\n%s", rendered)
 	}
@@ -111,18 +112,18 @@ func TestTUIViewerMultiDigitFret(t *testing.T) {
 
 func TestThemeCycle(t *testing.T) {
 	t.Cleanup(func() {
-		tui.SetTheme("default")
+		kit.SetTheme("default")
 	})
-	start := tui.CurrentTheme().Name
-	names := tui.ThemeNames()
+	start := kit.CurrentTheme().Name
+	names := kit.ThemeNames()
 	if len(names) < 2 {
 		t.Fatalf("expected at least 2 themes, got %v", names)
 	}
 	for i := 0; i < len(names); i++ {
-		tui.SetTheme(names[i])
-		if got := tui.CurrentTheme().Name; got != names[i] {
+		kit.SetTheme(names[i])
+		if got := kit.CurrentTheme().Name; got != names[i] {
 			t.Errorf("theme %d: got %q, want %q", i, got, names[i])
 		}
 	}
-	tui.SetTheme(start)
+	kit.SetTheme(start)
 }
