@@ -39,7 +39,7 @@ package has a narrow job:
 | `ui/home` | Landing page: stats, recent tabs, quick actions, auto-import warning. |
 | `ui/browser` | Library browser: list, filter (`/`), sort, favorite, delete-with-confirmation, right-side tab preview. |
 | `ui/search` | Online search (UG/Songsterr) with query box, results, import flow. |
-| `ui/viewer` | Tab viewer + playback: rendering, key handling, BPM, jump/pan, audio fetch. Split into `viewer.go` (state/keys), `viewer_playback.go` (playback lifecycle commands), `viewer_audio.go` (audio picker + catalog). |
+| `ui/viewer` | Tab viewer + playback: page-layout rendering, key handling, BPM, jump/pan, audio fetch, audio-sync offset calibration (`[ ]` ±0.5s, `{ }` ±5s, `o` reset, persisted per tab). Split into `viewer.go` (state/keys), `viewer_playback.go` (playback lifecycle commands), `viewer_audio.go` (audio picker + catalog). |
 | `ui/help` | Help screen. |
 | `ui/kit` | Presentational kit: styles (exported vars), themes, chrome (panels, footer, status bar), tab rendering helpers, key constants, truncate. No app logic. |
 | `ui/msgs` | Pure data-contract: every message type shared between screens and the router. Screens never import each other — they communicate through `msgs`. |
