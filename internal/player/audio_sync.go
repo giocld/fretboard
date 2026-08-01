@@ -30,14 +30,20 @@ func ScheduleMIDIDuration(schedule []PlaybackStep, bpm int) time.Duration {
 	return time.Duration(ms) * time.Millisecond
 }
 
-// DeriveBPMFromAudio estimates tempo that maps the tab schedule to an audio file.
-func DeriveBPMFromAudio(schedule []PlaybackStep, audioDur time.Duration) int {
+// DeriveBPMFromAudio estimates tempo that maps the tab schedule to an audio
+// file. audioOffset excludes any calibrated intro from the timing math: the
+// musical content of a recording with an intro occupies audioDur - offset.
+func DeriveBPMFromAudio(schedule []PlaybackStep, audioDur, audioOffset time.Duration) int {
 	ticks := ScheduleTotalTicks(schedule)
 	if ticks <= 0 || audioDur <= 0 {
 		return DefaultBPM
 	}
+	musicDur := audioDur - audioOffset
+	if musicDur <= 0 {
+		musicDur = audioDur
+	}
 	quarters := float64(ticks) / float64(ticksPerQuarter)
-	minutes := audioDur.Minutes()
+	minutes := musicDur.Minutes()
 	if minutes <= 0 {
 		return DefaultBPM
 	}

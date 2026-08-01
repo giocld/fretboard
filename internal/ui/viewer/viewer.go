@@ -213,7 +213,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		}
 		if m.audioSync && len(m.schedule) > 0 {
 			elapsed := m.engine.Elapsed()
-			music := elapsed - time.Duration(m.audioOffset*float64(time.Second))
+			music := elapsed - m.audioOffsetDuration()
 			idx := player.StepIndexAtScheduleTime(m.schedule, music, m.bpm)
 			if idx != m.stepIdx {
 				m.stepIdx = idx
@@ -444,6 +444,11 @@ func (m ViewerModel) adjustAudioOffset(key string) (ViewerModel, tea.Cmd) {
 	}
 	m.tab.Metadata[model.MetaKeyAudioOffset] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
 	return m, m.saveTabPrefsCmd()
+}
+
+// audioOffsetDuration converts the calibrated audio offset to a duration.
+func (m ViewerModel) audioOffsetDuration() time.Duration {
+	return time.Duration(m.audioOffset * float64(time.Second))
 }
 
 func (m ViewerModel) matchesAudioTab(tabID int64, tabPath, artist, title string) bool {
@@ -695,7 +700,7 @@ func (m *ViewerModel) applySelectedSource(deriveBPM bool) {
 		if dur, err := player.ProbeDuration(path); err == nil && dur > 0 {
 			schedule := player.BuildSchedule(m.tab)
 			if meta := m.tab.Metadata; meta == nil || strings.TrimSpace(meta[model.MetaKeyBPM]) == "" {
-				m.bpm = player.DeriveBPMFromAudio(schedule, dur)
+				m.bpm = player.DeriveBPMFromAudio(schedule, dur, m.audioOffsetDuration())
 			}
 		}
 	}

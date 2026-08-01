@@ -48,3 +48,16 @@ func TestScoreYouTubeResultPrefersGuitarOverLesson(t *testing.T) {
 		t.Fatalf("official score %d should beat lesson %d", official, lesson)
 	}
 }
+
+func TestDeriveBPMFromAudioExcludesOffset(t *testing.T) {
+	schedule := []PlaybackStep{{Ticks: ticksPerQuarter * 4}, {Ticks: ticksPerQuarter * 4}}
+	audioDur := 2 * time.Minute
+	base := DeriveBPMFromAudio(schedule, audioDur, 0)
+	intro := DeriveBPMFromAudio(schedule, audioDur, 20*time.Second)
+	if intro <= base {
+		t.Fatalf("with a 20s intro the derived BPM (%d) must be higher than the no-intro BPM (%d)", intro, base)
+	}
+	if got := DeriveBPMFromAudio(schedule, audioDur, 10*time.Minute); got != base {
+		t.Fatalf("offset beyond audio length should fall back to the full-duration BPM, got %d", got)
+	}
+}
