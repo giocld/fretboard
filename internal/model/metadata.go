@@ -10,4 +10,5 @@ const (
 	MetaKeyTempo       = "tempo"
 	MetaKeySource      = "source"
 	MetaKeySongsterrID = "songsterr_id"
+	MetaKeyAudioOffset = "audio_offset"
 )

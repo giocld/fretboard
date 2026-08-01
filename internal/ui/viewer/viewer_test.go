@@ -168,3 +168,41 @@ func TestSaveTabPrefsCmdAllowsTabPathWithoutID(t *testing.T) {
 		t.Fatal("expected save cmd when tabPath is set")
 	}
 }
+
+func TestAdjustAudioOffsetPersistsAndRounds(t *testing.T) {
+	tab := &model.Tab{Title: "T", Artist: "A", Metadata: map[string]string{}}
+	m := NewViewerModel()
+	m.LoadTab(tab, "/tmp/off.txt", 42)
+
+	m, _ = m.adjustAudioOffset("]")
+	if m.audioOffset != 0.5 {
+		t.Fatalf("nudge up: got %v want 0.5", m.audioOffset)
+	}
+	if got := tab.Metadata[model.MetaKeyAudioOffset]; got != "0.5" {
+		t.Fatalf("metadata: got %q want 0.5", got)
+	}
+	m, _ = m.adjustAudioOffset("[")
+	if m.audioOffset != 0 {
+		t.Fatalf("nudge down: got %v want 0", m.audioOffset)
+	}
+	m, _ = m.adjustAudioOffset("}")
+	if m.audioOffset != 5 {
+		t.Fatalf("big nudge: got %v want 5", m.audioOffset)
+	}
+	m, _ = m.adjustAudioOffset("o")
+	if m.audioOffset != 0 {
+		t.Fatalf("reset: got %v want 0", m.audioOffset)
+	}
+	if got := tab.Metadata[model.MetaKeyAudioOffset]; got != "0.0" {
+		t.Fatalf("metadata after reset: got %q want 0.0", got)
+	}
+}
+
+func TestLoadTabRestoresAudioOffset(t *testing.T) {
+	tab := &model.Tab{Title: "T", Artist: "A", Metadata: map[string]string{model.MetaKeyAudioOffset: "2.5"}}
+	m := NewViewerModel()
+	m.LoadTab(tab, "/tmp/off2.txt", 7)
+	if m.audioOffset != 2.5 {
+		t.Fatalf("restored offset: got %v want 2.5", m.audioOffset)
+	}
+}

@@ -44,31 +44,19 @@ func DeriveBPMFromAudio(schedule []PlaybackStep, audioDur time.Duration) int {
 	return ClampBPM(int(quarters/minutes*60 + 0.5))
 }
 
-// StepIndexAtElapsed maps elapsed audio time to the active schedule step.
-func StepIndexAtElapsed(schedule []PlaybackStep, elapsed, audioDur time.Duration) int {
-	if len(schedule) == 0 {
+// StepIndexAtScheduleTime maps music time (audio elapsed minus the calibrated
+// audio offset) to the active schedule step, using the tab's own rhythm
+// durations at the given BPM. Unlike a linear mapping across the whole audio
+// file, this follows the tab's internal timing, so tempo changes and varied
+// note densities keep the cursor on the right note.
+func StepIndexAtScheduleTime(schedule []PlaybackStep, musicTime time.Duration, bpm int) int {
+	if len(schedule) == 0 || musicTime <= 0 {
 		return 0
 	}
-	if audioDur <= 0 {
-		return 0
-	}
-	if elapsed >= audioDur {
-		return len(schedule) - 1
-	}
-	totalTicks := ScheduleTotalTicks(schedule)
-	if totalTicks <= 0 {
-		return 0
-	}
-	progress := float64(elapsed) / float64(audioDur)
-	target := int64(float64(totalTicks) * progress)
-	var cum int64
+	var cum time.Duration
 	for i, step := range schedule {
-		t := int64(step.Ticks)
-		if t <= 0 {
-			t = ticksPerQuarter / 4
-		}
-		cum += t
-		if cum > target {
+		cum += time.Duration(StepDuration(step.Ticks, bpm)) * time.Millisecond
+		if cum > musicTime {
 			return i
 		}
 	}

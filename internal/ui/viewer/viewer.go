@@ -33,6 +33,7 @@ type ViewerModel struct {
 	audioCursor       int
 	selectedSourceIdx int
 	audioSync         bool
+	audioOffset       float64 // seconds into the audio file where the tab starts
 	cursorBar         int
 	cursorCol         int
 	panOffset         int
@@ -85,6 +86,14 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.audioCursor = 0
 	m.selectedSourceIdx = 0
 	m.audioSync = false
+	m.audioOffset = 0
+	if tab != nil && tab.Metadata != nil {
+		if raw := strings.TrimSpace(tab.Metadata[model.MetaKeyAudioOffset]); raw != "" {
+			if v, err := strconv.ParseFloat(raw, 64); err == nil {
+				m.audioOffset = v
+			}
+		}
+	}
 	_ = m.engine.Stop()
 	m.refresh()
 }
@@ -95,7 +104,7 @@ func (m *ViewerModel) refresh() {
 		return
 	}
 	cur := &kit.TabCursor{Bar: m.cursorBar, Col: m.cursorCol, Playing: m.playing}
-	m.viewport.SetContent(kit.RenderTabWithCursor(m.tab, m.panOffset, cur))
+	m.viewport.SetContent(kit.RenderTabGrid(m.tab, m.viewport.Width, m.panOffset, cur))
 }
 
 // Init is part of the tea.Model interface.
@@ -204,8 +213,8 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		}
 		if m.audioSync && len(m.schedule) > 0 {
 			elapsed := m.engine.Elapsed()
-			dur := m.engine.AudioDuration()
-			idx := player.StepIndexAtElapsed(m.schedule, elapsed, dur)
+			music := elapsed - time.Duration(m.audioOffset*float64(time.Second))
+			idx := player.StepIndexAtScheduleTime(m.schedule, music, m.bpm)
 			if idx != m.stepIdx {
 				m.stepIdx = idx
 				step := m.schedule[idx]
@@ -361,6 +370,8 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.panOffset++
 			m.refresh()
 		}
+	case "[", "{", "]", "}", "o":
+		return m.adjustAudioOffset(msg.String())
 	case "esc":
 		if m.jumpBuffer != "" {
 			m.jumpBuffer = ""
@@ -401,6 +412,38 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
+}
+
+// adjustAudioOffset nudges the audio start offset used to sync the tab cursor
+// with a real recording, and persists it on the tab.
+func (m ViewerModel) adjustAudioOffset(key string) (ViewerModel, tea.Cmd) {
+	switch key {
+	case "[":
+		m.audioOffset -= 0.5
+	case "{":
+		m.audioOffset -= 5
+	case "]":
+		m.audioOffset += 0.5
+	case "}":
+		m.audioOffset += 5
+	case "o":
+		m.audioOffset = 0
+	}
+	if m.audioOffset < -60 {
+		m.audioOffset = -60
+	}
+	if m.audioOffset > 300 {
+		m.audioOffset = 300
+	}
+	m.refresh()
+	if m.tab == nil {
+		return m, nil
+	}
+	if m.tab.Metadata == nil {
+		m.tab.Metadata = map[string]string{}
+	}
+	m.tab.Metadata[model.MetaKeyAudioOffset] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+	return m, m.saveTabPrefsCmd()
 }
 
 func (m ViewerModel) matchesAudioTab(tabID int64, tabPath, artist, title string) bool {
@@ -514,7 +557,7 @@ func (m *ViewerModel) ensureCursorVisible() {
 	if m.tab == nil {
 		return
 	}
-	target := barLineOffset(m.tab, m.cursorBar)
+	target := barGridLineOffset(m.tab, m.cursorBar, m.viewport.Width)
 	if target < m.viewport.YOffset {
 		m.viewport.SetYOffset(target)
 	} else if target >= m.viewport.YOffset+m.viewport.Height {
@@ -522,19 +565,19 @@ func (m *ViewerModel) ensureCursorVisible() {
 	}
 }
 
-func barLineOffset(tab *model.Tab, barIdx int) int {
+// barGridLineOffset returns the content line where the cursor bar's row begins,
+// using the same page-layout metrics as the renderer.
+func barGridLineOffset(tab *model.Tab, barIdx, availWidth int) int {
 	offset := 0
 	if tab.Title != "" {
 		offset += 2
 	}
-	for i, bar := range tab.Bars {
-		if i == barIdx {
-			return offset
-		}
-		// bar header + strings + blank line (playhead ruler only on active bar)
-		offset += len(bar.Strings) + 2
+	if len(tab.Bars) == 0 {
+		return offset
 	}
-	return offset
+	metrics := kit.BarGridLayout(tab, availWidth)
+	row := barIdx / metrics.BarsPerRow
+	return offset + row*metrics.RowHeight
 }
 
 func maxBarColumns(bar model.Bar) int {
@@ -578,6 +621,9 @@ func (m ViewerModel) View() string {
 				panelTitle += kit.MutedStyle.Render("  ♪ " + filepath.Base(m.resolvedAudio))
 			}
 		}
+		if m.audioOffset != 0 {
+			panelTitle += kit.MutedStyle.Render(fmt.Sprintf("  ↔ %+.1fs", m.audioOffset))
+		}
 		if !m.showAudioPicker {
 			panelTitle += kit.MutedStyle.Render("  [a] source")
 		}
@@ -602,11 +648,13 @@ func (m ViewerModel) View() string {
 		{Key: "a", Label: "audio"},
 		{Key: "Space/p", Label: playLabel},
 		{Key: "+/-", Label: "BPM"},
+		{Key: "[ ]", Label: "sync ±0.5s"},
+		{Key: "{ }", Label: "sync ±5s"},
+		{Key: "o", Label: "reset sync"},
 		{Key: "j/k", Label: "scroll"},
 		{Key: "h/l", Label: "pan"},
 		{Key: "b", Label: "library"},
 		{Key: "H", Label: "home"},
-		{Key: "Esc", Label: "back"},
 		{Key: "q", Label: "quit"},
 	})
 	return kit.LayoutScreen(m.width, m.height, crumb, body, footer)
