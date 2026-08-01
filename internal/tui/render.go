@@ -54,7 +54,7 @@ func RenderTabWithCursor(tab *model.Tab, offset int, cur *TabCursor) string {
 		if tab.Tuning.Label() != "" {
 			b.WriteString("  " + infoStyle.Render(tab.Tuning.Label()))
 		}
-		if bpm := tab.Metadata["bpm"]; bpm != "" {
+		if bpm := tab.Metadata[model.MetaKeyBPM]; bpm != "" {
 			b.WriteString("  " + mutedStyle.Render(bpm+" BPM"))
 		}
 		b.WriteString("\n\n")

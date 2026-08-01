@@ -84,11 +84,6 @@ func (c *Client) Fetch(result SearchResult) (*model.Tab, error) {
 	}
 }
 
-// FetchID fetches a UG tab by ID (legacy helper).
-func (c *Client) FetchID(id int64) (*model.Tab, error) {
-	return c.Fetch(SearchResult{ID: id, Source: SourceUG})
-}
-
 func mergeSearchResults(primary, extra []SearchResult) []SearchResult {
 	seen := make(map[string]bool)
 	var out []SearchResult

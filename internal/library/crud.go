@@ -13,19 +13,22 @@ import (
 	"github.com/YOUR_USERNAME/fretboard/internal/parser"
 )
 
+// ErrNotFound is returned when a tab row is missing from the library.
+var ErrNotFound = errors.New("library: tab not found")
+
 // Import parses a tab and inserts it into the library. If the filepath already
 // exists, it updates the existing record and returns the same ID.
 func (s *Store) Import(filepath string, tab *model.Tab) (int64, error) {
 	if tab == nil {
-		return 0, errors.New("nil tab")
+		return 0, fmt.Errorf("library: import %s: nil tab", filepath)
 	}
 	content, err := json.Marshal(tab)
 	if err != nil {
-		return 0, fmt.Errorf("marshal tab: %w", err)
+		return 0, fmt.Errorf("library: import %s: marshal tab: %w", filepath, err)
 	}
 	tuningJSON, err := json.Marshal(tab.Tuning)
 	if err != nil {
-		return 0, fmt.Errorf("marshal tuning: %w", err)
+		return 0, fmt.Errorf("library: import %s: marshal tuning: %w", filepath, err)
 	}
 
 	var id int64
@@ -33,7 +36,7 @@ func (s *Store) Import(filepath string, tab *model.Tab) (int64, error) {
 		SELECT id FROM tabs WHERE filepath = ?
 	`, filepath).Scan(&id)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("lookup filepath: %w", err)
+		return 0, fmt.Errorf("library: import %s: lookup filepath: %w", filepath, err)
 	}
 
 	if id > 0 {
@@ -43,7 +46,7 @@ func (s *Store) Import(filepath string, tab *model.Tab) (int64, error) {
 			WHERE id=?
 		`, tab.Title, tab.Artist, string(tuningJSON), string(content), id)
 		if err != nil {
-			return 0, fmt.Errorf("update tab: %w", err)
+			return 0, fmt.Errorf("library: import %s: update tab: %w", filepath, err)
 		}
 		return id, nil
 	}
@@ -53,11 +56,11 @@ func (s *Store) Import(filepath string, tab *model.Tab) (int64, error) {
 		VALUES (?, ?, ?, ?, ?)
 	`, filepath, tab.Title, tab.Artist, string(tuningJSON), string(content))
 	if err != nil {
-		return 0, fmt.Errorf("insert tab: %w", err)
+		return 0, fmt.Errorf("library: import %s: insert tab: %w", filepath, err)
 	}
 	id, err = res.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("last insert id: %w", err)
+		return 0, fmt.Errorf("library: import %s: last insert id: %w", filepath, err)
 	}
 	return id, nil
 }
@@ -82,7 +85,7 @@ func (s *Store) GetRow(id int64) (*TabRow, error) {
 	`, id).Scan(&row.ID, &row.Filepath, &row.Title, &row.Artist, &row.Tuning, &fav, &row.PlayCount, &lastPlayed)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("tab %d not found", id)
+			return nil, fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
 		}
 		return nil, fmt.Errorf("get row: %w", err)
 	}
@@ -101,7 +104,7 @@ func (s *Store) Get(id int64) (*model.Tab, error) {
 	`, id).Scan(&content)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("tab %d not found", id)
+			return nil, fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
 		}
 		return nil, fmt.Errorf("get content: %w", err)
 	}
@@ -198,7 +201,7 @@ func (s *Store) SetFavorite(id int64, favorite bool) error {
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("tab %d not found", id)
+		return fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
 	}
 	return nil
 }
@@ -218,7 +221,7 @@ func (s *Store) RecordPlay(id int64) error {
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("tab %d not found", id)
+		return fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
 	}
 	return nil
 }
@@ -234,7 +237,7 @@ func (s *Store) Delete(id int64) error {
 		return fmt.Errorf("rows affected: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("tab %d not found", id)
+		return fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
 	}
 	return nil
 }

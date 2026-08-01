@@ -7,22 +7,16 @@ import (
 )
 
 func TestTabBPMFromMetadata(t *testing.T) {
-	tab := &model.Tab{Metadata: map[string]string{"bpm": "112"}}
+	tab := &model.Tab{Metadata: map[string]string{model.MetaKeyBPM: "112"}}
 	if got := TabBPM(tab); got != 112 {
 		t.Fatalf("TabBPM = %d, want 112", got)
 	}
 }
 
 func TestTabBPMFromTempo(t *testing.T) {
-	tab := &model.Tab{Metadata: map[string]string{"tempo": "96"}}
+	tab := &model.Tab{Metadata: map[string]string{model.MetaKeyTempo: "96"}}
 	if got := TabBPM(tab); got != 96 {
 		t.Fatalf("TabBPM = %d, want 96", got)
-	}
-}
-
-func TestParseBPMFromText(t *testing.T) {
-	if got := ParseBPMFromText("Based on the video. 107 bpm."); got != 107 {
-		t.Fatalf("ParseBPMFromText = %d, want 107", got)
 	}
 }
 

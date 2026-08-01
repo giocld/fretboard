@@ -140,8 +140,8 @@ func (w *Watcher) loop(fw *fsnotify.Watcher) {
 	}
 }
 
-// IsWatchedPath returns true if path is a .txt file under dir.
-func IsWatchedPath(dir, path string) bool {
+// isWatchedPath returns true if path is a .txt file under dir.
+func isWatchedPath(dir, path string) bool {
 	rel, err := filepath.Rel(dir, path)
 	if err != nil {
 		return false

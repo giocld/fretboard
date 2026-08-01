@@ -1,6 +1,10 @@
 package parser
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/YOUR_USERNAME/fretboard/internal/model"
+)
 
 func TestIsGpFile(t *testing.T) {
 	cases := map[string]bool{
@@ -55,7 +59,7 @@ func TestDecodeGPTabJSON(t *testing.T) {
 	if len(bar.Strings) != 1 || len(bar.Strings[0].Segments) != 2 {
 		t.Fatalf("unexpected segments: %+v", bar.Strings)
 	}
-	if tab.Metadata["source"] != "guitar-pro" {
+	if tab.Metadata[model.MetaKeySource] != "guitar-pro" {
 		t.Fatalf("metadata: %v", tab.Metadata)
 	}
 }

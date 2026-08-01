@@ -7,7 +7,7 @@ import (
 )
 
 func inferTuning(tab *model.Tab, stringCount int) model.Tuning {
-	raw := tab.Metadata["tuning_raw"]
+	raw := tab.Metadata[model.MetaKeyTuningRaw]
 	if raw != "" {
 		low := strings.ToLower(raw)
 		// Named tunings first.
@@ -24,7 +24,7 @@ func inferTuning(tab *model.Tab, stringCount int) model.Tuning {
 			return model.FullStepDown
 		}
 		// Named but unspecified ("E Standard", "Standard") — try the letters.
-		cleaned := extractNoteLetters(raw)
+		cleaned := model.NoteLetters(raw)
 		if len(cleaned) >= 2 {
 			return model.ParseTuning(cleaned)
 		}
@@ -40,19 +40,4 @@ func inferTuning(tab *model.Tab, stringCount int) model.Tuning {
 		return model.Tuning{model.Standard[1], model.Standard[2], model.Standard[3], model.Standard[4]}
 	}
 	return model.Standard
-}
-
-// extractNoteLetters pulls just the note sequence from a tuning label like
-// "EADGBE" → "EADGBE", "Eb Standard" → "Eb".
-func extractNoteLetters(s string) string {
-	var out strings.Builder
-	for _, r := range s {
-		switch {
-		case r >= 'A' && r <= 'G':
-			out.WriteRune(r)
-		case r == 'b' || r == '#':
-			out.WriteRune(r)
-		}
-	}
-	return out.String()
 }

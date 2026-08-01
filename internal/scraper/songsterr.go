@@ -13,31 +13,19 @@ import (
 )
 
 type songsterrClient struct {
-	http    *http.Client
-	delay   time.Duration
-	lastReq time.Time
+	http *http.Client
+	rl   rateLimiter
 }
 
 func newSongsterrClient(delay time.Duration) *songsterrClient {
 	return &songsterrClient{
-		http:  &http.Client{Timeout: 30 * time.Second},
-		delay: delay,
+		http: &http.Client{Timeout: 30 * time.Second},
+		rl:   rateLimiter{delay: delay},
 	}
-}
-
-func (c *songsterrClient) sleep() {
-	if c.delay <= 0 {
-		return
-	}
-	since := time.Since(c.lastReq)
-	if since < c.delay {
-		time.Sleep(c.delay - since)
-	}
-	c.lastReq = time.Now()
 }
 
 func (c *songsterrClient) Search(query string) ([]SearchResult, error) {
-	c.sleep()
+	c.rl.throttle()
 	u := "https://www.songsterr.com/api/songs?pattern=" + url.QueryEscape(query) + "&size=15"
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
@@ -124,8 +112,8 @@ func (c *songsterrClient) Fetch(id int64, artist, title string, ug *Client) (*mo
 			if tab.Metadata == nil {
 				tab.Metadata = map[string]string{}
 			}
-			tab.Metadata["source"] = "songsterr-via-ug"
-			tab.Metadata["songsterr_id"] = fmt.Sprintf("%d", id)
+			tab.Metadata[model.MetaKeySource] = "songsterr-via-ug"
+			tab.Metadata[model.MetaKeySongsterrID] = fmt.Sprintf("%d", id)
 			return tab, nil
 		}
 	}

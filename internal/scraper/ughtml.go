@@ -7,42 +7,28 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/YOUR_USERNAME/fretboard/internal/model"
 	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
 )
 
 // ugHTMLClient fetches tabs by scraping Ultimate Guitar web pages.
 type ugHTMLClient struct {
-	http    *http.Client
-	delay   time.Duration
-	lastReq time.Time
+	http *http.Client
+	rl   rateLimiter
 }
 
 func newUGHTMLClient(delay time.Duration) *ugHTMLClient {
 	return &ugHTMLClient{
-		http:  &http.Client{Timeout: 30 * time.Second},
-		delay: delay,
+		http: &http.Client{Timeout: 30 * time.Second},
+		rl:   rateLimiter{delay: delay},
 	}
-}
-
-func (c *ugHTMLClient) sleep() {
-	if c.delay <= 0 {
-		return
-	}
-	since := time.Since(c.lastReq)
-	if since < c.delay {
-		time.Sleep(c.delay - since)
-	}
-	c.lastReq = time.Now()
 }
 
 func (c *ugHTMLClient) Search(query string) ([]SearchResult, error) {
-	c.sleep()
+	c.rl.throttle()
 	u := "https://www.ultimate-guitar.com/search.php?search_type=title&value=" + url.QueryEscape(query)
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
@@ -110,7 +96,7 @@ func (c *ugHTMLClient) Search(query string) ([]SearchResult, error) {
 }
 
 func (c *ugHTMLClient) Fetch(id int64) (*model.Tab, error) {
-	c.sleep()
+	c.rl.throttle()
 	tabURL := fmt.Sprintf("https://tabs.ultimate-guitar.com/tab/_/_tabs_%d", id)
 	req, err := http.NewRequest(http.MethodGet, tabURL, nil)
 	if err != nil {
@@ -162,22 +148,13 @@ func (c *ugHTMLClient) Fetch(id int64) (*model.Tab, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse fetched tab: %w", err)
 	}
-	if tab.Title == "" {
-		tab.Title = page.Store.Page.Data.Tab.SongName
-	}
-	if tab.Artist == "" {
-		tab.Artist = page.Store.Page.Data.Tab.ArtistName
-	}
-	if len(tab.Tuning) == 0 && page.Store.Page.Data.Tab.Tuning != "" {
-		tab.Tuning = model.ParseTuning(strings.ReplaceAll(page.Store.Page.Data.Tab.Tuning, " ", ""))
-	}
-	if page.Store.Page.Data.Tab.Capo > 0 {
-		if tab.Metadata == nil {
-			tab.Metadata = map[string]string{}
-		}
-		tab.Metadata["capo"] = strconv.Itoa(page.Store.Page.Data.Tab.Capo)
-	}
-	player.NormalizeTabBPM(tab)
+	applyUGMetadata(tab, ugTabMeta{
+		SongName:   page.Store.Page.Data.Tab.SongName,
+		ArtistName: page.Store.Page.Data.Tab.ArtistName,
+		Tuning:     page.Store.Page.Data.Tab.Tuning,
+		Capo:       page.Store.Page.Data.Tab.Capo,
+	})
+	model.NormalizeTabBPM(tab)
 	return tab, nil
 }
 

@@ -38,8 +38,6 @@ CREATE TABLE IF NOT EXISTS tabs (
     title      TEXT NOT NULL DEFAULT 'Untitled',
     artist     TEXT NOT NULL DEFAULT 'Unknown',
     tuning     TEXT NOT NULL DEFAULT '["E2","A2","D3","G3","B3","E4"]',
-    difficulty INTEGER DEFAULT 0,   -- 0 = unrated, 1-5
-    tags       TEXT DEFAULT '[]',    -- JSON array
     added_at   TEXT DEFAULT (datetime('now')),
     last_played TEXT,
     play_count  INTEGER DEFAULT 0,
@@ -59,7 +57,7 @@ CREATE TABLE IF NOT EXISTS tabs (
 - Close rows with `defer rows.Close()`.
 - Don't share `*sql.DB` across goroutines without care — it's safe for concurrent use but
   SQLite has a single-writer lock. Modernc.org/sqlite handles this better than CGo sqlite3.
-- JSON fields (tags, tuning): marshal/unmarshal with `encoding/json` before storing/loading.
+- JSON fields (tuning): marshal/unmarshal with `encoding/json` before storing/loading.
   Consider using `database/sql`'s `Scanner` interface for custom types.
 - Foreign keys: SQLite needs `PRAGMA foreign_keys = ON` at connection start.
 
@@ -97,8 +95,6 @@ func (s *Store) migrate() error {
             title      TEXT NOT NULL DEFAULT '',
             artist     TEXT NOT NULL DEFAULT '',
             tuning     TEXT NOT NULL DEFAULT '',
-            difficulty INTEGER DEFAULT 0,
-            tags       TEXT DEFAULT '[]',
             added_at   TEXT DEFAULT (datetime('now')),
             last_played TEXT,
             play_count  INTEGER DEFAULT 0,

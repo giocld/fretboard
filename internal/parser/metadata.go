@@ -36,26 +36,26 @@ func extractMetadata(lines []string, tab *model.Tab) int {
 		}
 		if m := titleRegex.FindStringSubmatch(l); m != nil {
 			tab.Title = strings.TrimSpace(m[1])
-			tab.Metadata["title"] = tab.Title
+			tab.Metadata[model.MetaKeyTitle] = tab.Title
 			continue
 		}
 		if m := artistRegex.FindStringSubmatch(l); m != nil {
 			tab.Artist = strings.TrimSpace(m[1])
-			tab.Metadata["artist"] = tab.Artist
+			tab.Metadata[model.MetaKeyArtist] = tab.Artist
 			continue
 		}
 		if m := tuningRegex.FindStringSubmatch(l); m != nil {
-			tab.Metadata["tuning_raw"] = strings.TrimSpace(m[1])
+			tab.Metadata[model.MetaKeyTuningRaw] = strings.TrimSpace(m[1])
 			continue
 		}
 		if m := capoRegex.FindStringSubmatch(l); m != nil {
 			if n, err := strconv.Atoi(m[1]); err == nil {
-				tab.Metadata["capo"] = strconv.Itoa(n)
+				tab.Metadata[model.MetaKeyCapo] = strconv.Itoa(n)
 			}
 			continue
 		}
 		if m := bpmRegex.FindStringSubmatch(l); m != nil {
-			tab.Metadata["bpm"] = m[1]
+			tab.Metadata[model.MetaKeyBPM] = m[1]
 			continue
 		}
 		// Heuristic: if this is the first non-blank line, treat as artist.
@@ -63,18 +63,17 @@ func extractMetadata(lines []string, tab *model.Tab) int {
 		// "Artist\nTitle\nTuning..." convention.
 		if tab.Artist == "" {
 			tab.Artist = trim
-			tab.Metadata["artist"] = trim
+			tab.Metadata[model.MetaKeyArtist] = trim
 			continue
 		}
 		if tab.Title == "" {
 			tab.Title = trim
-			tab.Metadata["title"] = trim
+			tab.Metadata[model.MetaKeyTitle] = trim
 			continue
 		}
 	}
 	return scanLimit
 }
-
 
 // normalizeTabBPM copies tempo metadata into the canonical bpm key.
 func normalizeTabBPM(tab *model.Tab) {
@@ -84,10 +83,10 @@ func normalizeTabBPM(tab *model.Tab) {
 	if tab.Metadata == nil {
 		tab.Metadata = map[string]string{}
 	}
-	if strings.TrimSpace(tab.Metadata["bpm"]) != "" {
+	if strings.TrimSpace(tab.Metadata[model.MetaKeyBPM]) != "" {
 		return
 	}
-	if tempo := strings.TrimSpace(tab.Metadata["tempo"]); tempo != "" {
-		tab.Metadata["bpm"] = tempo
+	if tempo := strings.TrimSpace(tab.Metadata[model.MetaKeyTempo]); tempo != "" {
+		tab.Metadata[model.MetaKeyBPM] = tempo
 	}
 }

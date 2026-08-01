@@ -11,13 +11,13 @@ import (
 	"github.com/YOUR_USERNAME/fretboard/internal/model"
 )
 
-// GpExtensions lists Guitar Pro file extensions supported via gp-parser.
-var GpExtensions = []string{".gp3", ".gp4", ".gp5", ".gpx", ".gp"}
+// gpExtensions lists Guitar Pro file extensions supported via gp-parser.
+var gpExtensions = []string{".gp3", ".gp4", ".gp5", ".gpx", ".gp"}
 
 // IsGpFile reports whether path looks like a Guitar Pro file.
 func IsGpFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	for _, e := range GpExtensions {
+	for _, e := range gpExtensions {
 		if ext == e {
 			return true
 		}
@@ -75,9 +75,9 @@ type gpTabJSON struct {
 }
 
 type gpBarJSON struct {
-	Number      int              `json:"number"`
-	Strings     []gpStringJSON   `json:"strings"`
-	ColumnTicks []int            `json:"column_ticks"`
+	Number      int            `json:"number"`
+	Strings     []gpStringJSON `json:"strings"`
+	ColumnTicks []int          `json:"column_ticks"`
 }
 
 type gpStringJSON struct {

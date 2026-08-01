@@ -219,7 +219,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.viewer.errMsg = fmt.Sprintf("Tab opened but not saved: %v", err)
 				m.view = viewViewer
 				cfg, _ := config.Load()
-				return m, m.viewer.BeginAudioFetch(config.AutoFetchAudioEnabled(cfg))
+				return m, m.viewer.BeginAudioFetch(cfg.AutoFetchAudio)
 			}
 			tabID = id
 			_ = m.library.store.RecordPlay(id)
@@ -231,7 +231,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewer.LoadTab(msg.Tab, tabPath, tabID)
 		m.view = viewViewer
 		cfg, _ := config.Load()
-		cmds = append(cmds, m.viewer.BeginAudioFetch(config.AutoFetchAudioEnabled(cfg)))
+		cmds = append(cmds, m.viewer.BeginAudioFetch(cfg.AutoFetchAudio))
 		if len(cmds) > 0 {
 			return m, tea.Batch(cmds...)
 		}
@@ -383,7 +383,7 @@ func (m *AppModel) openTab(id int64) tea.Cmd {
 	m.viewer.LoadTab(tab, path, id)
 	m.view = viewViewer
 	cfg, _ := config.Load()
-	return tea.Batch(m.viewer.BeginAudioFetch(config.AutoFetchAudioEnabled(cfg)), m.library.Init(), m.home.Init())
+	return tea.Batch(m.viewer.BeginAudioFetch(cfg.AutoFetchAudio), m.library.Init(), m.home.Init())
 }
 
 
@@ -426,7 +426,7 @@ func (m *AppModel) LoadViewerTab(tab *model.Tab, tabPath string) tea.Cmd {
 	m.viewer.LoadTab(tab, tabPath, 0)
 	m.view = viewViewer
 	cfg, _ := config.Load()
-	m.startupCmd = m.viewer.BeginAudioFetch(config.AutoFetchAudioEnabled(cfg))
+	m.startupCmd = m.viewer.BeginAudioFetch(cfg.AutoFetchAudio)
 	return m.startupCmd
 }
 

@@ -22,10 +22,10 @@ func TestIsTabImportPath(t *testing.T) {
 
 func TestIsWatchedPath(t *testing.T) {
 	dir := "/watch"
-	if !IsWatchedPath(dir, "/watch/new.txt") {
+	if !isWatchedPath(dir, "/watch/new.txt") {
 		t.Fatal("expected txt under watch dir")
 	}
-	if IsWatchedPath(dir, "/other/new.txt") {
+	if isWatchedPath(dir, "/other/new.txt") {
 		t.Fatal("expected path outside watch dir to be ignored")
 	}
 }

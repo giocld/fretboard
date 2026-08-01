@@ -6,20 +6,16 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Pilfer/ultimate-guitar-scraper/pkg/ultimateguitar"
 	"github.com/YOUR_USERNAME/fretboard/internal/model"
 	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
 )
 
 type ugAPIClient struct {
 	scraper ugScraper
-	delay   time.Duration
-	mu      sync.Mutex
-	lastReq time.Time
+	rl      rateLimiter
 }
 
 // ugScraper is the subset of the Ultimate Guitar scraper the API client
@@ -31,23 +27,12 @@ type ugScraper interface {
 
 func newUGAPIClient(delay time.Duration) *ugAPIClient {
 	s := ultimateguitar.New()
-	return &ugAPIClient{scraper: &s, delay: delay}
-}
-
-func (c *ugAPIClient) sleepIfNeeded() {
-	if c.delay <= 0 {
-		return
-	}
-	since := time.Since(c.lastReq)
-	if since < c.delay {
-		time.Sleep(c.delay - since)
-	}
-	c.lastReq = time.Now()
+	return &ugAPIClient{scraper: &s, rl: rateLimiter{delay: delay}}
 }
 
 // Search queries Ultimate Guitar API for tabs matching query.
 func (c *ugAPIClient) Search(query string) ([]SearchResult, error) {
-	c.sleepIfNeeded()
+	c.rl.throttle()
 	res, err := c.scraper.Search(ultimateguitar.SearchParams{
 		Title: query,
 		Type:  []ultimateguitar.TabType{ultimateguitar.TabTypeTabs},
@@ -74,7 +59,7 @@ func (c *ugAPIClient) Search(query string) ([]SearchResult, error) {
 // Fetch retrieves a tab by its Ultimate Guitar ID and parses it into the
 // internal model.
 func (c *ugAPIClient) Fetch(id int64) (*model.Tab, error) {
-	c.sleepIfNeeded()
+	c.rl.throttle()
 	res, err := c.scraper.GetTabByID(id)
 	if err != nil {
 		return nil, fmt.Errorf("ug fetch %d: %w", id, err)
@@ -91,6 +76,33 @@ func (c *ugAPIClient) Fetch(id int64) (*model.Tab, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse fetched tab: %w", err)
 	}
+	applyUGMetadata(tab, ugTabMeta{
+		SongName:   res.SongName,
+		ArtistName: res.ArtistName,
+		Tuning:     res.Tuning,
+		Capo:       res.Capo,
+	})
+	if res.VersionDescription != nil {
+		if bpm := model.ParseBPMFromText(*res.VersionDescription); bpm > 0 {
+			tab.Metadata[model.MetaKeyBPM] = strconv.Itoa(bpm)
+		}
+	}
+	model.NormalizeTabBPM(tab)
+	return tab, nil
+}
+
+// ugTabMeta carries the UG-provided metadata both fetch backends apply to a
+// parsed tab.
+type ugTabMeta struct {
+	SongName   string
+	ArtistName string
+	Tuning     string
+	Capo       int
+}
+
+// applyUGMetadata backfills parsed-tab metadata (title, artist, tuning, capo)
+// from the UG page data.
+func applyUGMetadata(tab *model.Tab, res ugTabMeta) {
 	if tab.Title == "" {
 		tab.Title = res.SongName
 	}
@@ -104,18 +116,11 @@ func (c *ugAPIClient) Fetch(id int64) (*model.Tab, error) {
 		if tab.Metadata == nil {
 			tab.Metadata = map[string]string{}
 		}
-		tab.Metadata["capo"] = strconv.Itoa(res.Capo)
+		tab.Metadata[model.MetaKeyCapo] = strconv.Itoa(res.Capo)
 	}
 	if tab.Metadata == nil {
 		tab.Metadata = map[string]string{}
 	}
-	if res.VersionDescription != nil {
-		if bpm := player.ParseBPMFromText(*res.VersionDescription); bpm > 0 {
-			tab.Metadata["bpm"] = strconv.Itoa(bpm)
-		}
-	}
-	player.NormalizeTabBPM(tab)
-	return tab, nil
 }
 
 // isAlbumTab reports whether a UG result is an album/multi-track page, whose

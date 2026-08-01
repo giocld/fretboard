@@ -11,24 +11,42 @@ import (
 
 // Config holds user-configurable preferences.
 type Config struct {
-	ThemeName      string `json:"theme"`
-	UGDelayMs      int    `json:"ug_delay_ms"`
-	AutoImportPath string `json:"auto_import_path,omitempty"`
-	VolumePercent  int    `json:"volume_percent"`
+	ThemeName        string   `json:"theme"`
+	UGDelayMs        int      `json:"ug_delay_ms"`
+	AutoImportPath   string   `json:"auto_import_path,omitempty"`
+	VolumePercent    int      `json:"volume_percent"`
 	Soundfont        string   `json:"soundfont,omitempty"`
 	AudioSearchPaths []string `json:"audio_search_paths,omitempty"`
-	AutoFetchAudio   *bool    `json:"auto_fetch_audio,omitempty"`
+	AutoFetchAudio   bool     `json:"auto_fetch_audio"`
 }
 
 // Defaults returns the default configuration.
 func Defaults() Config {
-	autoFetch := true
 	return Config{
 		ThemeName:      "default",
 		UGDelayMs:      500,
 		VolumePercent:  80,
-		AutoFetchAudio: &autoFetch,
+		AutoFetchAudio: true,
 	}
+}
+
+// UnmarshalJSON defaults AutoFetchAudio to true when the auto_fetch_audio key
+// is absent from the JSON document.
+func (c *Config) UnmarshalJSON(data []byte) error {
+	type alias Config
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return err
+	}
+	if _, ok := keys["auto_fetch_audio"]; !ok {
+		a.AutoFetchAudio = true
+	}
+	*c = Config(a)
+	return nil
 }
 
 // Dir returns the user's config directory for fretboard.
@@ -88,7 +106,6 @@ func Path() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
-
 // AudioDir returns the default directory for backing-track audio files.
 func AudioDir() (string, error) {
 	dir, err := Dir()
@@ -100,13 +117,4 @@ func AudioDir() (string, error) {
 		return "", fmt.Errorf("create audio dir: %w", err)
 	}
 	return audio, nil
-}
-
-
-// AutoFetchAudioEnabled reports whether online backing-track lookup is enabled.
-func AutoFetchAudioEnabled(c Config) bool {
-	if c.AutoFetchAudio == nil {
-		return true
-	}
-	return *c.AutoFetchAudio
 }
