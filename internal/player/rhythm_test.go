@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
+	"fretboard/internal/model"
+	"fretboard/internal/parser"
 )
 
 func TestRhythmSpacingInfersDurations(t *testing.T) {
@@ -131,7 +131,6 @@ E|----0-----3-----5---|
 		}
 	}
 }
-
 
 func TestBuildSchedulePopulatesSustain(t *testing.T) {
 	tab := &model.Tab{

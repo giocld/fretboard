@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 var (

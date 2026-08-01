@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 func writeFakeYtDlp(t *testing.T, sleep string) {

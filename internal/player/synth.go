@@ -15,7 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 // Synth plays generated MIDI events through an external synthesizer.
@@ -31,9 +31,9 @@ type Synth struct {
 	ActiveDriver string
 	LastError    string
 
-	mu       sync.Mutex
-	noteGen  map[int]int
-	playGen  uint64
+	mu      sync.Mutex
+	noteGen map[int]int
+	playGen uint64
 }
 
 // NewSynth creates a stopped synth.

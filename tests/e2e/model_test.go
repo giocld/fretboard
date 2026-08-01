@@ -3,7 +3,7 @@ package e2e_test
 import (
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 func TestTuningE2E(t *testing.T) {

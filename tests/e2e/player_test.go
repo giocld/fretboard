@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
-	"github.com/YOUR_USERNAME/fretboard/tests/helpers"
+	"fretboard/internal/parser"
+	"fretboard/internal/player"
+	"fretboard/tests/helpers"
 )
 
 func TestEventsE2E(t *testing.T) {

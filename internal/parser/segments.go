@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 const techniqueChars = "hpb/\\~xsu"

@@ -1,10 +1,10 @@
-module github.com/YOUR_USERNAME/fretboard/tests
+module fretboard/tests
 
 go 1.25.0
 
-require github.com/YOUR_USERNAME/fretboard v0.0.0
+require fretboard v0.0.0
 
-replace github.com/YOUR_USERNAME/fretboard => ../
+replace fretboard => ../
 
 require modernc.org/sqlite v1.55.0 // indirect
 

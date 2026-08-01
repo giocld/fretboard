@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 // PlayContext carries per-tab playback hints.
@@ -53,7 +53,6 @@ func (e *Engine) Elapsed() time.Duration {
 	}
 	return time.Since(e.playbackStart)
 }
-
 
 // Shutdown stops playback and blocks new starts until the app exits.
 func (e *Engine) Shutdown() {
@@ -118,7 +117,6 @@ func (e *Engine) PlaySource(tab *model.Tab, bpm int, src AudioSource, ctx PlayCo
 		return e.Play(tab, bpm, ctx)
 	}
 }
-
 
 func (e *Engine) StartMIDIRealtime() error {
 	e.audioDuration = 0

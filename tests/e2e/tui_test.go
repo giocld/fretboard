@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/app"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
-	"github.com/YOUR_USERNAME/fretboard/tests/helpers"
+	"fretboard/internal/parser"
+	"fretboard/internal/ui/app"
+	"fretboard/internal/ui/kit"
+	"fretboard/tests/helpers"
 )
 
 func TestTUIViewerRender(t *testing.T) {

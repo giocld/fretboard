@@ -3,7 +3,7 @@ package player
 import (
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 func TestTabBPMFromMetadata(t *testing.T) {

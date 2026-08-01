@@ -16,13 +16,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/config"
-	"github.com/YOUR_USERNAME/fretboard/internal/library"
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
-	"github.com/YOUR_USERNAME/fretboard/internal/scraper"
-	apppkg "github.com/YOUR_USERNAME/fretboard/internal/ui/app"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
+	"fretboard/internal/config"
+	"fretboard/internal/library"
+	"fretboard/internal/parser"
+	"fretboard/internal/player"
+	"fretboard/internal/scraper"
+	apppkg "fretboard/internal/ui/app"
+	"fretboard/internal/ui/kit"
 )
 
 // Run executes the CLI and returns the process exit code.

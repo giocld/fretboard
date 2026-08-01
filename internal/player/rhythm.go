@@ -4,7 +4,7 @@ import (
 	"math"
 	"sort"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 const ticksPerQuarter = 480

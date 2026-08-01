@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/library"
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/tests/helpers"
+	"fretboard/internal/library"
+	"fretboard/internal/parser"
+	"fretboard/tests/helpers"
 )
 
 func TestStoreFullLifecycleE2E(t *testing.T) {

@@ -3,7 +3,7 @@ package parser
 import (
 	"strings"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 func extractBars(region []string, stringsPerColumn int) []model.Bar {

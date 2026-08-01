@@ -3,7 +3,7 @@ package player
 import (
 	"errors"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 // Events generates a chronological list of MIDI note events for a tab.

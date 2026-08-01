@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
+	"fretboard/internal/model"
+	"fretboard/internal/parser"
 )
 
 // ugHTMLClient fetches tabs by scraping Ultimate Guitar web pages.

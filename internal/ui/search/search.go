@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/scraper"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	"fretboard/internal/scraper"
+	"fretboard/internal/ui/kit"
+	"fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"

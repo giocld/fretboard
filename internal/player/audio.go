@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/config"
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/config"
+	"fretboard/internal/model"
 )
 
 var audioExtensions = []string{".mp3", ".flac", ".ogg", ".wav", ".m4a", ".opus", ".aac"}

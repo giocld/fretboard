@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 // Client wraps multiple online tab sources with rate limiting.

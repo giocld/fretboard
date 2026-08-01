@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/cli"
+	"fretboard/internal/cli"
 )
 
 func main() {

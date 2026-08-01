@@ -11,7 +11,7 @@ Test commands: `go test ./...` (repo) and `cd tests && go test ./...` (e2e modul
 
 ## BUG-001 — `j`/`k` keys are dead in the library browser
 
-- **Area:** `internal/tui/browser.go`
+- **Area:** `internal/ui/browser/browser.go`
 - **Status:** FIXED (handleNormalKey now handles KeyDown/KeyUp; test TestBrowserJKMoveCursor; verified live)
 - **Confirmed:** Yes (driven live TUI: `enter` then `j,j,j` leaves cursor on row 0;
   `down,down,down` moves it. README, footer `[j/k]move`, and help screen all claim j/k move.)
@@ -21,13 +21,13 @@ Test commands: `go test ./...` (repo) and `cd tests && go test ./...` (e2e modul
 - **Repro:** `fretboard` → Enter (Library) → press `j` a few times → cursor does not move.
 - **Expected:** `j`/`k` move the cursor exactly like `↓`/`↑` (and like the Home screen and Viewer).
 - **Fix scope:** `handleNormalKey` only. Add `"j"`/`"k"` cases (use `KeyDown`/`KeyUp`).
-- **Test:** add `j`/`k` movement assertion to `internal/tui/browser_test.go`.
+- **Test:** add `j`/`k` movement assertion to `internal/ui/browser/browser_test.go`.
 
 ---
 
 ## BUG-002 — typing `q` while focused on a text input quits the whole app
 
-- **Area:** `internal/tui/search.go` (online search query), `internal/tui/browser.go`
+- **Area:** `internal/ui/search/search.go` (online search query), `internal/ui/browser/browser.go`
   `handleSearchKey` (library filter)
 - **Status:** FIXED
 - **Confirmed:** Yes (pty test: library → `o` → type `q` → process exits rc=0;
@@ -66,20 +66,20 @@ Test commands: `go test ./...` (repo) and `cd tests && go test ./...` (e2e modul
 
 ## BUG-004 — `lipglossWidth` uses byte length, not display width
 
-- **Area:** `internal/tui/render.go` (`lipglossWidth`), used by `RenderStatusBar`
+- **Area:** `internal/ui/kit/render.go` (`lipglossWidth`), used by `RenderStatusBar`
 - **Status:** FIXED
 - **Confirmed:** Yes (code: `func lipglossWidth(s string) int { return len(s) }`).
 - **Root cause:** byte length ≠ terminal cell width for wide/multibyte runes (CJK, emoji,
   accented chars); the status bar spacer math misaligns.
 - **Expected:** use `lipgloss.Width(s)` (or `ansi.StringWidth`) so alignment is correct.
 - **Fix scope:** `render.go` `lipglossWidth` only. Do not rename the function (other call sites).
-- **Test:** a unit test in `internal/tui` asserting wide-rune width is not byte length.
+- **Test:** a unit test in `internal/ui` asserting wide-rune width is not byte length.
 
 ---
 
 ## BUG-005 — `truncate`/`truncateErr` slice by byte index, splitting UTF-8 runes
 
-- **Area:** `internal/tui/home.go` `truncate`, `internal/tui/viewer.go` `truncateErr`
+- **Area:** `internal/ui/home/home.go` `truncate`, `internal/ui/viewer/viewer.go` `truncateErr`
 - **Status:** FIXED
 - **Confirmed:** Yes (code: `s[:max-1]` byte slicing; can cut a multibyte rune mid-sequence,
   producing a broken/box glyph in titles and error messages).
@@ -87,7 +87,7 @@ Test commands: `go test ./...` (repo) and `cd tests && go test ./...` (e2e modul
 - **Expected:** truncate on rune boundaries (e.g., `[]rune(s)`, or `utf8`-safe width cut) and
   keep the trailing `…`.
 - **Fix scope:** both functions (they are unexported; viewer has its own copy).
-- **Test:** unit test in `internal/tui` with a multibyte title asserting no replacement char.
+- **Test:** unit test in `internal/ui` with a multibyte title asserting no replacement char.
 
 ---
 
@@ -126,3 +126,15 @@ Test commands: `go test ./...` (repo) and `cd tests && go test ./...` (e2e modul
   cp /tmp/fretboard.db.bak ~/.config/fretboard/fretboard.db)
 - Build: go build -o /tmp/fretboard-test ./cmd/fretboard
 -->
+
+## Architecture refactor (2026-08)
+
+Not a bug — a structural cleanup performed after the bug hunt. Commits:
+- `P1+P4`: BPM helpers moved `player` → `model` (kills scraper→player layering violation); scraper rate-limit sleep deduped into `ratelimit.go`; metadata keys are `model.MetaKey*` constants; dead code removed (`FetchID`, `NewAppWithStore`, `BeatDuration`, unused `difficulty`/`tags` schema columns); config `AutoFetchAudio` is a plain bool with default-`true` unmarshal; `library.ErrNotFound` replaces sentinel errors.
+- `P2`: `internal/tui` split into `internal/ui/{kit, msgs, home, browser, search, viewer, help, app}`; viewer split into `viewer.go` / `viewer_playback.go` / `viewer_audio.go`; router pokes screens only via a small exported API.
+- `P3`: `internal/cli` with testable `Run(args, stdout, stderr) int`; `cmd/fretboard/main.go` is a 10-line wrapper.
+- Final polish: module path `github.com/YOUR_USERNAME/fretboard` → `fretboard` (also `tests/go.mod`); dead exports removed (`SetAllowOnline`, `kit.KeySearch`); gofmt across the repo; docs updated.
+
+Non-blocking candidates that remain open (from the bug hunt):
+- Online-search album pages (multi-track UG results) are rejected with a clear error instead of importing mangled tabs.
+- Audio-sync cursor uses linear time mapping; it drifts slightly for tabs with heavy rhythm variation.

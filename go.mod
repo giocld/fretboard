@@ -1,4 +1,4 @@
-module github.com/YOUR_USERNAME/fretboard
+module fretboard
 
 go 1.25.0
 

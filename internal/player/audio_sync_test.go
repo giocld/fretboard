@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 func TestStepIndexAtElapsed(t *testing.T) {

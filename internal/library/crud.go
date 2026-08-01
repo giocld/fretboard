@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
+	"fretboard/internal/model"
+	"fretboard/internal/parser"
 )
 
 // ErrNotFound is returned when a tab row is missing from the library.

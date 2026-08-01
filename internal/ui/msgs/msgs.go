@@ -5,10 +5,10 @@ package msgs
 import (
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/library"
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
-	"github.com/YOUR_USERNAME/fretboard/internal/scraper"
+	"fretboard/internal/library"
+	"fretboard/internal/model"
+	"fretboard/internal/player"
+	"fretboard/internal/scraper"
 )
 
 // Navigation and selection.

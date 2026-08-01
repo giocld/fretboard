@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/library"
-	"github.com/YOUR_USERNAME/fretboard/tests/helpers"
+	"fretboard/internal/library"
+	"fretboard/tests/helpers"
 )
 
 func TestImportDirectory(t *testing.T) {

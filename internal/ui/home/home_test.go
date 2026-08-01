@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/library"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	"fretboard/internal/library"
+	"fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/lipgloss"
 )
 

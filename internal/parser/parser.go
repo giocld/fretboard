@@ -15,7 +15,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 // Parse reads a tab from r and returns a structured model.Tab.
@@ -82,7 +82,6 @@ func stripCommentsAndBlanks(lines []string) []string {
 	}
 	return out
 }
-
 
 // ParsePath dispatches to the ASCII parser or Guitar Pro converter based on
 // file extension.

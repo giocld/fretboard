@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
+	"fretboard/internal/parser"
 )
 
 type recordingSynthIn struct {

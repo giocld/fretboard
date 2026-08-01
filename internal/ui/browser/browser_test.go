@@ -7,8 +7,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/library"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	"fretboard/internal/library"
+	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -51,14 +51,12 @@ func TestBrowserSearchOOpensOnline(t *testing.T) {
 	}
 }
 
-
 func TestFormatRowTuning(t *testing.T) {
 	got := formatRowTuning("[40,45,50,55,59,64]")
 	if got == "" || got == "[40,45,50,55,59,64]" {
 		t.Fatalf("expected readable tuning label, got %q", got)
 	}
 }
-
 
 func TestBrowserTabsLoadErrorShowsMessage(t *testing.T) {
 	m := NewBrowserModel(nil)
@@ -81,7 +79,6 @@ func TestBrowserFilterEmptyResetsCursor(t *testing.T) {
 		t.Fatalf("cursor should reset to 0 on empty filter, got %d", m.cursor)
 	}
 }
-
 
 func TestBrowserFilterTypingResetsCursor(t *testing.T) {
 	m := NewBrowserModel(nil)

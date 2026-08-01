@@ -3,9 +3,9 @@ package viewer
 import (
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	"fretboard/internal/model"
+	"fretboard/internal/player"
+	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

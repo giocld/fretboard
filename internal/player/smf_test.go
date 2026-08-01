@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
+	"fretboard/internal/parser"
 )
 
 func TestWriteSMFTempoMetaIsThreeBytes(t *testing.T) {

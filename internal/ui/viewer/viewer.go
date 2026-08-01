@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	"fretboard/internal/model"
+	"fretboard/internal/player"
+	"fretboard/internal/ui/kit"
+	"fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -615,11 +615,6 @@ func (m ViewerModel) View() string {
 // SetAudioDirs configures extra directories to search for backing tracks.
 func (m *ViewerModel) SetAudioDirs(dirs []string) {
 	m.audioDirs = append([]string(nil), dirs...)
-}
-
-// SetAllowOnline controls whether online audio sources may be used.
-func (m *ViewerModel) SetAllowOnline(v bool) {
-	m.allowOnline = v
 }
 
 func pickAudioSourceIndex(tab *model.Tab, cat player.AudioCatalog) int {

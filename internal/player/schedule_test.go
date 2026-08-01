@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
+	"fretboard/internal/parser"
+	"fretboard/internal/player"
 )
 
 func TestLaylaLikeSchedule(t *testing.T) {

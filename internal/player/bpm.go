@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 // DefaultBPM is the tempo used when none can be determined.

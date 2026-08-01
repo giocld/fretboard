@@ -6,10 +6,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/library"
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	"fretboard/internal/library"
+	"fretboard/internal/model"
+	"fretboard/internal/ui/kit"
+	"fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sahilm/fuzzy"
@@ -27,18 +27,18 @@ const (
 
 // BrowserModel is the library tab list.
 type BrowserModel struct {
-	store        *library.Store
-	tabs         []library.TabRow
-	filtered     []library.TabRow
-	cursor       int
-	searchActive bool
-	searchInput  string
-	sortMode     SortMode
-	viewport     viewport.Model
-	width        int
-	height       int
-	loaded       bool
-	loading      bool
+	store          *library.Store
+	tabs           []library.TabRow
+	filtered       []library.TabRow
+	cursor         int
+	searchActive   bool
+	searchInput    string
+	sortMode       SortMode
+	viewport       viewport.Model
+	width          int
+	height         int
+	loaded         bool
+	loading        bool
 	errMsg         string
 	autoImportWarn string
 	confirmDelete  *library.TabRow
@@ -447,7 +447,6 @@ func sortLabel(s SortMode) string {
 	}
 	return "?"
 }
-
 
 func formatRowTuning(raw string) string {
 	if raw == "" {

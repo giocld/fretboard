@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 // StartRealtime launches fluidsynth in shell mode for step-synchronized playback.

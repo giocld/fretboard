@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 // AudioSourceKind identifies how a backing track is provided.
@@ -85,11 +85,11 @@ func (c AudioCatalog) BestIndex() int {
 func BuildAudioCatalog(tab *model.Tab, tabPath string, extraDirs []string, searchOnline bool) (AudioCatalog, error) {
 	cat := AudioCatalog{
 		Sources: []AudioSource{{
-			ID:    "midi",
-			Kind:  SourceMIDI,
-			Label: "MIDI synthesizer",
+			ID:     "midi",
+			Kind:   SourceMIDI,
+			Label:  "MIDI synthesizer",
 			Detail: "fluidsynth — follows tab BPM",
-			Score: 0,
+			Score:  0,
 		}},
 	}
 	if tab == nil {

@@ -5,10 +5,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/library"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/kit"
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	"fretboard/internal/library"
+	"fretboard/internal/player"
+	"fretboard/internal/ui/kit"
+	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )

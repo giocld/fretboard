@@ -3,7 +3,7 @@ package app
 import (
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/ui/msgs"
+	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

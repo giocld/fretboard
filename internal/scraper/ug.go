@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"fretboard/internal/model"
+	"fretboard/internal/parser"
 	"github.com/Pilfer/ultimate-guitar-scraper/pkg/ultimateguitar"
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
 )
 
 type ugAPIClient struct {

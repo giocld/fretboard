@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 type songsterrClient struct {

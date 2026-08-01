@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/tests/helpers"
+	"fretboard/internal/parser"
+	"fretboard/tests/helpers"
 )
 
 func fixturePath(name string) string {

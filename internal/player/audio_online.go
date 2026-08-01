@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/config"
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/config"
+	"fretboard/internal/model"
 )
 
 // OnlineAudioAvailable reports whether yt-dlp is installed for online lookups.

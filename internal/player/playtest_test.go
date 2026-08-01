@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/parser"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
+	"fretboard/internal/parser"
+	"fretboard/internal/player"
 )
 
 func TestResolveSoundfontInstalled(t *testing.T) {

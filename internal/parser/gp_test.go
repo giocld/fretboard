@@ -3,7 +3,7 @@ package parser
 import (
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"fretboard/internal/model"
 )
 
 func TestIsGpFile(t *testing.T) {

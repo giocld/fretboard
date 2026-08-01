@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/YOUR_USERNAME/fretboard/internal/library"
-	"github.com/YOUR_USERNAME/fretboard/internal/player"
+	"fretboard/internal/library"
+	"fretboard/internal/player"
 )
 
 func TestLibraryTabMIDSize(t *testing.T) {
