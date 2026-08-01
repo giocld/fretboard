@@ -1,0 +1,179 @@
+// Package scraper provides online tab sources: Ultimate Guitar (API + HTML
+// fallback) and Songsterr search.
+package scraper
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/Pilfer/ultimate-guitar-scraper/pkg/ultimateguitar"
+	"github.com/YOUR_USERNAME/fretboard/internal/model"
+	"github.com/YOUR_USERNAME/fretboard/internal/parser"
+	"github.com/YOUR_USERNAME/fretboard/internal/player"
+)
+
+type ugAPIClient struct {
+	scraper ugScraper
+	delay   time.Duration
+	mu      sync.Mutex
+	lastReq time.Time
+}
+
+// ugScraper is the subset of the Ultimate Guitar scraper the API client
+// needs, so tests can substitute a fake.
+type ugScraper interface {
+	Search(params ultimateguitar.SearchParams) (ultimateguitar.SearchResult, error)
+	GetTabByID(id int64) (ultimateguitar.TabResult, error)
+}
+
+func newUGAPIClient(delay time.Duration) *ugAPIClient {
+	s := ultimateguitar.New()
+	return &ugAPIClient{scraper: &s, delay: delay}
+}
+
+func (c *ugAPIClient) sleepIfNeeded() {
+	if c.delay <= 0 {
+		return
+	}
+	since := time.Since(c.lastReq)
+	if since < c.delay {
+		time.Sleep(c.delay - since)
+	}
+	c.lastReq = time.Now()
+}
+
+// Search queries Ultimate Guitar API for tabs matching query.
+func (c *ugAPIClient) Search(query string) ([]SearchResult, error) {
+	c.sleepIfNeeded()
+	res, err := c.scraper.Search(ultimateguitar.SearchParams{
+		Title: query,
+		Type:  []ultimateguitar.TabType{ultimateguitar.TabTypeTabs},
+		Page:  1,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ug search: %w", err)
+	}
+	var out []SearchResult
+	for _, t := range res.Tabs {
+		out = append(out, SearchResult{
+			ID:         t.ID,
+			Source:     SourceUG,
+			SongName:   t.SongName,
+			ArtistName: string(t.ArtistName),
+			Type:       string(t.Type),
+			Rating:     t.Rating,
+			Votes:      t.Votes,
+		})
+	}
+	return out, nil
+}
+
+// Fetch retrieves a tab by its Ultimate Guitar ID and parses it into the
+// internal model.
+func (c *ugAPIClient) Fetch(id int64) (*model.Tab, error) {
+	c.sleepIfNeeded()
+	res, err := c.scraper.GetTabByID(id)
+	if err != nil {
+		return nil, fmt.Errorf("ug fetch %d: %w", id, err)
+	}
+	content := res.Content
+	if strings.TrimSpace(content) == "" {
+		return nil, fmt.Errorf("ug fetch %d: empty tab content", id)
+	}
+	if isAlbumTab(res) {
+		return nil, fmt.Errorf("ug fetch %d: album page (%q) is not a single tab", id, res.Part)
+	}
+	content = normalizeContent(content)
+	tab, err := parser.Parse(strings.NewReader(content))
+	if err != nil {
+		return nil, fmt.Errorf("parse fetched tab: %w", err)
+	}
+	if tab.Title == "" {
+		tab.Title = res.SongName
+	}
+	if tab.Artist == "" {
+		tab.Artist = res.ArtistName
+	}
+	if len(tab.Tuning) == 0 && res.Tuning != "" {
+		tab.Tuning = model.ParseTuning(strings.ReplaceAll(res.Tuning, " ", ""))
+	}
+	if res.Capo > 0 {
+		if tab.Metadata == nil {
+			tab.Metadata = map[string]string{}
+		}
+		tab.Metadata["capo"] = strconv.Itoa(res.Capo)
+	}
+	if tab.Metadata == nil {
+		tab.Metadata = map[string]string{}
+	}
+	if res.VersionDescription != nil {
+		if bpm := player.ParseBPMFromText(*res.VersionDescription); bpm > 0 {
+			tab.Metadata["bpm"] = strconv.Itoa(bpm)
+		}
+	}
+	player.NormalizeTabBPM(tab)
+	return tab, nil
+}
+
+// isAlbumTab reports whether a UG result is an album/multi-track page, whose
+// content is a track listing ("Track 01 - X … Included") rather than a single
+// tab. Importing those produces garbage tabs.
+func isAlbumTab(res ultimateguitar.TabResult) bool {
+	if res.Part == "album" {
+		return true
+	}
+	content := res.Content
+	if len(content) > 400 {
+		content = content[:400]
+	}
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "Track ") && (strings.Contains(trimmed, "Included") || strings.Contains(trimmed, "Not Included")) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeContent(s string) string {
+	replacements := map[string]string{
+		"&quot;": "\"",
+		"&amp;":  "&",
+		"&lt;":   "<",
+		"&gt;":   ">",
+		"&#039;": "'",
+		"&nbsp;": " ",
+		"[ch]":   "",
+		"[/ch]":  "",
+		"[tab]":  "",
+		"[/tab]": "",
+	}
+	for old, new := range replacements {
+		s = strings.ReplaceAll(s, old, new)
+	}
+	return trimNonTabLines(s)
+}
+
+func trimNonTabLines(s string) string {
+	lines := strings.Split(s, "\n")
+	start := 0
+	for i, line := range lines {
+		if hasTabLineContent(line) {
+			start = i
+			break
+		}
+	}
+	return strings.Join(lines[start:], "\n")
+}
+
+func hasTabLineContent(line string) bool {
+	for _, r := range line {
+		if r >= '0' && r <= '9' || r == '-' || r == '|' {
+			return true
+		}
+	}
+	return false
+}

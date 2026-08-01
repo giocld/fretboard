@@ -1,0 +1,20 @@
+---
+description: Mandatory "What changed" summary at end of every implementation turn
+alwaysApply: true
+---
+
+# Fretboard: always end with "What changed"
+
+When you modify code in this repo, **the last section of your reply must be**:
+
+## What changed
+
+Include:
+- concrete bullets (files, behavior, keys, config)
+- **Verified** (build/test commands and pass/fail)
+- **Try it** (rebuild + short manual check)
+
+Do **not** finish an implementation turn without this section — even for one-line fixes,
+bug batches, or when resuming a prior session. The user relies on this heading.
+
+See `AGENTS.md` for the full template.
