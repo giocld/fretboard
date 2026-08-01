@@ -17,4 +17,7 @@ type SearchResult struct {
 	Type       string
 	Rating     float64
 	Votes      int64
+	// TabURL is the canonical page URL when the provider exposes one (UG's
+	// current pages use slug-based URLs that cannot be derived from the ID).
+	TabURL string
 }

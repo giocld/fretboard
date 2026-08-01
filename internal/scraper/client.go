@@ -78,7 +78,7 @@ func (c *Client) Fetch(result SearchResult) (*model.Tab, error) {
 			}
 		}
 		if c.ugHTML != nil {
-			return c.ugHTML.Fetch(result.ID)
+			return c.ugHTML.Fetch(result)
 		}
 		return nil, fmt.Errorf("no fetch backend configured")
 	}

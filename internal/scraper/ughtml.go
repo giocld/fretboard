@@ -45,6 +45,10 @@ func (c *ugHTMLClient) Search(query string) ([]SearchResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	return c.parseSearch(body)
+}
+
+func (c *ugHTMLClient) parseSearch(body []byte) ([]SearchResult, error) {
 	payload, err := extractUGDataContent(body)
 	if err != nil {
 		return nil, err
@@ -59,6 +63,7 @@ func (c *ugHTMLClient) Search(query string) ([]SearchResult, error) {
 						SongName      string  `json:"song_name"`
 						ArtistName    string  `json:"artist_name"`
 						Type          string  `json:"type"`
+						TabURL        string  `json:"tab_url"`
 						Rating        float64 `json:"rating"`
 						Votes         int64   `json:"votes"`
 						TabAccessType string  `json:"tab_access_type"`
@@ -72,14 +77,14 @@ func (c *ugHTMLClient) Search(query string) ([]SearchResult, error) {
 	}
 	var out []SearchResult
 	for _, t := range page.Store.Page.Data.Results {
+		if t.Type == "" || (!strings.EqualFold(t.Type, "Tabs") && !strings.EqualFold(t.Type, "Chords")) {
+			continue
+		}
 		id := t.ID
 		if id == 0 {
 			id = t.TabID
 		}
 		if id == 0 {
-			continue
-		}
-		if t.Type != "" && !strings.EqualFold(t.Type, "Tabs") && !strings.EqualFold(t.Type, "Chords") {
 			continue
 		}
 		out = append(out, SearchResult{
@@ -88,6 +93,7 @@ func (c *ugHTMLClient) Search(query string) ([]SearchResult, error) {
 			SongName:   t.SongName,
 			ArtistName: t.ArtistName,
 			Type:       t.Type,
+			TabURL:     t.TabURL,
 			Rating:     t.Rating,
 			Votes:      t.Votes,
 		})
@@ -95,9 +101,12 @@ func (c *ugHTMLClient) Search(query string) ([]SearchResult, error) {
 	return out, nil
 }
 
-func (c *ugHTMLClient) Fetch(id int64) (*model.Tab, error) {
+func (c *ugHTMLClient) Fetch(r SearchResult) (*model.Tab, error) {
 	c.rl.throttle()
-	tabURL := fmt.Sprintf("https://tabs.ultimate-guitar.com/tab/_/_tabs_%d", id)
+	tabURL := r.TabURL
+	if tabURL == "" {
+		tabURL = ugTabURL(r)
+	}
 	req, err := http.NewRequest(http.MethodGet, tabURL, nil)
 	if err != nil {
 		return nil, err
@@ -106,9 +115,12 @@ func (c *ugHTMLClient) Fetch(id int64) (*model.Tab, error) {
 
 	res, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("ug html fetch %d: %w", id, err)
+		return nil, fmt.Errorf("ug html fetch %d: %w", r.ID, err)
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ug html fetch %d: http %d", r.ID, res.StatusCode)
+	}
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
@@ -141,12 +153,15 @@ func (c *ugHTMLClient) Fetch(id int64) (*model.Tab, error) {
 	}
 	content := page.Store.Page.Data.TabView.WikiTab.Content
 	if strings.TrimSpace(content) == "" {
-		return nil, fmt.Errorf("ug html fetch %d: empty tab content", id)
+		return nil, fmt.Errorf("ug html fetch %d: empty tab content", r.ID)
 	}
 	content = normalizeContent(content)
 	tab, err := parser.Parse(strings.NewReader(content))
 	if err != nil {
 		return nil, fmt.Errorf("parse fetched tab: %w", err)
+	}
+	if len(tab.Bars) == 0 {
+		return nil, fmt.Errorf("ug html fetch %d: chord sheet with no playable bars (chord-only tabs not yet supported)", r.ID)
 	}
 	applyUGMetadata(tab, ugTabMeta{
 		SongName:   page.Store.Page.Data.Tab.SongName,
@@ -159,6 +174,44 @@ func (c *ugHTMLClient) Fetch(id int64) (*model.Tab, error) {
 }
 
 const ugBrowserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+// ugTabURL builds a UG tab page URL. UG now serves slug-based paths
+// (/tab/<artist>/<song>-<type>-<id>); the ID-only "_/_tabs_<id>" pattern
+// returns 404. Used as a fallback when the search response carries no
+// tab_url (e.g. results from the legacy API client).
+func ugTabURL(r SearchResult) string {
+	typ := strings.ToLower(r.Type)
+	switch typ {
+	case "tabs":
+		typ = "tabs"
+	case "chords":
+		typ = "chords"
+	default:
+		typ = "tabs"
+	}
+	return fmt.Sprintf("https://tabs.ultimate-guitar.com/tab/%s/%s-%s-%d",
+		slugify(r.ArtistName), slugify(r.SongName), typ, r.ID)
+}
+
+// slugify converts a name to the lowercase, hyphenated form UG uses in URLs
+// (e.g. "Eric Clapton" -> "eric-clapton").
+func slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+			b.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
 
 func extractUGDataContent(body []byte) ([]byte, error) {
 	s := string(body)

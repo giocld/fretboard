@@ -9,6 +9,39 @@ Test commands: `go test ./...` (repo) and `cd tests && go test ./...` (e2e modul
 
 ---
 
+## BUG-017 — UG fetch broken: "ug html: data-content not found" — FIXED
+
+**Symptom:** opening a search result fails with `Could not fetch tab: ug html: data-content not found`.
+
+**Root cause:** Ultimate Guitar moved from the ID-based URL pattern
+(`/tab/_/_tabs_<id>`, now 404) to slug-based pages
+(`/tab/<artist>/<song>-<type>-<id>`). The HTML fallback fetched the dead
+pattern, got a 404 page with no `data-content` attribute, and errored.
+Additionally, UG search responses now include official/TabPro marketing rows
+(no `type`, no `id`) that were being surfaced as fetchable results.
+
+**Fix:** `SearchResult.TabURL` captured from search JSON; `ugTabURL` builds the
+slug URL as a fallback (with `slugify`); official rows filtered out (only
+Tabs/Chords with an id); `Fetch` now takes the result, checks HTTP status, and
+rejects chord-only pages with a clear error instead of importing an empty tab.
+
+**Tests:** `TestUGTabURLSlugPattern`, `TestSlugify`,
+`TestUGHTMLSearchFiltersNonPublicResults`, live integration
+`TestLiveUGSearchAndFetch` (`go test -tags live`).
+
+## BUG-018 — Chord-only UG pages parse into 0-bar tabs — OPEN (rejected cleanly)
+
+**Symptom:** fetching a Chords-type result yields a tab with no bars
+(title/artist garbage from chord lines).
+
+**Root cause:** the parser expects tab notation; chord sheets (lyrics + `[ch]`
+marks) produce no bar structure.
+
+**Current behavior:** rejected with a clear error (no garbage import).
+**Fix path:** chord-sheet support → backlog F9.
+
+---
+
 ## BUG-001 — `j`/`k` keys are dead in the library browser
 
 - **Area:** `internal/ui/browser/browser.go`
