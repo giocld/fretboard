@@ -61,3 +61,51 @@ func TestDeriveBPMFromAudioExcludesOffset(t *testing.T) {
 		t.Fatalf("offset beyond audio length should fall back to the full-duration BPM, got %d", got)
 	}
 }
+
+func TestStepIndexAtSyncPoints(t *testing.T) {
+	schedule := []PlaybackStep{
+		{Bar: 1, Ticks: 4 * ticksPerQuarter}, {Bar: 1, Ticks: 4 * ticksPerQuarter},
+		{Bar: 2, Ticks: 4 * ticksPerQuarter}, {Bar: 2, Ticks: 4 * ticksPerQuarter},
+		{Bar: 3, Ticks: 4 * ticksPerQuarter}, {Bar: 3, Ticks: 4 * ticksPerQuarter},
+	}
+	// Bar1 anchored at 10s, bar2 at 20s, bar3 at 25s: bar2 is 4x faster.
+	points := []SyncPoint{{Bar: 1, Seconds: 10}, {Bar: 2, Seconds: 20}, {Bar: 3, Seconds: 25}}
+	if got := StepIndexAtSyncPoints(schedule, points, 9.9, 120); got != 0 {
+		t.Fatalf("before the first anchor should sit at step 0, got %d", got)
+	}
+	if got := StepIndexAtSyncPoints(schedule, points, 10, 120); got != 0 {
+		t.Fatalf("at the first anchor should sit at step 0, got %d", got)
+	}
+	if got := StepIndexAtSyncPoints(schedule, points, 15, 120); got != 1 {
+		t.Fatalf("mid bar1..bar2 segment should be step 1, got %d", got)
+	}
+	if got := StepIndexAtSyncPoints(schedule, points, 25, 120); got != 4 {
+		t.Fatalf("at the bar3 anchor should be step 4, got %d", got)
+	}
+	if got := StepIndexAtSyncPoints(schedule, points, 35, 120); got != 5 {
+		t.Fatalf("past the last anchor should clamp to the last step, got %d", got)
+	}
+	if got := StepIndexAtSyncPoints(schedule, nil, 30, 120); got != 5 {
+		t.Fatalf("no anchors should use plain schedule accumulation, got %d", got)
+	}
+	if got := StepIndexAtSyncPoints(nil, points, 30, 120); got != 0 {
+		t.Fatalf("empty schedule should be step 0, got %d", got)
+	}
+}
+
+func TestScheduleTimeAtBar(t *testing.T) {
+	schedule := []PlaybackStep{
+		{Bar: 1, Ticks: 4 * ticksPerQuarter}, {Bar: 1, Ticks: 4 * ticksPerQuarter},
+		{Bar: 2, Ticks: 4 * ticksPerQuarter}, {Bar: 2, Ticks: 4 * ticksPerQuarter},
+	}
+	if got := ScheduleTimeAtBar(schedule, 1, 120); got != 0 {
+		t.Fatalf("bar 1 should start at 0, got %v", got)
+	}
+	want := 4 * time.Second
+	if got := ScheduleTimeAtBar(schedule, 2, 120); got != want {
+		t.Fatalf("bar 2 should start at %v, got %v", want, got)
+	}
+	if got := ScheduleTimeAtBar(schedule, 5, 120); got != 8*time.Second {
+		t.Fatalf("past the end should clamp to the total duration, got %v", got)
+	}
+}

@@ -23,12 +23,75 @@ type Engine struct {
 	audioPath     string
 	playbackStart time.Time
 	audioDuration time.Duration
+	audioBase     time.Duration // music-time base after seeks/restarts
+	rate          float64       // playback rate (1 = normal)
+	loopStart     time.Duration
+	loopEnd       time.Duration
 	shutdown      bool
 }
 
 // NewEngine creates a playback engine with MIDI synth fallback.
 func NewEngine() *Engine {
-	return &Engine{Synth: NewSynth()}
+	return &Engine{Synth: NewSynth(), rate: 1}
+}
+
+// Rate returns the current playback rate.
+func (e *Engine) Rate() float64 { return e.rate }
+
+// SetRate changes the playback rate (clamped to 0.25-4). While audio is
+// playing the player is restarted at the current position with the new rate.
+func (e *Engine) SetRate(r float64) error {
+	if r < 0.25 {
+		r = 0.25
+	}
+	if r > 4 {
+		r = 4
+	}
+	if e.mode != "audio" {
+		e.rate = r
+		return nil
+	}
+	pos := e.Elapsed()
+	e.rate = r
+	return e.RestartAt(pos)
+}
+
+// SetLoop registers an A-B loop region (music time). Passing end <= start
+// clears the loop.
+func (e *Engine) SetLoop(start, end time.Duration) {
+	if end <= start {
+		e.loopStart, e.loopEnd = 0, 0
+		return
+	}
+	e.loopStart, e.loopEnd = start, end
+}
+
+// LoopRegion returns the active loop region, if any.
+func (e *Engine) LoopRegion() (time.Duration, time.Duration, bool) {
+	if e.loopEnd <= e.loopStart {
+		return 0, 0, false
+	}
+	return e.loopStart, e.loopEnd, true
+}
+
+// RestartAt restarts audio playback at the given music-time position,
+// preserving the playback rate.
+func (e *Engine) RestartAt(pos time.Duration) error {
+	if e.mode != "audio" {
+		e.rate = 1
+		if pos > 0 {
+			e.audioBase = pos
+		}
+		return nil
+	}
+	e.stopAudio()
+	if err := e.playAudio(e.audioPath, pos); err != nil {
+		e.mode = ""
+		return err
+	}
+	e.audioBase = pos
+	e.playbackStart = time.Now()
+	return nil
 }
 
 // Mode reports the active backend: "audio", "midi", or "".
@@ -146,10 +209,11 @@ func (e *Engine) playAudioFile(path string) error {
 	if err != nil {
 		dur = 0
 	}
-	if err := e.playAudio(path); err != nil {
+	if err := e.playAudio(path, 0); err != nil {
 		return err
 	}
 	e.audioDuration = dur
+	e.audioBase = 0
 	e.playbackStart = time.Now()
 	return nil
 }
@@ -161,6 +225,8 @@ func (e *Engine) Stop() error {
 	e.audioPath = ""
 	e.playbackStart = time.Time{}
 	e.audioDuration = 0
+	e.audioBase = 0
+	e.rate = 1
 	return e.Synth.Stop()
 }
 

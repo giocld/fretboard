@@ -2,6 +2,7 @@ package player
 
 import (
 	"os/exec"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -93,4 +94,112 @@ func ProbeDuration(path string) (time.Duration, error) {
 		return 0, nil
 	}
 	return time.Duration(sec * float64(time.Second)), nil
+}
+
+// SyncPoint anchors a bar to an audio time (seconds since playback start),
+// Guitar Pro sync-point style.
+type SyncPoint struct {
+	Bar     int     `json:"bar"`
+	Seconds float64 `json:"seconds"`
+}
+
+// stepIndexAtBar returns the first schedule step belonging to bar, clamped
+// into range.
+func stepIndexAtBar(schedule []PlaybackStep, bar int) int {
+	for i, s := range schedule {
+		if s.Bar >= bar {
+			return i
+		}
+	}
+	return len(schedule) - 1
+}
+
+// StepIndexAtSyncPoints maps an audio position to the active schedule step
+// using per-bar sync anchors. Between anchors the timeline is linearly scaled;
+// before the first anchor the cursor sits at step 0; past the last anchor the
+// final segment's step rate is extended (so outros keep the cursor moving).
+func StepIndexAtSyncPoints(schedule []PlaybackStep, points []SyncPoint, audioSeconds float64, bpm int) int {
+	if len(schedule) == 0 {
+		return 0
+	}
+	if len(points) == 0 {
+		return StepIndexAtScheduleTime(schedule, time.Duration(audioSeconds*float64(time.Second)), bpm)
+	}
+	// Sort by seconds (stable, keeps bar order for equal times).
+	sorted := append([]SyncPoint(nil), points...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Seconds < sorted[j].Seconds })
+	first := sorted[0]
+	if audioSeconds <= first.Seconds {
+		return 0
+	}
+	// Ensure bar anchors are ascending too; if not, clamp by time ordering.
+	for i := 0; i < len(sorted)-1; i++ {
+		cur, next := sorted[i], sorted[i+1]
+		if audioSeconds < next.Seconds {
+			return segmentStep(schedule, cur, next, audioSeconds, bpm)
+		}
+	}
+	// Past the last anchor: extend the final segment's rate.
+	last := sorted[len(sorted)-1]
+	if len(sorted) >= 2 {
+		prev := sorted[len(sorted)-2]
+		return extendLastSegment(schedule, prev, last, audioSeconds, bpm)
+	}
+	// Single anchor: plain schedule accumulation past the anchor.
+	return StepIndexAtScheduleTime(schedule, time.Duration((audioSeconds-last.Seconds)*float64(time.Second)), bpm)
+}
+
+func segmentStep(schedule []PlaybackStep, a, b SyncPoint, audioSeconds float64, bpm int) int {
+	startStep := stepIndexAtBar(schedule, a.Bar)
+	endStep := stepIndexAtBar(schedule, b.Bar)
+	if endStep <= startStep {
+		endStep = startStep + 1
+	}
+	span := b.Seconds - a.Seconds
+	if span <= 0 {
+		return startStep
+	}
+	f := (audioSeconds - a.Seconds) / span
+	if f >= 1 {
+		return endStep - 1
+	}
+	step := startStep + int(f*float64(endStep-startStep))
+	if step >= endStep {
+		step = endStep - 1
+	}
+	if step >= len(schedule) {
+		step = len(schedule) - 1
+	}
+	return step
+}
+
+func extendLastSegment(schedule []PlaybackStep, a, b SyncPoint, audioSeconds float64, bpm int) int {
+	startStep := stepIndexAtBar(schedule, a.Bar)
+	endStep := stepIndexAtBar(schedule, b.Bar)
+	if endStep <= startStep {
+		endStep = startStep + 1
+	}
+	span := b.Seconds - a.Seconds
+	if span <= 0 {
+		return endStep
+	}
+	rate := float64(endStep-startStep) / span
+	step := endStep + int((audioSeconds-b.Seconds)*rate)
+	if step >= len(schedule) {
+		step = len(schedule) - 1
+	}
+	return step
+}
+
+// ScheduleTimeAtBar returns the schedule time (at the given BPM) at which the
+// first step of bar starts; past the end it clamps to the total duration.
+func ScheduleTimeAtBar(schedule []PlaybackStep, bar int, bpm int) time.Duration {
+	total := time.Duration(0)
+	for _, s := range schedule {
+		if s.Bar >= bar {
+			return total
+		}
+		total += time.Duration(StepDuration(s.Ticks, bpm)) * time.Millisecond
+	}
+	return total
 }

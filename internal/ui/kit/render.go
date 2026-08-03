@@ -39,6 +39,61 @@ func RenderTabWithOffset(tab *model.Tab, offset int) string {
 	return RenderTabGrid(tab, defaultGridWidth, offset, nil)
 }
 
+// RenderTabLinear renders the tab as a vertical strip of bars (TuxGuitar's
+// linear layout): each bar block holds the bar number, a playhead ruler for
+// the highlighted bar, the string lines, and a blank separator.
+func RenderTabLinear(tab *model.Tab, offset int, cur *TabCursor) string {
+	if tab == nil {
+		return ""
+	}
+	var sb strings.Builder
+	if tab.Title != "" {
+		sb.WriteString(PanelTitleStyle.Render(tab.Title))
+		sb.WriteString("\n")
+		if tab.Tuning != nil {
+			sb.WriteString(PanelTitleStyle.Render(tab.Tuning.Label()))
+			sb.WriteString("\n")
+		}
+	}
+	for i, bar := range tab.Bars {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		highlight := cur != nil && cur.Bar == i
+		sb.WriteString(barHeader(bar.Number, barWidthInLinear(bar, tab)))
+		sb.WriteString("\n")
+		ruler := "   "
+		column := 0
+		if highlight && cur != nil && cur.Col >= offset {
+			column = cur.Col - offset
+		}
+		ruler += strings.Repeat(" ", column) + CursorStyle.Render("┊")
+		sb.WriteString(ruler)
+		sb.WriteString("\n")
+		for si := 0; si < len(bar.Strings); si++ {
+			label := ""
+			if tab.Tuning != nil {
+				label = tab.Tuning.NoteName(si)
+			}
+			sb.WriteString(StringLabel.Render(label))
+			sb.WriteString(strings.Repeat(" ", 2))
+			sb.WriteString(renderStringContent(bar.Strings[si], si, offset, curCol(cur, highlight), highlight))
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
+// barWidthInLinear returns a bar's natural content width in the linear layout.
+func barWidthInLinear(bar model.Bar, tab *model.Tab) int {
+	return maxBarCols(bar) + 4
+}
+
+// barHeader renders the "│ N ───" bar-number line.
+func barHeader(number int, width int) string {
+	return BarNumberStyle.Render(fmt.Sprintf("│ %d %s", number, strings.Repeat("─", width)))
+}
+
 // RenderTabWithCursor renders a tab and optionally draws a vertical playhead.
 // It uses a page layout: bars flow left-to-right and wrap into rows that fill
 // the available width (like TuxGuitar's page layout or alphaTab's reflow).

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -153,7 +154,34 @@ func uniqueDirs(dirs []string) []string {
 	return out
 }
 
-func (e *Engine) playAudio(path string) error {
+// buildAudioCandidates returns the player subprocess candidates for the given
+// file, seek position (file time), playback rate (1 = normal), and volume.
+// ffplay and mpv support seeking and pitch-preserving rate control; mpg123 is
+// a plain fallback.
+func buildAudioCandidates(path string, seek time.Duration, rate float64, vol int) []candidate {
+	var ffplayArgs, mpvArgs []string
+	if seek > 0 {
+		ffplayArgs = append(ffplayArgs, "-ss", formatSeek(seek))
+		mpvArgs = append(mpvArgs, "--start="+formatSeek(seek))
+	}
+	if rate != 1 {
+		ffplayArgs = append(ffplayArgs, "-af", fmt.Sprintf("atempo=%.3f", rate))
+		mpvArgs = append(mpvArgs, fmt.Sprintf("--speed=%.3f", rate))
+	}
+	ffplayArgs = append(ffplayArgs, "-nodisp", "-autoexit", "-loglevel", "quiet", "-vn", "-volume", fmt.Sprintf("%d", vol), path)
+	mpvArgs = append(mpvArgs, "--no-video", "--really-quiet", "--no-terminal", fmt.Sprintf("--volume=%d", vol), path)
+	return []candidate{
+		{bin: "ffplay", driver: filepath.Base(path), args: ffplayArgs},
+		{bin: "mpv", driver: filepath.Base(path), args: mpvArgs},
+		{bin: "mpg123", driver: filepath.Base(path), args: []string{"-q", path}},
+	}
+}
+
+func formatSeek(d time.Duration) string {
+	return strconv.FormatFloat(d.Seconds(), 'f', 1, 64)
+}
+
+func (e *Engine) playAudio(path string, seek time.Duration) error {
 	if err := e.checkShutdown(); err != nil {
 		return err
 	}
@@ -166,11 +194,7 @@ func (e *Engine) playAudio(path string) error {
 	if vol <= 0 {
 		vol = 80
 	}
-	candidates := []candidate{
-		{bin: "ffplay", driver: filepath.Base(path), args: []string{"-nodisp", "-autoexit", "-loglevel", "quiet", "-vn", "-volume", fmt.Sprintf("%d", vol), path}}, // no -nostdin (ffmpeg 8.x)
-		{bin: "mpv", driver: filepath.Base(path), args: []string{"--no-video", "--really-quiet", "--no-terminal", fmt.Sprintf("--volume=%d", vol), path}},
-		{bin: "mpg123", driver: filepath.Base(path), args: []string{"-q", path}},
-	}
+	candidates := buildAudioCandidates(path, seek, e.rate, vol)
 
 	var lastErr error
 	for _, c := range candidates {

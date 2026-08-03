@@ -174,8 +174,8 @@ Non-blocking candidates that remain open (from the bug hunt):
 
 ## Audio-sync / rendering bugs (round 2 — user-reported issues)
 
-- **BUG-015 — `DeriveBPMFromAudio` ignores the calibrated `audio_offset`.** It scales the whole audio file to the whole tab, so with an intro (offset > 0) the derived BPM is underestimated by `offset`. Fix: derive using `audioDur - offset`. **Status:** OPEN — blocking F7.
-- **BUG-016 — `maxPanOffset` assumes a linear strip** (uses `maxBarColumns`), so `h`/`l` panning in the grid layout can overshoot for padded bar columns. Fix: pan against grid columns. **Status:** OPEN — blocking F1.
+- **BUG-015 — `DeriveBPMFromAudio` ignores the calibrated `audio_offset`.** It scales the whole audio file to the whole tab, so with an intro (offset > 0) the derived BPM is underestimated by `offset`. Fix: derive using `audioDur - offset`. **Status:** FIXED (offset-aware derivation + test).
+- **BUG-016 — `maxPanOffset` assumes a linear strip** (uses `maxBarColumns`), so `h`/`l` panning in the grid layout can overshoot for padded bar columns. Fix: pan against grid columns. **Status:** FIXED (grid width from `BarGridMetrics`, pan only when the grid overflows).
 
 ## View/audio features delivered (round 2)
 

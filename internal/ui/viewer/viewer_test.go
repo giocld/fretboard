@@ -3,6 +3,7 @@ package viewer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"fretboard/internal/model"
@@ -210,9 +211,9 @@ func TestLoadTabRestoresAudioOffset(t *testing.T) {
 func TestMaxPanOffsetGridAware(t *testing.T) {
 	m := NewViewerModel()
 	tab := &model.Tab{
-		Title:   "Wide",
-		Artist:  "Test",
-		Tuning:  model.ParseTuning("EADGBE"),
+		Title:  "Wide",
+		Artist: "Test",
+		Tuning: model.ParseTuning("EADGBE"),
 		Bars: []model.Bar{
 			{Number: 1, Strings: []model.StringLine{{Segments: []model.Segment{{Position: 0, Width: 24}}}}},
 		},
@@ -226,5 +227,116 @@ func TestMaxPanOffsetGridAware(t *testing.T) {
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 40, Height: 30})
 	if got := m.maxPanOffset(); got <= 0 {
 		t.Fatalf("maxPanOffset on narrow terminal with wide bar = %d, want > 0", got)
+	}
+}
+
+func TestParseSyncPoints(t *testing.T) {
+	if got := parseSyncPoints(`[{"bar":1,"seconds":10.5},{"bar":3,"seconds":25},{"bar":1,"seconds":99}]`); len(got) != 2 || got[0].Bar != 1 || got[0].Seconds != 10.5 || got[1].Bar != 3 {
+		t.Fatalf("parseSyncPoints dedupe/sort wrong: %+v", got)
+	}
+	if got := parseSyncPoints("garbage"); got != nil {
+		t.Fatalf("garbage should yield nil, got %+v", got)
+	}
+	if got := parseSyncPoints(""); got != nil {
+		t.Fatalf("empty should yield nil, got %+v", got)
+	}
+}
+
+func TestSaveSyncPointsPersistsJSON(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+	m.syncPoints = []player.SyncPoint{{Bar: 1, Seconds: 3}, {Bar: 5, Seconds: 20}}
+	m.saveSyncPoints()
+	raw := m.tab.Metadata[model.MetaKeySyncPoints]
+	if raw == "" {
+		t.Fatal("sync_points metadata not written")
+	}
+	if !strings.Contains(raw, `5`) || !strings.Contains(raw, `20`) {
+		t.Fatalf("sync_points JSON missing anchor: %s", raw)
+	}
+	back := parseSyncPoints(raw)
+	if len(back) != 2 {
+		t.Fatalf("round trip should yield 2 anchors, got %+v", back)
+	}
+}
+
+func TestSetLoopPointArmsEngine(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+	m.schedule = player.BuildSchedule(m.tab)
+	m, _ = m.setLoopPoint(true)
+	if m.loopStartBar != 1 {
+		t.Fatalf("loop start should be bar 1, got %d", m.loopStartBar)
+	}
+	m, _ = m.setLoopPoint(false)
+	if m.loopEndBar != 2 {
+		t.Fatalf("loop end should be bar 2, got %d", m.loopEndBar)
+	}
+	_, _, ok := m.engine.LoopRegion()
+	if !ok {
+		t.Fatal("engine loop region not armed")
+	}
+	m, _ = m.setLoopPoint(true) // move start after end
+	if m.loopStartBar != 1 || m.loopEndBar != 2 {
+		t.Fatalf("loop clamping wrong: start %d end %d", m.loopStartBar, m.loopEndBar)
+	}
+	m.loopStartBar, m.loopEndBar = 0, 0
+	m.engine.SetLoop(0, 0)
+	if _, _, ok := m.engine.LoopRegion(); ok {
+		t.Fatal("loop region should clear")
+	}
+}
+
+func TestLayoutToggleSwitchesRenderer(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+	if m.linear {
+		t.Fatal("default layout should be grid")
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	if !m.linear {
+		t.Fatal("v should toggle to linear layout")
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")})
+	if m.linear {
+		t.Fatal("v should toggle back to grid")
+	}
+}
+
+func TestManualNavDisablesFollow(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+	m.follow = true
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if m.follow {
+		t.Fatal("manual j navigation should disable follow mode")
+	}
+}
+
+func TestSetSyncPointAnchorsCurrentBar(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 5)
+	m.cursorBar = 3
+	m.playing = true
+	m.audioSync = true
+	m, cmd := m.setSyncPoint()
+	if len(m.syncPoints) != 1 || m.syncPoints[0].Bar != 4 {
+		t.Fatalf("sync point should anchor bar 4, got %+v", m.syncPoints)
+	}
+	if cmd == nil {
+		t.Fatal("setting a sync point should persist tab prefs")
+	}
+}
+
+func sampleTab() *model.Tab {
+	lines := make([]model.StringLine, 6)
+	for i := range lines {
+		lines[i] = model.StringLine{Segments: []model.Segment{{Char: '1', Value: 1, Position: 0, Width: 1}}}
+	}
+	return &model.Tab{
+		Title:    "Sample",
+		Tuning:   model.Standard,
+		Bars:     []model.Bar{{Number: 1, Strings: lines}, {Number: 2, Strings: lines}, {Number: 3, Strings: lines}},
+		Metadata: map[string]string{},
 	}
 }

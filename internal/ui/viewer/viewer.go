@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -34,6 +35,11 @@ type ViewerModel struct {
 	selectedSourceIdx int
 	audioSync         bool
 	audioOffset       float64 // seconds into the audio file where the tab starts
+	syncPoints        []player.SyncPoint
+	loopStartBar      int
+	loopEndBar        int
+	follow            bool
+	linear            bool
 	cursorBar         int
 	cursorCol         int
 	panOffset         int
@@ -87,14 +93,20 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.selectedSourceIdx = 0
 	m.audioSync = false
 	m.audioOffset = 0
+	m.syncPoints = nil
+	m.loopStartBar = 0
+	m.loopEndBar = 0
+	m.follow = true
 	if tab != nil && tab.Metadata != nil {
 		if raw := strings.TrimSpace(tab.Metadata[model.MetaKeyAudioOffset]); raw != "" {
 			if v, err := strconv.ParseFloat(raw, 64); err == nil {
 				m.audioOffset = v
 			}
 		}
+		m.syncPoints = parseSyncPoints(tab.Metadata[model.MetaKeySyncPoints])
 	}
 	_ = m.engine.Stop()
+	m.engine.SetLoop(0, 0)
 	m.refresh()
 }
 
@@ -104,7 +116,14 @@ func (m *ViewerModel) refresh() {
 		return
 	}
 	cur := &kit.TabCursor{Bar: m.cursorBar, Col: m.cursorCol, Playing: m.playing}
-	m.viewport.SetContent(kit.RenderTabGrid(m.tab, m.viewport.Width, m.panOffset, cur))
+	if m.linear {
+		m.viewport.SetContent(kit.RenderTabLinear(m.tab, m.panOffset, cur))
+	} else {
+		m.viewport.SetContent(kit.RenderTabGrid(m.tab, m.viewport.Width, m.panOffset, cur))
+	}
+	if m.follow {
+		m.ensureCursorVisible()
+	}
 }
 
 // Init is part of the tea.Model interface.
@@ -213,8 +232,17 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		}
 		if m.audioSync && len(m.schedule) > 0 {
 			elapsed := m.engine.Elapsed()
-			music := elapsed - m.audioOffsetDuration()
-			idx := player.StepIndexAtScheduleTime(m.schedule, music, m.bpm)
+			if m.loopEndBar > 0 {
+				if end, _, ok := m.engine.LoopRegion(); ok && elapsed >= end {
+					_ = m.engine.RestartAt(m.loopStartTime())
+					elapsed = m.engine.Elapsed()
+				}
+			}
+			points := m.syncPoints
+			if len(points) == 0 {
+				points = []player.SyncPoint{{Bar: 1, Seconds: m.audioOffset}}
+			}
+			idx := player.StepIndexAtSyncPoints(m.schedule, points, elapsed.Seconds(), m.bpm)
 			if idx != m.stepIdx {
 				m.stepIdx = idx
 				step := m.schedule[idx]
@@ -258,6 +286,16 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			return m, nil
 		}
 		step := m.schedule[m.stepIdx]
+		if m.loopEndBar > 0 && step.Bar > m.loopEndBar {
+			m.stepIdx = 0
+			for i, s2 := range m.schedule {
+				if s2.Bar >= m.loopStartBar {
+					m.stepIdx = i
+					break
+				}
+			}
+			step = m.schedule[m.stepIdx]
+		}
 		m.cursorBar = step.Bar
 		m.cursorCol = step.Col
 		m.tickDur = time.Duration(player.StepDuration(step.Ticks, m.bpm)) * time.Millisecond
@@ -326,6 +364,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		m.refresh()
 	case "g":
 		m.stopPlaybackForNav()
+		m.follow = false
 		if m.lastKey == "g" && time.Since(m.lastKeyAt) < 500*time.Millisecond {
 			m.cursorBar = 0
 			m.cursorCol = 0
@@ -340,6 +379,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		m.jumpBuffer = ""
 	case "G":
 		m.stopPlaybackForNav()
+		m.follow = false
 		if m.tab != nil && len(m.tab.Bars) > 0 {
 			m.cursorBar = len(m.tab.Bars) - 1
 			m.cursorCol = 0
@@ -352,6 +392,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		if m.jumpBuffer != "" && m.tab != nil {
 			m.stopPlaybackForNav()
 			if n, err := strconv.Atoi(m.jumpBuffer); err == nil && n > 0 && n <= len(m.tab.Bars) {
+				m.follow = false
 				m.cursorBar = n - 1
 				m.cursorCol = 0
 				m.panOffset = 0
@@ -365,6 +406,44 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.panOffset--
 			m.refresh()
 		}
+	case "s":
+		if m.audioSync && m.playing && m.tab != nil {
+			return m.setSyncPoint()
+		}
+	case "S":
+		if len(m.syncPoints) > 0 {
+			m.syncPoints = nil
+			m.saveSyncPoints()
+			m.refresh()
+		}
+	case "i":
+		if m.tab != nil {
+			return m.setLoopPoint(true)
+		}
+	case "u":
+		if m.tab != nil {
+			return m.setLoopPoint(false)
+		}
+	case "x":
+		m.loopStartBar, m.loopEndBar = 0, 0
+		m.engine.SetLoop(0, 0)
+		m.refresh()
+	case ">":
+		_ = m.engine.SetRate(m.engine.Rate() * 1.1)
+		m.refresh()
+	case "<":
+		_ = m.engine.SetRate(m.engine.Rate() / 1.1)
+		m.refresh()
+	case "r":
+		_ = m.engine.SetRate(1)
+		m.refresh()
+	case "v":
+		m.linear = !m.linear
+		m.ensureCursorVisible()
+		m.refresh()
+	case "f":
+		m.follow = !m.follow
+		m.refresh()
 	case "l":
 		if m.panOffset < m.maxPanOffset() {
 			m.panOffset++
@@ -392,6 +471,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	case "j", "down":
 		m.jumpBuffer = ""
 		m.stopPlaybackForNav()
+		m.follow = false
 		if m.tab != nil && m.cursorBar < len(m.tab.Bars)-1 {
 			m.cursorBar++
 			m.ensureCursorVisible()
@@ -401,6 +481,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	case "k", "up":
 		m.jumpBuffer = ""
 		m.stopPlaybackForNav()
+		m.follow = false
 		if m.tab != nil && m.cursorBar > 0 {
 			m.cursorBar--
 			m.ensureCursorVisible()
@@ -449,6 +530,100 @@ func (m ViewerModel) adjustAudioOffset(key string) (ViewerModel, tea.Cmd) {
 // audioOffsetDuration converts the calibrated audio offset to a duration.
 func (m ViewerModel) audioOffsetDuration() time.Duration {
 	return time.Duration(m.audioOffset * float64(time.Second))
+}
+
+// parseSyncPoints decodes the persisted [[bar, seconds], ...] metadata.
+func parseSyncPoints(raw string) []player.SyncPoint {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var points []player.SyncPoint
+	if err := json.Unmarshal([]byte(raw), &points); err != nil {
+		return nil
+	}
+	seen := map[int]bool{}
+	clean := points[:0]
+	for _, p := range points {
+		if p.Bar < 1 || seen[p.Bar] {
+			continue
+		}
+		seen[p.Bar] = true
+		clean = append(clean, p)
+	}
+	return clean
+}
+
+// setSyncPoint anchors the current bar to the current audio position.
+func (m ViewerModel) setSyncPoint() (ViewerModel, tea.Cmd) {
+	elapsed := m.engine.Elapsed()
+	bar := m.cursorBar + 1
+	if bar == 1 {
+		m.audioOffset = elapsed.Seconds()
+		m.tab.Metadata[model.MetaKeyAudioOffset] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+	}
+	m.syncPoints = append(m.syncPoints, player.SyncPoint{Bar: bar, Seconds: elapsed.Seconds()})
+	m.saveSyncPoints()
+	m.refresh()
+	return m, m.saveTabPrefsCmd()
+}
+
+// saveSyncPoints persists the anchors (plus the bar-1 offset anchor) to the
+// tab metadata as JSON.
+func (m *ViewerModel) saveSyncPoints() {
+	if m.tab == nil {
+		return
+	}
+	points := append([]player.SyncPoint{{Bar: 1, Seconds: m.audioOffset}}, m.syncPoints...)
+	seen := map[int]bool{}
+	out := points[:0]
+	for _, p := range points {
+		if seen[p.Bar] {
+			continue
+		}
+		seen[p.Bar] = true
+		out = append(out, p)
+	}
+	if len(out) == 1 {
+		m.tab.Metadata[model.MetaKeySyncPoints] = ""
+		return
+	}
+	data, err := json.Marshal(out)
+	if err != nil {
+		return
+	}
+	m.tab.Metadata[model.MetaKeySyncPoints] = string(data)
+}
+
+// loopStartTime returns the schedule time of the loop start bar.
+func (m ViewerModel) loopStartTime() time.Duration {
+	if len(m.schedule) == 0 {
+		return 0
+	}
+	return player.ScheduleTimeAtBar(m.schedule, m.loopStartBar, m.bpm)
+}
+
+// setLoopPoint registers the A (start) or B (end) loop boundary at the current
+// bar, mapped to schedule time, and arms the engine loop region.
+func (m ViewerModel) setLoopPoint(isStart bool) (ViewerModel, tea.Cmd) {
+	bar := m.cursorBar + 1
+	if isStart {
+		m.loopStartBar = bar
+	} else {
+		m.loopEndBar = bar
+	}
+	if m.loopStartBar > 0 && m.loopEndBar > 0 && m.loopEndBar <= m.loopStartBar {
+		m.loopEndBar = m.loopStartBar + 1
+	}
+	if len(m.schedule) > 0 {
+		start := player.ScheduleTimeAtBar(m.schedule, m.loopStartBar, m.bpm)
+		end := player.ScheduleTimeAtBar(m.schedule, m.loopEndBar+1, m.bpm)
+		if end > start {
+			m.engine.SetLoop(start, end)
+		}
+	}
+	m.refresh()
+	return m, nil
 }
 
 func (m ViewerModel) matchesAudioTab(tabID int64, tabPath, artist, title string) bool {
@@ -614,6 +789,15 @@ func (m ViewerModel) View() string {
 		if m.audioOffset != 0 {
 			panelTitle += kit.MutedStyle.Render(fmt.Sprintf("  ↔ %+.1fs", m.audioOffset))
 		}
+		if len(m.syncPoints) > 0 {
+			panelTitle += kit.MutedStyle.Render(fmt.Sprintf("  ⚓%d", len(m.syncPoints)))
+		}
+		if m.loopStartBar > 0 && m.loopEndBar > 0 {
+			panelTitle += kit.MutedStyle.Render(fmt.Sprintf("  ↻ %d-%d", m.loopStartBar, m.loopEndBar))
+		}
+		if rate := m.engine.Rate(); rate != 1 {
+			panelTitle += kit.MutedStyle.Render(fmt.Sprintf("  ⏩ ×%.2f", rate))
+		}
 		if !m.showAudioPicker {
 			panelTitle += kit.MutedStyle.Render("  [a] source")
 		}
@@ -638,13 +822,16 @@ func (m ViewerModel) View() string {
 		{Key: "a", Label: "audio"},
 		{Key: "Space/p", Label: playLabel},
 		{Key: "+/-", Label: "BPM"},
+		{Key: "> <", Label: "speed"},
 		{Key: "[ ]", Label: "sync ±0.5s"},
-		{Key: "{ }", Label: "sync ±5s"},
 		{Key: "o", Label: "reset sync"},
+		{Key: "s", Label: "sync bar"},
+		{Key: "i/u", Label: "loop A-B"},
+		{Key: "x", Label: "clear loop"},
+		{Key: "v", Label: "layout"},
+		{Key: "f", Label: "follow"},
 		{Key: "j/k", Label: "scroll"},
-		{Key: "h/l", Label: "pan"},
 		{Key: "b", Label: "library"},
-		{Key: "H", Label: "home"},
 		{Key: "q", Label: "quit"},
 	})
 	return kit.LayoutScreen(m.width, m.height, crumb, body, footer)
