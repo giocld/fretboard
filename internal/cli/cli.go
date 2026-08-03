@@ -162,7 +162,7 @@ func openStore() (*library.Store, error) {
 
 func runTestAudio(cfg config.Config, stdout, stderr io.Writer) error {
 	if !player.SynthAvailable() {
-		return fmt.Errorf("fluidsynth/timidity not found — install: sudo pacman -S fluidsynth soundfont-fluid")
+		return fmt.Errorf("fluidsynth/timidity not found — install fluidsynth (e.g. choco install fluidsynth, apt install fluidsynth)")
 	}
 	sf := cfg.Soundfont
 	if sf == "" {
@@ -172,7 +172,7 @@ func runTestAudio(cfg config.Config, stdout, stderr io.Writer) error {
 		sf = player.ResolveSoundfont()
 	}
 	if sf == "" {
-		return fmt.Errorf("no soundfont found — install: sudo pacman -S soundfont-fluid")
+		return fmt.Errorf("no soundfont found — install a GM soundfont (e.g. soundfont-fluid) or set FRETBOARD_SOUNDFONT")
 	}
 	fmt.Fprintf(stdout, "soundfont: %s\n", sf)
 	s := player.NewSynth()

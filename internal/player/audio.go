@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -198,14 +197,12 @@ func (e *Engine) playAudio(path string, seek time.Duration) error {
 
 	var lastErr error
 	for _, c := range candidates {
-		binPath, err := exec.LookPath(c.bin)
+		binPath, err := lookPath(c.bin)
 		if err != nil {
 			continue
 		}
 		cmd := exec.Command(binPath, c.args...)
-		if runtime.GOOS != "windows" {
-			cmd.SysProcAttr = childProcAttr()
-		}
+		cmd.SysProcAttr = childProcAttr()
 		var stderr stderrCollector
 		cmd.Stderr = &stderr
 		cmd.Stdout = io.Discard

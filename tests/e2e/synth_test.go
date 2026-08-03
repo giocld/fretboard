@@ -1,9 +1,7 @@
 package e2e_test
 
 import (
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -16,21 +14,7 @@ func TestSynthPlayStop(t *testing.T) {
 	// Skip if no external synthesizer is installed.
 	hasSynth := false
 	if _, err := exec.LookPath("fluidsynth"); err == nil {
-		if sf := os.Getenv("FRETBOARD_SOUNDFONT"); sf != "" {
-			if _, err := os.Stat(sf); err == nil {
-				hasSynth = true
-			}
-		}
-		for _, p := range []string{
-			"/usr/share/soundfonts/FluidR3_GM.sf2",
-			"/usr/share/sounds/sf2/FluidR3_GM.sf2",
-		} {
-			if _, err := os.Stat(p); err == nil {
-				hasSynth = true
-			}
-		}
-		matches, _ := filepath.Glob("/usr/share/soundfonts/*.sf2")
-		if len(matches) > 0 {
+		if player.ResolveSoundfont() != "" {
 			hasSynth = true
 		}
 	}

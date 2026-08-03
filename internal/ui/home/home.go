@@ -340,15 +340,15 @@ func (m HomeModel) renderBody() string {
 
 func (m HomeModel) audioWarning() string {
 	if player.ResolveSoundfont() == "" {
-		return "No soundfont found — install: sudo pacman -S soundfont-fluid"
+		return "No soundfont found — install soundfont-fluid or set FRETBOARD_SOUNDFONT"
 	}
 	if !player.SynthAvailable() {
-		return "fluidsynth not found — install: sudo pacman -S fluidsynth"
+		return "fluidsynth not found — install fluidsynth"
 	}
 	if player.OnlineAudioAvailable() {
 		return ""
 	}
-	return "yt-dlp not found — install for automatic song audio: sudo pacman -S yt-dlp"
+	return "yt-dlp not found — install for automatic song audio"
 }
 
 // View renders the landing page.

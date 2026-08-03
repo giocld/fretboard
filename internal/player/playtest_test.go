@@ -1,6 +1,7 @@
 package player_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,11 +14,14 @@ func TestResolveSoundfontInstalled(t *testing.T) {
 	sf := player.ResolveSoundfont()
 	t.Logf("soundfont=%q", sf)
 	if sf == "" {
-		t.Fatal("expected soundfont on this system")
+		t.Skip("no soundfont installed on this system")
 	}
 }
 
 func TestPlayWithInstalledSoundfont(t *testing.T) {
+	if os.Getenv("FRETBOARD_LIVE_AUDIO_TESTS") == "" {
+		t.Skip("set FRETBOARD_LIVE_AUDIO_TESTS=1 to run live audio playback")
+	}
 	if testing.Short() {
 		t.Skip("short")
 	}

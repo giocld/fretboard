@@ -1,8 +1,9 @@
+//go:build !windows
+
 package player
 
 import (
 	"os/exec"
-	"runtime"
 	"syscall"
 	"time"
 )
@@ -10,9 +11,6 @@ import (
 // childProcAttr returns SysProcAttr for detached child processes that can be
 // killed as a group when the app exits.
 func childProcAttr() *syscall.SysProcAttr {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
 	return &syscall.SysProcAttr{Setsid: true}
 }
 
@@ -22,11 +20,6 @@ func killProcessTree(cmd *exec.Cmd) {
 		return
 	}
 	pid := cmd.Process.Pid
-	if runtime.GOOS == "windows" {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-		return
-	}
 	_ = syscall.Kill(pid, syscall.SIGTERM)
 	_ = syscall.Kill(-pid, syscall.SIGTERM)
 	done := make(chan struct{})
@@ -42,4 +35,13 @@ func killProcessTree(cmd *exec.Cmd) {
 		_ = cmd.Process.Kill()
 		<-done
 	}
+}
+
+// processAlive reports whether the child process is still running via the
+// kill(pid, 0) liveness probe.
+func processAlive(cmd *exec.Cmd) bool {
+	if cmd == nil || cmd.Process == nil {
+		return false
+	}
+	return cmd.Process.Signal(syscall.Signal(0)) == nil
 }

@@ -52,10 +52,10 @@ func findGpParser() (string, error) {
 	if p, err := exec.LookPath("gp-parser"); err == nil {
 		return p, nil
 	}
-	// Relative to repo: tools/gp-parser/target/release/gp-parser
+	// Relative to repo: tools/gp-parser/target/release/gp-parser[.exe]
 	candidates := []string{
-		"tools/gp-parser/target/release/gp-parser",
-		"../tools/gp-parser/target/release/gp-parser",
+		"tools/gp-parser/target/release/gp-parser" + exeSuffix,
+		"../tools/gp-parser/target/release/gp-parser" + exeSuffix,
 	}
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"runtime"
 	"time"
 
 	"fretboard/internal/model"
@@ -33,29 +32,22 @@ func (s *Synth) StartRealtime() error {
 	}
 
 	var candidates []candidate
-	for _, driver := range []string{"pulseaudio", "pipewire", "alsa", "jack"} {
+	for _, driver := range audioDrivers() {
 		candidates = append(candidates, candidate{
 			bin:    "fluidsynth",
 			driver: driver,
-			args:   []string{"-q", "-a", driver, "-g", gain, "-r", "44100", sf},
+			args:   fluidsynthArgsRealtime(driver, gain, sf),
 		})
 	}
-	candidates = append(candidates, candidate{
-		bin:    "fluidsynth",
-		driver: "default",
-		args:   []string{"-q", "-g", gain, "-r", "44100", sf},
-	})
 
 	var lastErr error
 	for _, c := range candidates {
-		path, err := exec.LookPath(c.bin)
+		path, err := lookPath(c.bin)
 		if err != nil {
 			continue
 		}
 		cmd := exec.Command(path, c.args...)
-		if runtime.GOOS != "windows" {
-			cmd.SysProcAttr = childProcAttr()
-		}
+		cmd.SysProcAttr = childProcAttr()
 		var stderr stderrCollector
 		cmd.Stderr = &stderr
 		stdin, err := cmd.StdinPipe()
@@ -103,6 +95,15 @@ func (s *Synth) StartRealtime() error {
 		return fmt.Errorf("realtime playback failed: %w", lastErr)
 	}
 	return errors.New("no synthesizer found — install fluidsynth")
+}
+
+// fluidsynthArgsRealtime builds the realtime fluidsynth command line.
+// "default" omits -a so fluidsynth auto-selects a working audio driver.
+func fluidsynthArgsRealtime(driver, gain, sf string) []string {
+	if driver == "default" || driver == "" {
+		return []string{"-q", "-g", gain, "-r", "44100", sf}
+	}
+	return []string{"-q", "-a", driver, "-g", gain, "-r", "44100", sf}
 }
 
 // PlayStep plays the notes at a schedule step through the realtime synth.

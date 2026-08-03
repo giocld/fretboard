@@ -8,11 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"fretboard/internal/model"
@@ -49,11 +46,11 @@ func ResolveSoundfont() string {
 
 // SynthAvailable reports whether fluidsynth or timidity is on PATH.
 func SynthAvailable() bool {
-	_, err := exec.LookPath("fluidsynth")
+	_, err := lookPath("fluidsynth")
 	if err == nil {
 		return true
 	}
-	_, err = exec.LookPath("timidity")
+	_, err = lookPath("timidity")
 	return err == nil
 }
 
@@ -90,14 +87,12 @@ func (s *Synth) Play(tab *model.Tab, bpm int) error {
 
 	var lastErr error
 	for _, c := range candidates {
-		path, err := exec.LookPath(c.bin)
+		path, err := lookPath(c.bin)
 		if err != nil {
 			continue
 		}
 		cmd := exec.Command(path, c.args...)
-		if runtime.GOOS != "windows" {
-			cmd.SysProcAttr = childProcAttr()
-		}
+		cmd.SysProcAttr = childProcAttr()
 		var stderr stderrCollector
 		cmd.Stderr = &stderr
 		cmd.Stdout = io.Discard
@@ -222,12 +217,9 @@ type candidate struct {
 	args   []string
 }
 
-func processAlive(cmd *exec.Cmd) bool {
-	if cmd == nil || cmd.Process == nil {
-		return false
-	}
-	return cmd.Process.Signal(syscall.Signal(0)) == nil
-}
+// processAlive is implemented per platform in process_unix.go and
+// process_windows.go: Unix uses kill(pid, 0); Windows queries the process
+// exit code because signal-based probes are unsupported there.
 
 // synthCandidates returns synthesizer commands to try in order.
 func (s *Synth) synthCandidates(midPath string) ([]candidate, error) {
@@ -243,18 +235,16 @@ func (s *Synth) synthCandidates(midPath string) ([]candidate, error) {
 
 	var candidates []candidate
 	if sf != "" {
-		for _, driver := range []string{"pulseaudio", "pipewire", "alsa", "jack"} {
+		// Try the auto-detected default driver first: fluidsynth picks a
+		// working backend itself, so a single spawn succeeds without cycling
+		// audio devices. Platform-specific drivers are fallbacks only.
+		for _, driver := range audioDrivers() {
 			candidates = append(candidates, candidate{
 				bin:    "fluidsynth",
 				driver: driver,
-				args:   []string{"-ni", "-q", "-a", driver, "-g", gain, "-r", "44100", sf, midPath},
+				args:   fluidsynthArgs(driver, gain, sf, midPath),
 			})
 		}
-		candidates = append(candidates, candidate{
-			bin:    "fluidsynth",
-			driver: "default",
-			args:   []string{"-ni", "-q", "-g", gain, "-r", "44100", sf, midPath},
-		})
 	} else {
 		return nil, errors.New(noSoundfontMessage())
 	}
@@ -270,35 +260,33 @@ func noSoundfontMessage() string {
 	return "no soundfont found — install soundfont-fluid or set FRETBOARD_SOUNDFONT"
 }
 
+// fluidsynthArgs builds the fluidsynth command line. "default" omits -a so
+// fluidsynth auto-selects a working audio driver.
+func fluidsynthArgs(driver, gain, sf, midPath string) []string {
+	if driver == "default" || driver == "" {
+		return []string{"-ni", "-q", "-g", gain, "-r", "44100", sf, midPath}
+	}
+	return []string{"-ni", "-q", "-a", driver, "-g", gain, "-r", "44100", sf, midPath}
+}
+
 // findSoundfont returns the first existing GM soundfont or "" if none found.
 func findSoundfont() string {
 	if sf := os.Getenv("FRETBOARD_SOUNDFONT"); sf != "" && fileExists(sf) {
 		return sf
 	}
-	paths := []string{
-		"/usr/share/soundfonts/FluidR3_GM.sf2",
-		"/usr/share/soundfonts/default.sf2",
-		"/usr/share/soundfonts/default_gs.sf2",
-		"/usr/share/sounds/sf2/FluidR3_GM.sf2",
-		"/usr/share/sounds/sf2/default.sf2",
-		"/usr/share/sounds/sf3/default.sf3",
-		filepath.Join(os.Getenv("HOME"), ".local/share/soundfonts/FluidR3_GM.sf2"),
-		filepath.Join(os.Getenv("HOME"), ".config/fretboard/FluidR3_GM.sf2"),
-	}
-	for _, p := range paths {
-		p = expandHome(p)
-		if fileExists(p) {
-			return p
+	names := []string{"FluidR3_GM.sf2", "GeneralUser_GS.sf2", "default.sf2", "default_gs.sf2"}
+	for _, dir := range soundfontSearchDirs() {
+		for _, name := range names {
+			if p := filepath.Join(dir, name); fileExists(p) {
+				return p
+			}
 		}
 	}
-	patterns := []string{
-		"/usr/share/soundfonts/*.sf2",
-		"/usr/share/sounds/sf2/*.sf2",
-	}
-	for _, pattern := range patterns {
-		matches, _ := filepath.Glob(pattern)
-		if len(matches) > 0 {
-			return matches[0]
+	for _, dir := range soundfontSearchDirs() {
+		for _, pattern := range []string{"*.sf2", "*.sf3"} {
+			if matches, _ := filepath.Glob(filepath.Join(dir, pattern)); len(matches) > 0 {
+				return matches[0]
+			}
 		}
 	}
 	return ""
@@ -330,6 +318,3 @@ func expandHome(p string) string {
 	}
 	return filepath.Join(home, p[1:])
 }
-
-// _ prevents unused import.
-var _ = strconv.Atoi

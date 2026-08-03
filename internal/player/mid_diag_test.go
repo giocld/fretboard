@@ -40,5 +40,5 @@ func TestLibraryTabMIDSize(t *testing.T) {
 	if len(evts) == 0 {
 		t.Fatal("no events")
 	}
-	os.WriteFile("/tmp/fb_layla.mid", data, 0644)
+	os.WriteFile(filepath.Join(os.TempDir(), "fb_layla.mid"), data, 0644)
 }

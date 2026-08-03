@@ -6,15 +6,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"fretboard/internal/config"
+	"fretboard/internal/testutil"
 )
 
-// withConfigDir runs fn with XDG_CONFIG_HOME pointed at a temp dir so
+// withConfigDir runs fn with the user config dir pointed at a temp dir so
 // config/store writes never touch the real user configuration.
 func withConfigDir(t *testing.T, fn func(dir string)) {
 	t.Helper()
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	fn(dir)
+	testutil.WithConfigDir(t, fn)
 }
 
 func run(args ...string) (code int, stdout, stderr string) {
@@ -60,7 +61,11 @@ func TestRunImportFile(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("code=%d stderr=%q", code, stderr)
 		}
-		if _, err := os.Stat(filepath.Join(dir, "fretboard", "fretboard.db")); err != nil {
+		cfgDir, err := config.Dir()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(filepath.Join(cfgDir, "fretboard.db")); err != nil {
 			t.Fatalf("expected library db to be created: %v", err)
 		}
 	})

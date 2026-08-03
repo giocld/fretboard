@@ -12,10 +12,22 @@ import (
 func TestLibraryEventTiming(t *testing.T) {
 	cfg, _ := os.UserConfigDir()
 	db := filepath.Join(cfg, "fretboard", "fretboard.db")
-	store, _ := library.NewStore(db)
+	store, err := library.NewStore(db)
+	if err != nil {
+		t.Skipf("no library db: %v", err)
+	}
 	defer store.Close()
-	rows, _ := store.List()
-	tab, _ := store.Get(rows[0].ID)
+	rows, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) == 0 {
+		t.Skip("library db has no tabs")
+	}
+	tab, err := store.Get(rows[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	evts, _ := player.Events(tab, 120)
 	for i, e := range evts {
 		if i > 12 {

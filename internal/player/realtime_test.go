@@ -1,6 +1,7 @@
 package player_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,9 @@ func TestNotesAtStep(t *testing.T) {
 }
 
 func TestRealtimeSynthPlaysStep(t *testing.T) {
+	if os.Getenv("FRETBOARD_LIVE_AUDIO_TESTS") == "" {
+		t.Skip("set FRETBOARD_LIVE_AUDIO_TESTS=1 to run live audio playback")
+	}
 	if testing.Short() {
 		t.Skip("short")
 	}

@@ -97,7 +97,7 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 		return nil, errors.New("nil tab")
 	}
 	if !OnlineAudioAvailable() {
-		return nil, errors.New("yt-dlp not found — install: sudo pacman -S yt-dlp")
+		return nil, errors.New("yt-dlp not found — install yt-dlp (e.g. choco install yt-dlp, apt install yt-dlp)")
 	}
 	if limit <= 0 {
 		limit = 5
@@ -246,7 +246,7 @@ func DownloadYouTubeAudio(tab *model.Tab, videoID string) (string, error) {
 		return "", errors.New("empty video id")
 	}
 	if !OnlineAudioAvailable() {
-		return "", errors.New("yt-dlp not found — install: sudo pacman -S yt-dlp")
+		return "", errors.New("yt-dlp not found — install yt-dlp (e.g. choco install yt-dlp, apt install yt-dlp)")
 	}
 	if path := cachedPathForVideo(tab, videoID); fileExists(path) {
 		return path, nil
