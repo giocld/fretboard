@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"fretboard/internal/model"
 	"fretboard/internal/player"
@@ -170,8 +171,106 @@ func TestSaveTabPrefsCmdAllowsTabPathWithoutID(t *testing.T) {
 	}
 }
 
-func TestAdjustAudioOffsetPersistsAndRounds(t *testing.T) {
-	tab := &model.Tab{Title: "T", Artist: "A", Metadata: map[string]string{}}
+// TestSyncPointsZeroBased guards the 1-based (user/persisted) to 0-based
+// (schedule) bar conversion; feeding raw 1-based bars to the time mapping
+// shifts the playhead cursor one bar late past the first anchor.
+func TestSyncPointsZeroBased(t *testing.T) {
+	points := []player.SyncPoint{{Bar: 1, Seconds: 5}, {Bar: 2, Seconds: 20}, {Bar: 5, Seconds: 40}}
+	got := syncPointsZeroBased(points)
+	want := []player.SyncPoint{{Bar: 0, Seconds: 5}, {Bar: 1, Seconds: 20}, {Bar: 4, Seconds: 40}}
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("point %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	// Input must not be mutated (persisted state stays 1-based).
+	if points[0].Bar != 1 || points[2].Bar != 5 {
+		t.Fatalf("input mutated: %+v", points)
+	}
+}
+
+// TestLoopStartTimeUsesZeroBasedBarPlusOffset verifies the A-B loop restarts
+// at the audio file position of the loop start bar: schedule time of the
+// 0-based bar plus the calibrated intro offset. The old code used the 1-based
+// bar (one bar late) and dropped the offset (restarting into the intro).
+func TestLoopStartTimeUsesZeroBasedBarPlusOffset(t *testing.T) {
+	m := NewViewerModel()
+	m.schedule = []player.PlaybackStep{
+		{Bar: 0, Ticks: 480}, {Bar: 0, Ticks: 480},
+		{Bar: 1, Ticks: 480}, {Bar: 1, Ticks: 480},
+		{Bar: 2, Ticks: 480}, {Bar: 2, Ticks: 480},
+	}
+	m.bpm = 120 // 480 ticks = 500ms at 120 BPM
+	m.loopStartBar = 2
+	m.audioOffset = 20
+	// Bar 2 (0-based bar 1) starts at 1s of music; +20s intro = 21s.
+	if got := m.loopStartTime(); got != 21*time.Second {
+		t.Fatalf("loopStartTime = %v, want 21s", got)
+	}
+}
+
+// TestSetLoopPointMapsToFileTime ensures the engine loop region is registered
+// in audio file time (schedule + offset), matching what the monitor compares
+// against Engine.Elapsed().
+func TestSetLoopPointMapsToFileTime(t *testing.T) {
+	m := NewViewerModel()
+	m.schedule = []player.PlaybackStep{
+		{Bar: 0, Ticks: 480}, {Bar: 0, Ticks: 480},
+		{Bar: 1, Ticks: 480}, {Bar: 1, Ticks: 480},
+		{Bar: 2, Ticks: 480}, {Bar: 2, Ticks: 480},
+	}
+	m.bpm = 120
+	m.audioOffset = 20
+	m.cursorBar = 1 // user bar 2
+	m.loopStartBar = 0
+	m.loopEndBar = 0
+	updated, _ := m.setLoopPoint(true)
+	m = updated
+	m.cursorBar = 2 // user bar 3
+	updated, _ = m.setLoopPoint(false)
+	m = updated
+	start, end, ok := m.engine.LoopRegion()
+	if !ok {
+		t.Fatal("loop region not set")
+	}
+	if start != 21*time.Second || end != 23*time.Second {
+		t.Fatalf("loop region = [%v, %v], want [21s, 23s]", start, end)
+	}
+}
+
+// TestMidiLoopWrapsAtLastBar guards the loop-end-at-last-bar case: the wrap
+// check used to fire only when a step landed beyond the loop end bar, which
+// never happens when the loop ends on the tab's final bar — playback stopped
+// at the end instead of looping.
+func TestMidiLoopWrapsAtLastBar(t *testing.T) {
+	m := NewViewerModel()
+	m.schedule = []player.PlaybackStep{
+		{Bar: 0, Col: 0, Ticks: 480},
+		{Bar: 0, Col: 4, Ticks: 480},
+		{Bar: 1, Col: 0, Ticks: 480},
+		{Bar: 1, Col: 4, Ticks: 480},
+	}
+	m.playing = true
+	m.audioSync = false
+	m.loopStartBar = 1
+	m.loopEndBar = 2 // loop is the whole 2-bar tab: end bar == last bar
+	m.stepIdx = 3    // last step of the schedule
+	m.tab = &model.Tab{Tuning: model.Standard, Bars: make([]model.Bar, 2)}
+
+	updated, _ := m.Update(msgs.PlaybackTickMsg{})
+	m = updated
+	if !m.playing {
+		t.Fatal("playback must keep looping instead of stopping at the end")
+	}
+	if m.stepIdx != 0 {
+		t.Fatalf("stepIdx = %d, want 0 (wrapped to loop start)", m.stepIdx)
+	}
+}
+
+func TestAdjustAudioOffsetPersistsAndRounds(t *testing.T) {	tab := &model.Tab{Title: "T", Artist: "A", Metadata: map[string]string{}}
 	m := NewViewerModel()
 	m.LoadTab(tab, "/tmp/off.txt", 42)
 

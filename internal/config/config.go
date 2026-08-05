@@ -4,6 +4,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -62,6 +63,11 @@ func Dir() (string, error) {
 	return dir, nil
 }
 
+// ErrCorruptConfig marks a config file that could not be parsed. Callers may
+// warn and continue with defaults instead of aborting; a truncated or partial
+// write must not lock the user out of the app.
+var ErrCorruptConfig = errors.New("config file is unreadable")
+
 // Load reads the config file or returns defaults if it doesn't exist.
 func Load() (Config, error) {
 	c := Defaults()
@@ -78,12 +84,14 @@ func Load() (Config, error) {
 		return c, fmt.Errorf("read config: %w", err)
 	}
 	if err := json.Unmarshal(data, &c); err != nil {
-		return c, fmt.Errorf("parse config: %w", err)
+		return c, fmt.Errorf("%w: %v (using defaults)", ErrCorruptConfig, err)
 	}
 	return c, nil
 }
 
-// Save writes the config file.
+// Save writes the config file atomically: the data lands in a temp file that
+// is renamed over the target, so a crash mid-write never leaves a corrupt
+// config that Load would refuse.
 func Save(c Config) error {
 	dir, err := Dir()
 	if err != nil {
@@ -94,7 +102,15 @@ func Save(c Config) error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return fmt.Errorf("write config: %w", err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("install config: %w", err)
+	}
+	return nil
 }
 
 // Path returns the full path to the config file.

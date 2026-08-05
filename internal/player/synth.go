@@ -100,6 +100,7 @@ func (s *Synth) Play(tab *model.Tab, bpm int) error {
 			lastErr = fmt.Errorf("%s %v: %w", path, c.args, err)
 			continue
 		}
+		startReaper(cmd)
 		time.Sleep(150 * time.Millisecond)
 		if !processAlive(cmd) {
 			killProcessTree(cmd)

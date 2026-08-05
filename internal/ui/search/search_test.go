@@ -220,3 +220,33 @@ func TestSearchQQuitsWhenResultsFocused(t *testing.T) {
 		t.Fatalf("expected QuitMsg from q with results focused, got %#v", cmd())
 	}
 }
+
+// TestSearchFocusSwitchRerenders guards the stale viewport: switching focus
+// back to the query box must re-render the results panel, or the
+// results-mode hint line ("/ or i — edit query") stays on screen while typing.
+func TestSearchFocusSwitchRerenders(t *testing.T) {
+	m := NewSearchModel(nil)
+	m.results = []scraper.SearchResult{{SongName: "Layla", ArtistName: "Clapton"}}
+	m.focusResults()
+	if got := m.viewport.View(); !strings.Contains(got, "edit query") {
+		t.Fatalf("results mode should show the edit hint, got %q", got)
+	}
+	// Esc returns to the query box: the stale hint must disappear.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated
+	if !m.inputActive {
+		t.Fatal("esc should refocus the query box")
+	}
+	if got := m.viewport.View(); strings.Contains(got, "edit query") {
+		t.Fatalf("query mode must not show the results hint, got %q", got)
+	}
+	// Tab moves back to results: the hint must reappear.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated
+	if m.inputActive {
+		t.Fatal("tab should move focus to results")
+	}
+	if got := m.viewport.View(); !strings.Contains(got, "edit query") {
+		t.Fatalf("results mode should show the edit hint again, got %q", got)
+	}
+}

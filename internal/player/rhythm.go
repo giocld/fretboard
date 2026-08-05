@@ -161,8 +161,6 @@ func BuildSchedule(tab *model.Tab) []PlaybackStep {
 	return steps
 }
 
-// StepDuration converts MIDI ticks to wall-clock time at the given BPM.
-
 // StepIndexAtPosition returns the first schedule index at or after bar/col.
 func StepIndexAtPosition(schedule []PlaybackStep, bar, col int) int {
 	if len(schedule) == 0 {
@@ -176,6 +174,10 @@ func StepIndexAtPosition(schedule []PlaybackStep, bar, col int) int {
 	return len(schedule) - 1
 }
 
+// StepDuration converts MIDI ticks to wall-clock time at the given BPM,
+// rounding up so a sub-millisecond step is never scheduled with 0 ms (which
+// used to make notes at high BPM ring forever — the noteoff goroutine was
+// skipped for sustainMs <= 0).
 func StepDuration(ticks, bpm int) int64 {
 	if bpm <= 0 {
 		bpm = 120
@@ -183,5 +185,7 @@ func StepDuration(ticks, bpm int) int64 {
 	if ticks <= 0 {
 		ticks = ticksPerQuarter / 4
 	}
-	return int64(ticks) * int64(60_000) / int64(bpm) / int64(ticksPerQuarter)
+	num := int64(ticks) * int64(60_000)
+	den := int64(bpm) * int64(ticksPerQuarter)
+	return (num + den - 1) / den
 }

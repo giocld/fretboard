@@ -15,7 +15,7 @@ import (
 
 type ugAPIClient struct {
 	scraper ugScraper
-	rl      rateLimiter
+	rl      *rateLimiter
 }
 
 // ugScraper is the subset of the Ultimate Guitar scraper the API client
@@ -25,9 +25,17 @@ type ugScraper interface {
 	GetTabByID(id int64) (ultimateguitar.TabResult, error)
 }
 
-func newUGAPIClient(delay time.Duration) *ugAPIClient {
+// ugRequestTimeout bounds UG API requests. The library's default client has
+// no timeout, so a hung request would block the TUI spinner (and its tea.Cmd
+// goroutine) forever; the HTML and Songsterr backends already set their own.
+const ugRequestTimeout = 30 * time.Second
+
+func newUGAPIClient(rl *rateLimiter) *ugAPIClient {
 	s := ultimateguitar.New()
-	return &ugAPIClient{scraper: &s, rl: rateLimiter{delay: delay}}
+	if s.Client != nil {
+		s.Client.Timeout = ugRequestTimeout
+	}
+	return &ugAPIClient{scraper: &s, rl: rl}
 }
 
 // Search queries Ultimate Guitar API for tabs matching query.
@@ -144,20 +152,22 @@ func isAlbumTab(res ultimateguitar.TabResult) bool {
 }
 
 func normalizeContent(s string) string {
-	replacements := map[string]string{
-		"&quot;": "\"",
-		"&amp;":  "&",
-		"&lt;":   "<",
-		"&gt;":   ">",
-		"&#039;": "'",
-		"&nbsp;": " ",
-		"[ch]":   "",
-		"[/ch]":  "",
-		"[tab]":  "",
-		"[/tab]": "",
+	// Ordered, not a map: replacement order must be deterministic so
+	// double-encoded sequences like "&amp;quot;" always decode the same way.
+	replacements := []struct{ old, new string }{
+		{"&quot;", "\""},
+		{"&#039;", "'"},
+		{"&lt;", "<"},
+		{"&gt;", ">"},
+		{"&nbsp;", " "},
+		{"&amp;", "&"},
+		{"[ch]", ""},
+		{"[/ch]", ""},
+		{"[tab]", ""},
+		{"[/tab]", ""},
 	}
-	for old, new := range replacements {
-		s = strings.ReplaceAll(s, old, new)
+	for _, r := range replacements {
+		s = strings.ReplaceAll(s, r.old, r.new)
 	}
 	return trimNonTabLines(s)
 }

@@ -75,7 +75,7 @@ func barsFromColumn(col []string, stringsPerColumn, startNum int, rhythm []model
 	for j := 0; j < len(positions)-1; j++ {
 		start := positions[j] + 1
 		end := positions[j+1]
-		bar := model.Bar{Number: barNum, Strings: make([]model.StringLine, stringsPerColumn), Rhythm: rhythm}
+		bar := model.Bar{Number: barNum, Strings: make([]model.StringLine, stringsPerColumn), Rhythm: rhythmForBar(rhythm, start, end)}
 		sliced := make([]string, len(col))
 		for s, line := range col {
 			if start >= len(line) {
@@ -93,6 +93,26 @@ func barsFromColumn(col []string, stringsPerColumn, startNum int, rhythm []model
 		barNum++
 	}
 	return bars
+}
+
+// rhythmForBar filters rhythm marks to the pipe-delimited range [start, end)
+// of one bar and rebases them to bar-relative positions. Rhythm rows span the
+// whole chunk (e.g. "| q  e  | h  q  |"); without rebasing, every bar in the
+// chunk would be timed with the chunk-wide positions of the first bar. The
+// string line's pipe grid defines the bars (and the content slicing), so the
+// same [start, end) range is used for the marks, whose columns share the
+// string line's origin.
+func rhythmForBar(rhythm []model.RhythmMark, start, end int) []model.RhythmMark {
+	if len(rhythm) == 0 {
+		return nil
+	}
+	var out []model.RhythmMark
+	for _, r := range rhythm {
+		if r.Position >= start && r.Position < end {
+			out = append(out, model.RhythmMark{Position: r.Position - start, Ticks: r.Ticks})
+		}
+	}
+	return out
 }
 
 // reverseAndParse reverses the slice of string lines so that the lowest-

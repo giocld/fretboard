@@ -163,6 +163,53 @@ func maxNaturalBarWidth(tab *model.Tab) int {
 	return max
 }
 
+// GridBarLineOffsets returns the content line where each bar's row begins in
+// the page layout, matching RenderTabGrid exactly. Rows are priced at their
+// own actual height (header + row string count + blank), so mixed string
+// counts across rows do not overshoot the playhead line.
+func GridBarLineOffsets(tab *model.Tab, availWidth int) []int {
+	if tab == nil || len(tab.Bars) == 0 {
+		return nil
+	}
+	offset := 0
+	if tab.Title != "" {
+		offset += 2
+	}
+	metrics := BarGridLayout(tab, availWidth)
+	out := make([]int, len(tab.Bars))
+	for rowStart := 0; rowStart < len(tab.Bars); rowStart += metrics.BarsPerRow {
+		rowEnd := rowStart + metrics.BarsPerRow
+		if rowEnd > len(tab.Bars) {
+			rowEnd = len(tab.Bars)
+		}
+		for b := rowStart; b < rowEnd; b++ {
+			out[b] = offset
+		}
+		offset += 1 + stringsPerRow(tab, rowStart, rowEnd) + 1
+	}
+	return out
+}
+
+// LinearBarLineOffsets returns the content line where each bar block begins in
+// the linear layout, matching RenderTabLinear exactly: title (2 lines) plus,
+// per bar, header + ruler + string lines, with one blank separator line
+// between blocks.
+func LinearBarLineOffsets(tab *model.Tab) []int {
+	if tab == nil || len(tab.Bars) == 0 {
+		return nil
+	}
+	offset := 0
+	if tab.Title != "" {
+		offset += 2
+	}
+	out := make([]int, len(tab.Bars))
+	for i, bar := range tab.Bars {
+		out[i] = offset
+		offset += 3 + len(bar.Strings) // header + ruler + strings, then one blank line
+	}
+	return out
+}
+
 func maxBarCols(bar model.Bar) int {
 	max := 0
 	for _, str := range bar.Strings {
@@ -242,7 +289,10 @@ func renderBarRow(b *strings.Builder, tab *model.Tab, start, end, barWidth, offs
 			}
 			highlight := cur != nil && barIdx == cur.Bar
 			content := renderStringContent(line, s, offset, curCol(cur, highlight), highlight)
-			b.WriteString(prefix + padToWidth(content, barWidth-4))
+			// Pad the content to the bar column width so string rows line up
+			// under the bar headers; the prefix width is measured because the
+			// string label style has its own fixed width.
+			b.WriteString(prefix + padToWidth(content, barWidth-lipgloss.Width(prefix)))
 		}
 		b.WriteString("\n")
 	}

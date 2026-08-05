@@ -18,6 +18,7 @@ var (
 	DropD        = Tuning{38, 45, 50, 55, 59, 64}     // D2 A2 D3 G3 B3 E4
 	DADGAD       = Tuning{38, 45, 50, 55, 57, 62}     // D2 A2 D3 G3 A3 D4
 	OpenG        = Tuning{38, 43, 50, 55, 59, 62}     // D2 G2 D3 G3 B3 D4
+	OpenD        = Tuning{38, 45, 50, 54, 57, 62}     // D2 A2 D3 F#3 A3 D4
 	HalfStepDown = Tuning{39, 44, 49, 54, 58, 63}     // Eb Standard
 	FullStepDown = Tuning{38, 43, 48, 53, 57, 62}     // D Standard
 )

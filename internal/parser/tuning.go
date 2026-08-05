@@ -12,23 +12,27 @@ func inferTuning(tab *model.Tab, stringCount int) model.Tuning {
 		low := strings.ToLower(raw)
 		// Named tunings first.
 		switch {
-		case strings.Contains(low, "drop d") || strings.Contains(low, "drop-d"):
+		case strings.Contains(low, "drop d") || strings.Contains(low, "drop-d") || strings.Contains(low, "dropped d"):
 			return model.DropD
 		case strings.Contains(low, "dadgad"):
 			return model.DADGAD
 		case strings.Contains(low, "open g"):
 			return model.OpenG
-		case strings.Contains(low, "half step") || strings.Contains(low, "eb standard") || strings.Contains(low, "halfstep"):
+		case strings.Contains(low, "open d"):
+			return model.OpenD
+		case strings.Contains(low, "half step") || strings.Contains(low, "eb standard") || strings.Contains(low, "e flat") || strings.Contains(low, "halfstep"):
 			return model.HalfStepDown
 		case strings.Contains(low, "full step") || strings.Contains(low, "d standard") || strings.Contains(low, "fullstep"):
 			return model.FullStepDown
 		}
 		// Named but unspecified ("E Standard", "Standard") — try the letters.
 		cleaned := model.NoteLetters(raw)
-		if len(cleaned) >= 2 {
-			return model.ParseTuning(cleaned)
+		if len(cleaned) >= 2 && len(cleaned) <= stringCount {
+			if t := model.ParseTuning(cleaned); len(t) == len(cleaned) {
+				return t
+			}
 		}
-		// Single letter or empty: fall back to default.
+		// Single letter, empty, or unparseable: fall back to default.
 	}
 	// Default to standard.
 	switch stringCount {

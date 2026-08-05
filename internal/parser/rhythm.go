@@ -16,9 +16,18 @@ var rhythmSymbols = map[rune]int{
 }
 
 // looksLikeRhythmLine returns true when a line is a rhythm annotation row
-// above the tab (e.g. "| q  e  e  q  |").
+// above the tab (e.g. "| q  e  e  q  |" or a slow-ball "| h |"). The first
+// non-space character must be a pipe so labeled string lines ("e|--|") are
+// never mistaken for rhythm rows, even when they contain a rhythm letter.
 func looksLikeRhythmLine(line string) bool {
 	if !strings.Contains(line, "|") {
+		return false
+	}
+	first := 0
+	for first < len(line) && unicode.IsSpace(rune(line[first])) {
+		first++
+	}
+	if first >= len(line) || line[first] != '|' {
 		return false
 	}
 	letters := 0
@@ -37,7 +46,7 @@ func looksLikeRhythmLine(line string) bool {
 			}
 		}
 	}
-	return letters >= 2 && digits == 0 && hyphens < 3
+	return letters >= 1 && digits == 0 && hyphens < 3
 }
 
 // parseRhythmLine extracts rhythm marks aligned to tab columns.

@@ -31,6 +31,10 @@ const (
 	windowsStillActive                    = 259
 )
 
+// startReaper is a no-op on Windows: GetExitCodeProcess reports real exit
+// codes, so naturally-exited children are not mistaken for running processes.
+func startReaper(cmd *exec.Cmd) {}
+
 func processAlive(cmd *exec.Cmd) bool {
 	if cmd == nil || cmd.Process == nil {
 		return false

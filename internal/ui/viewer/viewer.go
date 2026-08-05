@@ -238,9 +238,11 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 					elapsed = m.engine.Elapsed()
 				}
 			}
-			points := m.syncPoints
+			// Sync points persist user-facing 1-based bars; the schedule uses
+			// 0-based bar indices, so convert before mapping.
+			points := syncPointsZeroBased(m.syncPoints)
 			if len(points) == 0 {
-				points = []player.SyncPoint{{Bar: 1, Seconds: m.audioOffset}}
+				points = []player.SyncPoint{{Bar: 0, Seconds: m.audioOffset}}
 			}
 			idx := player.StepIndexAtSyncPoints(m.schedule, points, elapsed.Seconds(), m.bpm)
 			if idx != m.stepIdx {
@@ -264,6 +266,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 				if m.engine.LastError != "" {
 					m.errMsg = "MIDI stopped: " + m.engine.LastError
 				}
+				m.refresh()
 			}
 			if atEnd || m.engine.Mode() != "midi" {
 				m.stopPlayback()
@@ -280,22 +283,27 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			return m, monitorPlaybackCmd(m.engine)
 		}
 		m.stepIdx++
+		if m.loopEndBar > 0 {
+			atEnd := m.stepIdx >= len(m.schedule)
+			beyondLoop := !atEnd && m.schedule[m.stepIdx].Bar >= m.loopEndBar
+			if atEnd || beyondLoop {
+				// Wrap to the loop start. atEnd also covers a loop whose end
+				// bar is the tab's last bar (no later step can trigger it).
+				m.stepIdx = 0
+				for i, s2 := range m.schedule {
+					if s2.Bar >= m.loopStartBar-1 {
+						m.stepIdx = i
+						break
+					}
+				}
+			}
+		}
 		if m.stepIdx >= len(m.schedule) {
 			m.stopPlayback()
 			m.refresh()
 			return m, nil
 		}
 		step := m.schedule[m.stepIdx]
-		if m.loopEndBar > 0 && step.Bar > m.loopEndBar {
-			m.stepIdx = 0
-			for i, s2 := range m.schedule {
-				if s2.Bar >= m.loopStartBar {
-					m.stepIdx = i
-					break
-				}
-			}
-			step = m.schedule[m.stepIdx]
-		}
 		m.cursorBar = step.Bar
 		m.cursorCol = step.Col
 		m.tickDur = time.Duration(player.StepDuration(step.Ticks, m.bpm)) * time.Millisecond
@@ -595,16 +603,37 @@ func (m *ViewerModel) saveSyncPoints() {
 	m.tab.Metadata[model.MetaKeySyncPoints] = string(data)
 }
 
-// loopStartTime returns the schedule time of the loop start bar.
+// loopStartTime returns the audio file position of the loop start bar:
+// schedule time (0-based bar, converted from the user-facing 1-based bar)
+// plus the calibrated intro offset.
 func (m ViewerModel) loopStartTime() time.Duration {
 	if len(m.schedule) == 0 {
 		return 0
 	}
-	return player.ScheduleTimeAtBar(m.schedule, m.loopStartBar, m.bpm)
+	return player.ScheduleTimeAtBar(m.schedule, m.loopStartBar-1, m.bpm) + m.audioOffsetDur()
+}
+
+// syncPointsZeroBased converts persisted sync points (user-facing 1-based
+// bars) to the schedule's 0-based bar indices for time mapping.
+func syncPointsZeroBased(points []player.SyncPoint) []player.SyncPoint {
+	out := make([]player.SyncPoint, 0, len(points))
+	for _, p := range points {
+		if p.Bar > 0 {
+			p.Bar--
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// audioOffsetDur returns the calibrated intro offset as a duration.
+func (m ViewerModel) audioOffsetDur() time.Duration {
+	return time.Duration(m.audioOffset * float64(time.Second))
 }
 
 // setLoopPoint registers the A (start) or B (end) loop boundary at the current
-// bar, mapped to schedule time, and arms the engine loop region.
+// bar, mapped to audio file time (schedule time + intro offset), and arms the
+// engine loop region.
 func (m ViewerModel) setLoopPoint(isStart bool) (ViewerModel, tea.Cmd) {
 	bar := m.cursorBar + 1
 	if isStart {
@@ -616,8 +645,8 @@ func (m ViewerModel) setLoopPoint(isStart bool) (ViewerModel, tea.Cmd) {
 		m.loopEndBar = m.loopStartBar + 1
 	}
 	if len(m.schedule) > 0 {
-		start := player.ScheduleTimeAtBar(m.schedule, m.loopStartBar, m.bpm)
-		end := player.ScheduleTimeAtBar(m.schedule, m.loopEndBar+1, m.bpm)
+		start := player.ScheduleTimeAtBar(m.schedule, m.loopStartBar-1, m.bpm) + m.audioOffsetDur()
+		end := player.ScheduleTimeAtBar(m.schedule, m.loopEndBar, m.bpm) + m.audioOffsetDur()
 		if end > start {
 			m.engine.SetLoop(start, end)
 		}
@@ -733,7 +762,7 @@ func (m *ViewerModel) ensureCursorVisible() {
 	if m.tab == nil {
 		return
 	}
-	target := barGridLineOffset(m.tab, m.cursorBar, m.viewport.Width)
+	target := m.cursorBarLineOffset()
 	if target < m.viewport.YOffset {
 		m.viewport.SetYOffset(target)
 	} else if target >= m.viewport.YOffset+m.viewport.Height {
@@ -741,19 +770,23 @@ func (m *ViewerModel) ensureCursorVisible() {
 	}
 }
 
-// barGridLineOffset returns the content line where the cursor bar's row begins,
-// using the same page-layout metrics as the renderer.
-func barGridLineOffset(tab *model.Tab, barIdx, availWidth int) int {
-	offset := 0
-	if tab.Title != "" {
-		offset += 2
+// cursorBarLineOffset returns the content line where the cursor bar begins,
+// using the active layout's own row math (grid rows vs linear blocks) so
+// follow-scroll lands exactly on the playhead.
+func (m *ViewerModel) cursorBarLineOffset() int {
+	if m.tab == nil || m.cursorBar < 0 {
+		return 0
 	}
-	if len(tab.Bars) == 0 {
-		return offset
+	var offsets []int
+	if m.linear {
+		offsets = kit.LinearBarLineOffsets(m.tab)
+	} else {
+		offsets = kit.GridBarLineOffsets(m.tab, m.viewport.Width)
 	}
-	metrics := kit.BarGridLayout(tab, availWidth)
-	row := barIdx / metrics.BarsPerRow
-	return offset + row*metrics.RowHeight
+	if m.cursorBar >= len(offsets) {
+		return 0
+	}
+	return offsets[m.cursorBar]
 }
 
 

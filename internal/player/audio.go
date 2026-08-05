@@ -210,6 +210,7 @@ func (e *Engine) playAudio(path string, seek time.Duration) error {
 			lastErr = fmt.Errorf("%s %v: %w", binPath, c.args, err)
 			continue
 		}
+		startReaper(cmd)
 		time.Sleep(150 * time.Millisecond)
 		if !processAlive(cmd) {
 			_ = cmd.Wait()

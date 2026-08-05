@@ -12,20 +12,25 @@ type Store struct {
 	db *sql.DB
 }
 
-// NewStore opens (or creates) a SQLite database and runs migrations.
+// NewStore opens (or creates) a SQLite database and runs migrations. On any
+// failure the handle is closed so connections and file descriptors are not
+// leaked.
 func NewStore(path string) (*Store, error) {
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 	if _, err := db.Exec("PRAGMA journal_mode=WAL"); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("wal mode: %w", err)
 	}
 	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("foreign keys: %w", err)
 	}
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return s, nil

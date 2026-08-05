@@ -60,6 +60,7 @@ func (s *Synth) StartRealtime() error {
 			lastErr = fmt.Errorf("%s %v: %w", path, c.args, err)
 			continue
 		}
+		startReaper(cmd)
 		time.Sleep(200 * time.Millisecond)
 		if !processAlive(cmd) {
 			killProcessTree(cmd)
@@ -127,6 +128,14 @@ func (s *Synth) PlayStep(tab *model.Tab, step PlaybackStep, bpm int) error {
 	sustainMs := StepDuration(sustainTicks, bpm)
 	for _, n := range notes {
 		gen, playGen := s.nextGeneration(n.Note)
+		if s.noteActive(n.Note) {
+			// Re-articulate: a fresh noteon on a still-ringing pitch would
+			// otherwise blend with the previous note (the stale noteoff is
+			// discarded by the generation guard).
+			if err := s.sendRealtime(fmt.Sprintf("noteoff 0 %d", n.Note)); err != nil {
+				return err
+			}
+		}
 		if err := s.sendRealtime(fmt.Sprintf("noteon 0 %d 100", n.Note)); err != nil {
 			return err
 		}
@@ -134,6 +143,16 @@ func (s *Synth) PlayStep(tab *model.Tab, step PlaybackStep, bpm int) error {
 		s.scheduleNoteOff(n.Note, gen, playGen, sustainMs)
 	}
 	return nil
+}
+
+// noteActive reports whether the pitch is currently sounding in realtime mode.
+func (s *Synth) noteActive(pitch int) bool {
+	for _, p := range s.activeNotes {
+		if p == pitch {
+			return true
+		}
+	}
+	return false
 }
 
 // NotesAtStep returns MIDI notes sounding at the given playback step.

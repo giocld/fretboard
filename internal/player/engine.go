@@ -109,12 +109,13 @@ func (e *Engine) AudioDuration() time.Duration {
 	return e.audioDuration
 }
 
-// Elapsed returns time since backing audio started.
+// Elapsed returns the backing audio's file position: the base set at the
+// last seek/restart plus wall time since then, scaled by the playback rate.
 func (e *Engine) Elapsed() time.Duration {
 	if e.mode != "audio" || e.playbackStart.IsZero() {
 		return 0
 	}
-	return time.Since(e.playbackStart)
+	return e.audioBase + time.Duration(float64(time.Since(e.playbackStart))*e.rate)
 }
 
 // Shutdown stops playback and blocks new starts until the app exits.

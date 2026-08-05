@@ -27,6 +27,8 @@ type Watcher struct {
 	dir    string
 	done   chan struct{}
 
+	closeOnce sync.Once
+
 	debounceMu sync.Mutex
 	debounce   map[string]*time.Timer
 }
@@ -84,18 +86,22 @@ func StartCmd(dir string) tea.Cmd {
 	}
 }
 
-// Close stops the watcher.
+// Close stops the watcher. It is safe to call multiple times: the TUI shuts
+// the watcher down on q/ctrl+c and the CLI cleanup path calls Shutdown again
+// on the same model, so Close must not close the done channel twice.
 func (w *Watcher) Close() {
 	if w == nil {
 		return
 	}
-	close(w.done)
-	w.debounceMu.Lock()
-	for _, timer := range w.debounce {
-		timer.Stop()
-	}
-	w.debounce = nil
-	w.debounceMu.Unlock()
+	w.closeOnce.Do(func() {
+		close(w.done)
+		w.debounceMu.Lock()
+		for _, timer := range w.debounce {
+			timer.Stop()
+		}
+		w.debounce = nil
+		w.debounceMu.Unlock()
+	})
 }
 
 func (w *Watcher) scheduleImport(path string) {

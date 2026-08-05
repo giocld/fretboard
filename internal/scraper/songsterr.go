@@ -14,13 +14,13 @@ import (
 
 type songsterrClient struct {
 	http *http.Client
-	rl   rateLimiter
+	rl   *rateLimiter
 }
 
-func newSongsterrClient(delay time.Duration) *songsterrClient {
+func newSongsterrClient(rl *rateLimiter) *songsterrClient {
 	return &songsterrClient{
 		http: &http.Client{Timeout: 30 * time.Second},
-		rl:   rateLimiter{delay: delay},
+		rl:   rl,
 	}
 }
 
@@ -39,12 +39,12 @@ func (c *songsterrClient) Search(query string) ([]SearchResult, error) {
 		return nil, fmt.Errorf("songsterr search: %w", err)
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("songsterr search: status %d", res.StatusCode)
+	}
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, err
-	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("songsterr search: status %d", res.StatusCode)
 	}
 	var songs []struct {
 		SongID int64  `json:"songId"`

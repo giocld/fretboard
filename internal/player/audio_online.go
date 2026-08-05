@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"fretboard/internal/config"
 	"fretboard/internal/model"
@@ -339,8 +340,10 @@ func sanitizeAudioFilename(name string) string {
 	if name == "" {
 		return "track"
 	}
-	if len(name) > 120 {
-		name = name[:120]
+	// Cut on rune boundaries so multibyte filenames never get split mid-rune.
+	if w := utf8.RuneCountInString(name); w > 120 {
+		runes := []rune(name)
+		name = string(runes[:120])
 	}
 	return name
 }

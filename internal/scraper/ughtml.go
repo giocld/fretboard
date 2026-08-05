@@ -17,19 +17,28 @@ import (
 // ugHTMLClient fetches tabs by scraping Ultimate Guitar web pages.
 type ugHTMLClient struct {
 	http *http.Client
-	rl   rateLimiter
+	rl   *rateLimiter
+	base string // test seam: overrides the site origin
 }
 
-func newUGHTMLClient(delay time.Duration) *ugHTMLClient {
+func newUGHTMLClient(rl *rateLimiter) *ugHTMLClient {
 	return &ugHTMLClient{
 		http: &http.Client{Timeout: 30 * time.Second},
-		rl:   rateLimiter{delay: delay},
+		rl:   rl,
 	}
+}
+
+// baseURL returns the site origin, honoring the test seam.
+func (c *ugHTMLClient) baseURL() string {
+	if c.base != "" {
+		return c.base
+	}
+	return "https://www.ultimate-guitar.com"
 }
 
 func (c *ugHTMLClient) Search(query string) ([]SearchResult, error) {
 	c.rl.throttle()
-	u := "https://www.ultimate-guitar.com/search.php?search_type=title&value=" + url.QueryEscape(query)
+	u := c.baseURL() + "/search.php?search_type=title&value=" + url.QueryEscape(query)
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
@@ -41,6 +50,9 @@ func (c *ugHTMLClient) Search(query string) ([]SearchResult, error) {
 		return nil, fmt.Errorf("ug html search: %w", err)
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("ug html search: status %d", res.StatusCode)
+	}
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, err

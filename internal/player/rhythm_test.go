@@ -65,14 +65,16 @@ E|----0-----3-----5---|
 	}
 	bar := tab.Bars[0]
 	cols := NoteColumns(bar)
-	if got := rhythmTicksForNote(bar, cols[0]); got != 480 {
-		t.Fatalf("first note sustain: got %d want 480", got)
+	// Marks are rebased into the bar's content columns, so the e above the
+	// first note and the q above the second note match exactly.
+	if got := rhythmTicksForNote(bar, cols[0]); got != 240 {
+		t.Fatalf("first note sustain: got %d want 240 (e above it)", got)
 	}
-	if got := rhythmTicksForNote(bar, cols[1]); got != 240 {
-		t.Fatalf("second note sustain: got %d want 240", got)
+	if got := rhythmTicksForNote(bar, cols[1]); got != 480 {
+		t.Fatalf("second note sustain: got %d want 480 (q above it)", got)
 	}
 	if got := rhythmTicksForNote(bar, cols[2]); got != 480 {
-		t.Fatalf("third note sustain: got %d want 480", got)
+		t.Fatalf("third note sustain: got %d want 480 (nearest preceding q)", got)
 	}
 }
 
@@ -80,7 +82,7 @@ func TestRhythmAwareNoteSustain(t *testing.T) {
 	tab, err := parser.Parse(strings.NewReader(`Rhythm Tab
 Tuning: E Standard
 
-| q  e  e  q  |
+|    q      e      q  |
 E|----0-----3-----5---|
 `))
 	if err != nil {
@@ -91,24 +93,28 @@ E|----0-----3-----5---|
 		t.Fatalf("Events: %v", err)
 	}
 
-	var firstOn, firstOff, secondOn int64 = -1, -1, -1
+	// Collect note durations in event order: the q/e/q marks above the three
+	// notes must yield quarter (480), eighth (240), and a clamped eighth (240)
+	// sustain.
+	var durations []int64
+	var onTick int64 = -1
 	for _, e := range evts {
-		if e.Type == NoteOn && firstOn < 0 {
-			firstOn = e.Tick
+		if e.Type == NoteOn {
+			onTick = e.Tick
 		}
-		if e.Type == NoteOff && firstOff < 0 && e.Tick > firstOn {
-			firstOff = e.Tick
-		}
-		if e.Type == NoteOn && firstOff >= 0 && secondOn < 0 && e.Tick > firstOn {
-			secondOn = e.Tick
-			break
+		if e.Type == NoteOff && e.Tick > onTick {
+			durations = append(durations, e.Tick-onTick)
+			onTick = e.Tick
 		}
 	}
-	if firstOff-firstOn <= 0 || secondOn-firstOff <= 0 {
-		t.Fatalf("could not measure durations: on=%d off=%d next=%d", firstOn, firstOff, secondOn)
+	if len(durations) < 3 {
+		t.Fatalf("expected at least 3 note durations, got %v", durations)
 	}
-	if firstOff-firstOn <= secondOn-firstOff {
-		t.Fatalf("quarter should last longer than eighth gap: q=%d e=%d", firstOff-firstOn, secondOn-firstOff)
+	if durations[0] != 480 || durations[1] != 240 || durations[2] != 240 {
+		t.Fatalf("unexpected durations: %v (want 480, 240, 240)", durations)
+	}
+	if durations[0] <= durations[1] {
+		t.Fatalf("quarter should last longer than eighth: %v", durations)
 	}
 }
 

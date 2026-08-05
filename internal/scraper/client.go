@@ -16,12 +16,14 @@ type Client struct {
 }
 
 // NewClient creates a scraper client. delay controls the minimum time between
-// network requests to avoid rate limiting.
+// network requests to avoid rate limiting; the limiter is shared by every
+// backend so back-to-back requests across sources are spaced out too.
 func NewClient(delay time.Duration) *Client {
+	rl := &rateLimiter{delay: delay}
 	return &Client{
-		ug:        newUGAPIClient(delay),
-		ugHTML:    newUGHTMLClient(delay),
-		songsterr: newSongsterrClient(delay),
+		ug:        newUGAPIClient(rl),
+		ugHTML:    newUGHTMLClient(rl),
+		songsterr: newSongsterrClient(rl),
 		delay:     delay,
 	}
 }

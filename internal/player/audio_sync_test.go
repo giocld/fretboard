@@ -63,13 +63,15 @@ func TestDeriveBPMFromAudioExcludesOffset(t *testing.T) {
 }
 
 func TestStepIndexAtSyncPoints(t *testing.T) {
+	// Schedule steps carry 0-based tab-bar indices (BuildSchedule: bar = range
+	// index), so sync-point bars must be 0-based too.
 	schedule := []PlaybackStep{
+		{Bar: 0, Ticks: 4 * ticksPerQuarter}, {Bar: 0, Ticks: 4 * ticksPerQuarter},
 		{Bar: 1, Ticks: 4 * ticksPerQuarter}, {Bar: 1, Ticks: 4 * ticksPerQuarter},
 		{Bar: 2, Ticks: 4 * ticksPerQuarter}, {Bar: 2, Ticks: 4 * ticksPerQuarter},
-		{Bar: 3, Ticks: 4 * ticksPerQuarter}, {Bar: 3, Ticks: 4 * ticksPerQuarter},
 	}
 	// Bar1 anchored at 10s, bar2 at 20s, bar3 at 25s: bar2 is 4x faster.
-	points := []SyncPoint{{Bar: 1, Seconds: 10}, {Bar: 2, Seconds: 20}, {Bar: 3, Seconds: 25}}
+	points := []SyncPoint{{Bar: 0, Seconds: 10}, {Bar: 1, Seconds: 20}, {Bar: 2, Seconds: 25}}
 	if got := StepIndexAtSyncPoints(schedule, points, 9.9, 120); got != 0 {
 		t.Fatalf("before the first anchor should sit at step 0, got %d", got)
 	}
@@ -95,14 +97,14 @@ func TestStepIndexAtSyncPoints(t *testing.T) {
 
 func TestScheduleTimeAtBar(t *testing.T) {
 	schedule := []PlaybackStep{
+		{Bar: 0, Ticks: 4 * ticksPerQuarter}, {Bar: 0, Ticks: 4 * ticksPerQuarter},
 		{Bar: 1, Ticks: 4 * ticksPerQuarter}, {Bar: 1, Ticks: 4 * ticksPerQuarter},
-		{Bar: 2, Ticks: 4 * ticksPerQuarter}, {Bar: 2, Ticks: 4 * ticksPerQuarter},
 	}
-	if got := ScheduleTimeAtBar(schedule, 1, 120); got != 0 {
+	if got := ScheduleTimeAtBar(schedule, 0, 120); got != 0 {
 		t.Fatalf("bar 1 should start at 0, got %v", got)
 	}
 	want := 4 * time.Second
-	if got := ScheduleTimeAtBar(schedule, 2, 120); got != want {
+	if got := ScheduleTimeAtBar(schedule, 1, 120); got != want {
 		t.Fatalf("bar 2 should start at %v, got %v", want, got)
 	}
 	if got := ScheduleTimeAtBar(schedule, 5, 120); got != 8*time.Second {

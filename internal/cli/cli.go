@@ -39,8 +39,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(stderr, "config: %v\n", err)
-		return 1
+		if errors.Is(err, config.ErrCorruptConfig) {
+			// Corrupt config must not lock the user out: warn and continue
+			// with defaults.
+			fmt.Fprintf(stderr, "config: %v\n", err)
+		} else {
+			fmt.Fprintf(stderr, "config: %v\n", err)
+			return 1
+		}
 	}
 	kit.SetTheme(cfg.ThemeName)
 

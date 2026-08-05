@@ -49,7 +49,7 @@ func SetTheme(name string) {
 // applyTheme rebuilds all package-level styles from the given theme.
 func applyTheme(t Theme) {
 	currentTheme = t
-	BarNumberStyle = lipgloss.NewStyle().Foreground(t.Secondary).Bold(true).Width(5)
+	BarNumberStyle = lipgloss.NewStyle().Foreground(t.Secondary).Bold(true)
 	FretDigitStyle = lipgloss.NewStyle().Foreground(t.Emphasis).Bold(true)
 	RestStyle = lipgloss.NewStyle().Foreground(t.Dimmed)
 	TechniqueStyle = lipgloss.NewStyle().Foreground(t.Accent).Italic(true)

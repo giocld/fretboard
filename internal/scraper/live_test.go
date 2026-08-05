@@ -16,7 +16,7 @@ func TestLiveUGSearchAndFetch(t *testing.T) {
 	if query == "" {
 		query = "layla"
 	}
-	html := newUGHTMLClient(1100 * time.Millisecond)
+	html := newUGHTMLClient(&rateLimiter{delay: 1100 * time.Millisecond})
 	results, err := html.Search(query)
 	if err != nil {
 		t.Fatalf("search: %v", err)

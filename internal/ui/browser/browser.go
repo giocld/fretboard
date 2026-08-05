@@ -456,6 +456,9 @@ func formatRowTuning(raw string) string {
 	if err := json.Unmarshal([]byte(raw), &t); err != nil {
 		return raw
 	}
+	if len(t) == 0 {
+		return "" // "null"/"[]" must not render as literal text
+	}
 	if label := t.Label(); label != "" {
 		return label
 	}

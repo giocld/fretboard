@@ -54,17 +54,40 @@ func RenderAppHeader(width int, breadcrumb string) string {
 	return HeaderStyle.Render(line)
 }
 
-// RenderFooter renders a contextual shortcut bar.
+// RenderFooter renders a contextual shortcut bar, keeping it within the
+// terminal width. When the hint list is too long it keeps the first and last
+// hints (e.g. "q quit") and drops from the middle, so the bar never wraps
+// across several lines (which pushed the panel body out of view).
 func RenderFooter(width int, hints []KeyHint) string {
 	if len(hints) == 0 {
 		return ""
 	}
-	var parts []string
-	for _, h := range hints {
-		parts = append(parts, FooterKeyStyle.Render("["+h.Key+"]")+FooterHintStyle.Render(h.Label))
+	render := func(hs []KeyHint) string {
+		var parts []string
+		for _, h := range hs {
+			parts = append(parts, FooterKeyStyle.Render("["+h.Key+"]")+FooterHintStyle.Render(h.Label))
+		}
+		return strings.Join(parts, "  ")
 	}
-	content := strings.Join(parts, "  ")
-	return StatusBarStyle.Render(content)
+	content := render(hints)
+	fit := width - 2 // StatusBarStyle adds 1 cell of padding on each side
+	if lipgloss.Width(content) <= fit {
+		return StatusBarStyle.Render(content)
+	}
+	first, last := hints[0], hints[len(hints)-1]
+	if len(hints) == 1 {
+		return StatusBarStyle.Render(content)
+	}
+	mid := append([]KeyHint(nil), hints[1:len(hints)-1]...)
+	for {
+		trimmed := append([]KeyHint{first}, mid...)
+		trimmed = append(trimmed, last)
+		content = render(trimmed)
+		if lipgloss.Width(content) <= fit || len(mid) == 0 {
+			return StatusBarStyle.Render(content)
+		}
+		mid = mid[:len(mid)-1]
+	}
 }
 
 // RenderPanel wraps content in a titled bordered panel.

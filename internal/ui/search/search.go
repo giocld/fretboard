@@ -255,11 +255,13 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 func (m *SearchModel) focusQuery() {
 	m.inputActive = true
 	m.input.Focus()
+	m.refresh()
 }
 
 func (m *SearchModel) focusResults() {
 	m.inputActive = false
 	m.input.Blur()
+	m.refresh()
 }
 
 func (m *SearchModel) searchCmd(query string, gen int) tea.Cmd {

@@ -58,6 +58,17 @@ func TestFormatRowTuning(t *testing.T) {
 	}
 }
 
+// TestFormatRowTuningEmptyGuards against tabs without a tuning rendering the
+// literal strings "null" or "[]" in the library list (and polluting fuzzy
+// search with the text "null").
+func TestFormatRowTuningEmpty(t *testing.T) {
+	for _, raw := range []string{"null", "[]"} {
+		if got := formatRowTuning(raw); got != "" {
+			t.Fatalf("formatRowTuning(%q) = %q, want empty", raw, got)
+		}
+	}
+}
+
 func TestBrowserTabsLoadErrorShowsMessage(t *testing.T) {
 	m := NewBrowserModel(nil)
 	m, _ = m.Update(msgs.TabsLoadErrorMsg{Err: fmt.Errorf("disk full")})

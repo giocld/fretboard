@@ -27,7 +27,7 @@ const validTabContent = "Tuning: E Standard\n\ne|0-3-5|\nB|------|\nG|------|\nD
 func TestFetchRejectsAlbumPart(t *testing.T) {
 	client := &ugAPIClient{
 		scraper: &fakeUGScraper{tab: ultimateguitar.TabResult{Part: "album", Content: validTabContent}},
-		rl:      rateLimiter{delay: time.Millisecond},
+		rl:      &rateLimiter{delay: time.Millisecond},
 	}
 	tab, err := client.Fetch(1)
 	if err == nil {
@@ -44,7 +44,7 @@ func TestFetchRejectsAlbumPart(t *testing.T) {
 func TestFetchAcceptsRegularTab(t *testing.T) {
 	client := &ugAPIClient{
 		scraper: &fakeUGScraper{tab: ultimateguitar.TabResult{Part: "", Content: validTabContent, SongName: "Test Song", ArtistName: "Test Artist"}},
-		rl:      rateLimiter{delay: time.Millisecond},
+		rl:      &rateLimiter{delay: time.Millisecond},
 	}
 	tab, err := client.Fetch(1)
 	if err != nil {
