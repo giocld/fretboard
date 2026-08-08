@@ -88,3 +88,85 @@ E|-----|-----|
 		}
 	}
 }
+
+// TestParseSectionHeaders guards G2.1: bracket and colon section headers
+// stamp the bars that follow them.
+func TestParseSectionHeaders(t *testing.T) {
+	src := `Tuning: E Standard
+
+[Intro]
+e|--0--|--0--|
+B|-----|-----|
+G|-----|-----|
+D|-----|-----|
+A|-----|-----|
+E|-----|-----|
+
+Verse 1:
+e|--3--|--3--|
+B|-----|-----|
+G|-----|-----|
+D|-----|-----|
+A|-----|-----|
+E|-----|-----|
+
+[Chorus]
+e|--5--|--5--|
+B|-----|-----|
+G|-----|-----|
+D|-----|-----|
+A|-----|-----|
+E|-----|-----|
+`
+	tab, err := Parse(strings.NewReader(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tab.Bars) != 6 {
+		t.Fatalf("expected 6 bars, got %d", len(tab.Bars))
+	}
+	want := []string{"Intro", "Intro", "Verse 1", "Verse 1", "Chorus", "Chorus"}
+	for i, w := range want {
+		if tab.Bars[i].Section != w {
+			t.Fatalf("bar %d section = %q, want %q", i+1, tab.Bars[i].Section, w)
+		}
+	}
+}
+
+// TestParseSectionHeadersIgnoreLyricLines guards the colon heuristic: lines
+// that are not known section keywords must not become headers.
+func TestParseSectionHeadersIgnoreLyricLines(t *testing.T) {
+	src := `Tuning: E Standard
+
+Chorus:
+e|--5--|
+B|-----|
+G|-----|
+D|-----|
+A|-----|
+E|-----|
+
+e|--7--|
+B|-----|
+G|-----|
+D|-----|
+A|-----|
+E|-----|
+`
+	tab, err := Parse(strings.NewReader(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tab.Bars) != 2 || tab.Bars[0].Section != "Chorus" || tab.Bars[1].Section != "Chorus" {
+		t.Fatalf("section assignment wrong: %+v", tab.Bars)
+	}
+	if got := sectionHeader("Just a lyric line, not a header"); got != "" {
+		t.Fatalf("lyric line misread as header: %q", got)
+	}
+	if got := sectionHeader("[Verse 2]"); got != "Verse 2" {
+		t.Fatalf("bracket header: %q", got)
+	}
+	if got := sectionHeader("Bridge:"); got != "Bridge" {
+		t.Fatalf("colon header: %q", got)
+	}
+}

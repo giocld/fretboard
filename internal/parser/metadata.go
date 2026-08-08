@@ -32,8 +32,9 @@ func extractMetadata(lines []string, tab *model.Tab) int {
 		if trim == "" {
 			continue
 		}
-		// Stop scanning once we hit something that looks like a tab line.
-		if looksLikeRhythmLine(l) || looksLikeStringLine(l) {
+		// Stop scanning once we hit something that looks like a tab line or a
+		// section header — both belong to the tab region, not the header.
+		if looksLikeRhythmLine(l) || looksLikeStringLine(l) || sectionHeader(l) != "" {
 			return i
 		}
 		if m := titleRegex.FindStringSubmatch(l); m != nil {

@@ -57,7 +57,11 @@ func findTabRegion(lines []string, startFrom int) (int, int) {
 			for prev >= startFrom && strings.TrimSpace(lines[prev]) == "" {
 				prev--
 			}
+			// A rhythm row or a section header directly above the block
+			// belongs to it — pull it into the region.
 			if prev >= startFrom && looksLikeRhythmLine(lines[prev]) {
+				actualStart = prev
+			} else if prev >= startFrom && sectionHeader(lines[prev]) != "" {
 				actualStart = prev
 			}
 			if bestStart < 0 {

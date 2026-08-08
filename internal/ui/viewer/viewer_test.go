@@ -962,3 +962,29 @@ func TestManualPickStickyAcrossRefresh(t *testing.T) {
 		t.Fatalf("missing source should fall back to auto-pick, got idx %d", m.selectedSourceIdx)
 	}
 }
+
+// TestSearchMatchesSectionNames guards G2.3: typing a section name in the
+// in-tab search jumps to that section's first bar.
+func TestSearchMatchesSectionNames(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard, Bars: []model.Bar{
+		{Number: 1, Section: "Intro", Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}},
+		{Number: 2, Section: "Intro", Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}},
+		{Number: 3, Section: "Chorus", Strings: []model.StringLine{{Segments: []model.Segment{{Char: '5', Value: 5, Position: 0, Width: 1}}}}},
+	}}
+	m.LoadTab(tab, "x.txt", 0)
+
+	m, _ = m.Update(key("/"))
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("chorus")})
+	if len(m.searchMatches) != 1 || m.searchMatches[0].bar != 2 {
+		t.Fatalf("section search should match the chorus first bar, got %+v", m.searchMatches)
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.cursorBar != 2 {
+		t.Fatalf("Enter should jump to the chorus, cursor at %d", m.cursorBar)
+	}
+	// Status row shows the current section.
+	if !strings.Contains(m.View(), "Chorus") {
+		t.Fatalf("status should name the current section:\n%s", m.View())
+	}
+}

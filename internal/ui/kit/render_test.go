@@ -153,11 +153,11 @@ func TestGridLoopHeadersHighlighted(t *testing.T) {
 	}
 	rendered := RenderTabGrid(tab, 120, 0, &TabCursor{LoopStartBar: 1, LoopEndBar: 3, Bar: 2})
 	m := BarGridLayout(tab, 120)
-	want := LoopBarStyle.Render(padToWidth("│ 2 "+strings.Repeat("─", 12), m.BarWidth))
+	want := LoopBarStyle.Render("│ 2 " + strings.Repeat("─", m.BarWidth-4))
 	if !strings.Contains(rendered, want) {
 		t.Fatalf("looped bar 2 header should use LoopBarStyle, got:\n%s", rendered)
 	}
-	if strings.Contains(rendered, LoopBarStyle.Render(padToWidth("│ 4 "+strings.Repeat("─", 12), m.BarWidth))) {
+	if strings.Contains(rendered, LoopBarStyle.Render("│ 4 "+strings.Repeat("─", m.BarWidth-4))) {
 		t.Fatalf("bar 4 is outside the loop and must not use LoopBarStyle:\n%s", rendered)
 	}
 	loop := TabCursor{LoopStartBar: 0, LoopEndBar: 2}
@@ -300,8 +300,37 @@ func TestRenderTabSearchHighlight(t *testing.T) {
 	}
 	out := RenderTabGridBody(tab, 60, 0, &TabCursor{Bar: 0, SearchBar: 1, SearchCol: 0})
 	m := BarGridLayout(tab, 60)
-	want := SearchBarStyle.Render(padToWidth("│ 2 "+strings.Repeat("─", 12), m.BarWidth))
+	want := SearchBarStyle.Render("│ 2 " + strings.Repeat("─", m.BarWidth-4))
 	if !strings.Contains(out, want) {
 		t.Fatalf("match bar header should use SearchBarStyle:\n%s", out)
+	}
+}
+
+// TestBarHeaderShowsSectionName guards G2.2: the first bar of a section
+// carries the section name in its header, in both layouts; later bars of
+// the same section do not.
+func TestBarHeaderShowsSectionName(t *testing.T) {
+	tab := &model.Tab{
+		Tuning: model.Standard,
+		Bars: []model.Bar{
+			{Number: 1, Section: "Intro", Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}},
+			{Number: 2, Section: "Intro", Strings: []model.StringLine{{Segments: []model.Segment{{Char: '3', Value: 3, Position: 0, Width: 1}}}}},
+			{Number: 3, Section: "Chorus", Strings: []model.StringLine{{Segments: []model.Segment{{Char: '5', Value: 5, Position: 0, Width: 1}}}}},
+		},
+	}
+	grid := RenderTabGridBody(tab, 60, 0, nil)
+	if !strings.Contains(grid, "Intro") {
+		t.Fatalf("grid header should show the section name:\n%s", grid)
+	}
+	linear := RenderTabLinearBody(tab, 0, nil)
+	if !strings.Contains(linear, "Chorus") || !strings.Contains(linear, "Intro") {
+		t.Fatalf("linear headers should show section names:\n%s", linear)
+	}
+	// Only the FIRST bar of a section carries the label.
+	if got := sectionLabel(tab, 1); got != "" {
+		t.Fatalf("second Intro bar must not repeat the label, got %q", got)
+	}
+	if got := sectionLabel(tab, 2); got != "Chorus" {
+		t.Fatalf("section-start bar should be labeled, got %q", got)
 	}
 }

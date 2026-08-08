@@ -48,7 +48,7 @@ type ViewerModel struct {
 	follow       bool
 	linear       bool
 	// Reading tools.
-	transpose     int          // ±semitones, session-only (0 = as written)
+	transpose     int // ±semitones, session-only (0 = as written)
 	showNotes     bool
 	searchActive  bool
 	searchInput   string
@@ -227,6 +227,11 @@ func (m *ViewerModel) computeSearchMatches() {
 		return
 	}
 	for bi, bar := range m.tab.Bars {
+		// Section names are searchable: "verse" jumps to the verse.
+		if sec := strings.TrimSpace(bar.Section); sec != "" && strings.Contains(strings.ToLower(sec), q) {
+			m.searchMatches = append(m.searchMatches, searchMatch{bar: bi, col: 0})
+			continue
+		}
 		for _, sl := range bar.Strings {
 			var digits strings.Builder
 			var cols []int
@@ -1014,6 +1019,20 @@ func trackEndedBanner(dur time.Duration) string {
 	return "Track ended before the tab finished — Space restarts from this bar"
 }
 
+// currentSection returns the section name of the cursor bar, walking back to
+// the nearest bar that names its section.
+func (m ViewerModel) currentSection() string {
+	if m.tab == nil {
+		return ""
+	}
+	for b := m.cursorBar; b >= 0 && b < len(m.tab.Bars); b-- {
+		if sec := strings.TrimSpace(m.tab.Bars[b].Section); sec != "" {
+			return sec
+		}
+	}
+	return ""
+}
+
 // loopStartTime returns the audio file position of the loop start bar:
 // schedule time (0-based bar, converted from the user-facing 1-based bar)
 // plus the calibrated intro offset.
@@ -1286,6 +1305,9 @@ func (m ViewerModel) View() string {
 		}
 		status = kit.MutedStyle.Render(fmt.Sprintf("%s · bar %d/%d · %d BPM",
 			m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm))
+		if sec := m.currentSection(); sec != "" {
+			status = kit.MutedStyle.Render(sec) + "  " + status
+		}
 		if m.playing {
 			label := m.engine.ActiveDriver
 			if m.engine.Mode() == "audio" {

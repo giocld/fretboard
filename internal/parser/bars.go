@@ -14,12 +14,21 @@ func extractBars(region []string, stringsPerColumn int) []model.Bar {
 	var bars []model.Bar
 	barNum := 1
 	i := 0
+	currentSection := ""
 	for i < len(region) {
 		for i < len(region) && strings.TrimSpace(region[i]) == "" {
 			i++
 		}
 		if i >= len(region) {
 			break
+		}
+
+		// A section header ("[Verse]", "Chorus:") names the bars that
+		// follow until the next header.
+		if sec := sectionHeader(region[i]); sec != "" {
+			currentSection = sec
+			i++
+			continue
 		}
 
 		var rhythmLine string
@@ -45,6 +54,9 @@ func extractBars(region []string, stringsPerColumn int) []model.Bar {
 
 		rhythmMarks := parseRhythmMarks(rhythmLine)
 		chunkBars := barsFromColumn(col, stringsPerColumn, barNum, rhythmMarks)
+		for k := range chunkBars {
+			chunkBars[k].Section = currentSection
+		}
 		bars = append(bars, chunkBars...)
 		barNum += len(chunkBars)
 		i += len(col)
@@ -146,6 +158,40 @@ func leadingEndingIndex(content string) int {
 		return i
 	}
 	return -1
+}
+
+// sectionHeader recognizes a song-section header line: "[Verse 1]",
+// "Chorus:", "[SOLO]", etc. Bracket form accepts any bracketed label;
+// colon form requires a known section keyword so lyric-like lines in the
+// tab region are never mistaken for headers.
+func sectionHeader(line string) string {
+	trim := strings.TrimSpace(line)
+	if len(trim) > 40 {
+		return ""
+	}
+	if len(trim) >= 3 && trim[0] == '[' && trim[len(trim)-1] == ']' {
+		inner := strings.TrimSpace(trim[1 : len(trim)-1])
+		if inner != "" && !strings.ContainsAny(inner, "|-") {
+			return inner
+		}
+		return ""
+	}
+	colon := strings.IndexByte(trim, ':')
+	if colon <= 0 || colon > 30 || strings.TrimSpace(trim[colon+1:]) != "" {
+		return ""
+	}
+	name := strings.TrimSpace(trim[:colon])
+	lower := strings.ToLower(name)
+	for _, kw := range []string{
+		"intro", "verse", "chorus", "bridge", "solo", "outro",
+		"interlude", "pre-chorus", "prechorus", "riff", "instrumental",
+		"middle 8", "coda", "breakdown", "tag", "ending",
+	} {
+		if strings.HasPrefix(lower, kw) {
+			return name
+		}
+	}
+	return ""
 }
 
 // rhythmForBar filters rhythm marks to the pipe-delimited range [start, end)

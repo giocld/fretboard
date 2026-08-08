@@ -162,7 +162,7 @@ func renderTabLinear(tab *model.Tab, offset int, cur *TabCursor, withHeader bool
 			sb.WriteString("\n")
 		}
 		highlight := cur != nil && cur.Bar == i
-		header := barHeaderWithMarkers(bar)
+		header := barHeaderWithMarkers(tab, i)
 		if cur.InSearch(i) {
 			header = SearchBarStyle.Render(header)
 		}
@@ -198,14 +198,62 @@ func barWidthInLinear(bar model.Bar, tab *model.Tab) int {
 	return maxBarCols(bar) + 4
 }
 
+// sectionLabel returns the section name for a bar when it starts a new
+// section (the previous bar belongs to a different or no section).
+func sectionLabel(tab *model.Tab, barIdx int) string {
+	if tab == nil || barIdx < 0 || barIdx >= len(tab.Bars) {
+		return ""
+	}
+	s := strings.TrimSpace(tab.Bars[barIdx].Section)
+	if s == "" {
+		return ""
+	}
+	if barIdx > 0 && tab.Bars[barIdx-1].Section == s {
+		return ""
+	}
+	return s
+}
+
+// sectionHeaderFor renders a bar header that fits the section name (when
+// the bar starts a section) inside the bar column width, with the dash fill
+// after it and the repeat-close marker at the end.
+func sectionHeaderFor(tab *model.Tab, barIdx int, open, ending, close string, barWidth int) string {
+	name := sectionLabel(tab, barIdx)
+	num := barIdx + 1 // display bar number (1-based, mirrors Bar.Number)
+	if barIdx >= 0 && barIdx < len(tab.Bars) {
+		num = tab.Bars[barIdx].Number
+	}
+	if name == "" {
+		header := fmt.Sprintf("%s %d %s", open, num, ending)
+		fill := barWidth - lipgloss.Width(header) - lipgloss.Width(close)
+		if fill < 1 {
+			fill = 1
+		}
+		return header + strings.Repeat("─", fill) + close
+	}
+	head := fmt.Sprintf("%s %d %s ", open, num, ending)
+	room := barWidth - lipgloss.Width(head) - lipgloss.Width(close) - 1
+	if room < 2 {
+		room = 2
+	}
+	head += Truncate(name, room)
+	fill := barWidth - lipgloss.Width(head) - lipgloss.Width(close)
+	if fill < 1 {
+		fill = 1
+	}
+	return head + strings.Repeat("─", fill) + close
+}
+
 // barHeader renders the "│ N ───" bar-number line.
 func barHeader(number int, width int) string {
 	return BarNumberStyle.Render(fmt.Sprintf("│ %d %s", number, strings.Repeat("─", width)))
 }
 
 // barHeaderWithMarkers renders the linear-layout bar header including repeat
-// structure markers ("|:", ":|", "1."/"2.") when present.
-func barHeaderWithMarkers(bar model.Bar) string {
+// structure markers ("|:", ":|", "1."/"2.") and the section name when the
+// bar starts a new section.
+func barHeaderWithMarkers(tab *model.Tab, barIdx int) string {
+	bar := tab.Bars[barIdx]
 	open := "│"
 	if bar.RepeatStart {
 		open = "│:"
@@ -218,7 +266,8 @@ func barHeaderWithMarkers(bar model.Bar) string {
 	if bar.Ending == 1 || bar.Ending == 2 {
 		ending = fmt.Sprintf("%d.", bar.Ending)
 	}
-	return BarNumberStyle.Render(fmt.Sprintf("%s %d %s%s%s", open, bar.Number, ending, strings.Repeat("─", barWidthInLinear(bar, nil)), close))
+	width := barWidthInLinear(bar, tab)
+	return BarNumberStyle.Render(sectionHeaderFor(tab, barIdx, open, ending, close, width))
 }
 
 // RenderTabWithCursor renders a tab and optionally draws a vertical playhead.
@@ -416,7 +465,7 @@ func renderBarRow(b *strings.Builder, tab *model.Tab, start, end, barWidth, offs
 		if bar.Ending == 1 || bar.Ending == 2 {
 			ending = fmt.Sprintf("%d.", bar.Ending)
 		}
-		header := fmt.Sprintf("%s %d %s%s%s ", open, bar.Number, ending, strings.Repeat("─", 12), close)
+		header := sectionHeaderFor(tab, barIdx, open, ending, close, barWidth)
 		headerStyle := MutedStyle
 		switch {
 		case highlight:
