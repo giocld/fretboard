@@ -1051,3 +1051,24 @@ func TestPracticeTimerAccumulatesAndPersists(t *testing.T) {
 		t.Fatalf("second session should accumulate, got %d", m.practiceTotal())
 	}
 }
+
+// TestMouseWheelMovesCursor guards G5.1: wheel messages scroll the viewer
+// like j/k.
+func TestMouseWheelMovesCursor(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard, Bars: []model.Bar{
+		{Number: 1, Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}},
+		{Number: 2, Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}},
+		{Number: 3, Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}},
+	}}
+	m.LoadTab(tab, "x.txt", 0)
+
+	m, _ = m.Update(tea.MouseMsg{Type: tea.MouseWheelDown})
+	if m.cursorBar != 1 {
+		t.Fatalf("wheel down should move to bar 2, got %d", m.cursorBar)
+	}
+	m, _ = m.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
+	if m.cursorBar != 0 {
+		t.Fatalf("wheel up should move back to bar 1, got %d", m.cursorBar)
+	}
+}

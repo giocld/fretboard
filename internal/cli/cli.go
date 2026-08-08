@@ -129,7 +129,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	m := tea.Model(app)
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	// NOTE: bubbletea installs its own SIGINT/SIGTERM handler and delivers a
 	// QuitMsg (or InterruptMsg for SIGINT outside raw mode) to the event loop,

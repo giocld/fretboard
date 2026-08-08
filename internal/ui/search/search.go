@@ -87,6 +87,16 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 			bodyH = 3
 		}
 		m.viewport.Height = bodyH
+	case tea.MouseMsg:
+		// Wheel scrolls the result list (results mode only).
+		if !m.inputActive {
+			switch msg.Type {
+			case tea.MouseWheelUp:
+				m.moveCursor(-1)
+			case tea.MouseWheelDown:
+				m.moveCursor(1)
+			}
+		}
 	case tea.KeyMsg:
 		key := msg.String()
 		switch key {

@@ -565,3 +565,34 @@ func TestBrowserExportRow(t *testing.T) {
 func keyFor(k string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 }
+
+// TestMouseWheelMovesCursor guards G5.1 in the browser: wheel scrolls the
+// library list.
+func TestMouseWheelMovesCursor(t *testing.T) {
+	st, err := library.NewStore(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for _, name := range []string{"A", "B", "C"} {
+		if _, err := st.Import(name+".txt", &model.Tab{Title: name, Tuning: model.Standard}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := NewBrowserModel(st)
+	rows, _ := st.List()
+	m.tabs = rows
+	m.loaded = true
+	m.width = 140
+	m.height = 30
+	m.apply()
+
+	m, _ = m.Update(tea.MouseMsg{Type: tea.MouseWheelDown})
+	if m.cursor != 1 {
+		t.Fatalf("wheel down should move to row 2, got %d", m.cursor)
+	}
+	m, _ = m.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
+	if m.cursor != 0 {
+		t.Fatalf("wheel up should move back, got %d", m.cursor)
+	}
+}

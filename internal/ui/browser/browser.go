@@ -135,6 +135,14 @@ func (m BrowserModel) Update(msg tea.Msg) (BrowserModel, tea.Cmd) {
 		}
 		m.viewport.Height = bodyH
 		m.refresh()
+	case tea.MouseMsg:
+		// Wheel scrolls the library list like j/k.
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			return m, m.moveCursor(-1)
+		case tea.MouseWheelDown:
+			return m, m.moveCursor(1)
+		}
 	case tea.KeyMsg:
 		if m.editing {
 			return m.handleEditKey(msg)

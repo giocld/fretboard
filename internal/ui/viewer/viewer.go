@@ -316,6 +316,14 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		}
 		m.viewport.Height = bodyH
 		m.refresh()
+	case tea.MouseMsg:
+		// Wheel scrolls the viewer like j/k.
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			return m.handleKey(keyFromMouse("k"))
+		case tea.MouseWheelDown:
+			return m.handleKey(keyFromMouse("j"))
+		}
 	case msgs.AudioFetchedMsg:
 		if m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
 			wantPlay := m.pendingPlay
@@ -1855,3 +1863,8 @@ func (m *ViewerModel) TabID() int64 { return m.tabID }
 // SearchMatchesForTest exposes the current search matches for tests and
 // external drivers.
 func (m ViewerModel) SearchMatchesForTest() []searchMatch { return m.searchMatches }
+
+// keyFromMouse builds a key message from a mouse-driven action name.
+func keyFromMouse(k string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+}
