@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"fretboard/internal/export"
 	"fretboard/internal/library"
 	"fretboard/internal/model"
 	"fretboard/internal/ui/kit"
@@ -223,7 +224,7 @@ func (m BrowserModel) exportRow(row library.TabRow) (BrowserModel, tea.Cmd) {
 		m.refresh()
 		return m, nil
 	}
-	_, msg := kit.ExportTab(tab)
+	_, msg := export.Tab(tab)
 	m.errMsg = msg
 	m.refresh()
 	return m, nil

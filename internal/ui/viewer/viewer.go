@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"fretboard/internal/export"
 	"fretboard/internal/model"
 	"fretboard/internal/player"
 	"fretboard/internal/ui/kit"
@@ -745,7 +746,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	case "X":
 		m.jumpBuffer = ""
 		if m.tab != nil {
-			_, msg := kit.ExportTab(m.tab)
+			_, msg := export.Tab(m.tab)
 			m.infoMsg = msg
 			m.refresh()
 		}

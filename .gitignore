@@ -1,7 +1,12 @@
+# Build artifacts (the binary is built locally, never committed)
 /fretboard
+*.exe
 /debug-parser
 /tools/gp-parser/target/
 
 # Local-only markdown: only README.md is pushed to the remote
 *.md
 !README.md
+
+# Tool state
+.ralph/
