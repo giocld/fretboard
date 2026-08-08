@@ -12,27 +12,29 @@ import (
 
 // Config holds user-configurable preferences.
 type Config struct {
-	ThemeName        string   `json:"theme"`
-	UGDelayMs        int      `json:"ug_delay_ms"`
-	AutoImportPath   string   `json:"auto_import_path,omitempty"`
-	VolumePercent    int      `json:"volume_percent"`
-	Soundfont        string   `json:"soundfont,omitempty"`
-	AudioSearchPaths []string `json:"audio_search_paths,omitempty"`
-	AutoFetchAudio   bool     `json:"auto_fetch_audio"`
+	ThemeName            string   `json:"theme"`
+	UGDelayMs            int      `json:"ug_delay_ms"`
+	AutoImportPath       string   `json:"auto_import_path,omitempty"`
+	VolumePercent        int      `json:"volume_percent"`
+	Soundfont            string   `json:"soundfont,omitempty"`
+	AudioSearchPaths     []string `json:"audio_search_paths,omitempty"`
+	AutoFetchAudio       bool     `json:"auto_fetch_audio"`
+	StrictAudioSelection bool     `json:"strict_audio_selection"` 
 }
 
 // Defaults returns the default configuration.
 func Defaults() Config {
 	return Config{
-		ThemeName:      "default",
-		UGDelayMs:      500,
-		VolumePercent:  80,
-		AutoFetchAudio: true,
+		ThemeName:            "default",
+		UGDelayMs:            500,
+		VolumePercent:        80,
+		AutoFetchAudio:       true,
+		StrictAudioSelection: true,
 	}
 }
 
-// UnmarshalJSON defaults AutoFetchAudio to true when the auto_fetch_audio key
-// is absent from the JSON document.
+// UnmarshalJSON defaults AutoFetchAudio and StrictAudioSelection to true when
+// the keys are absent from the JSON document.
 func (c *Config) UnmarshalJSON(data []byte) error {
 	type alias Config
 	var a alias
@@ -45,6 +47,9 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	}
 	if _, ok := keys["auto_fetch_audio"]; !ok {
 		a.AutoFetchAudio = true
+	}
+	if _, ok := keys["strict_audio_selection"]; !ok {
+		a.StrictAudioSelection = true
 	}
 	*c = Config(a)
 	return nil

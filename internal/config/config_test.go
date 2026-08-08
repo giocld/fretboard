@@ -35,6 +35,26 @@ func TestDefaultsAutoFetchAudio(t *testing.T) {
 	}
 }
 
+func TestDefaultsStrictAudioSelection(t *testing.T) {
+	var c Config
+	if err := json.Unmarshal([]byte(`{"theme":"dark"}`), &c); err != nil {
+		t.Fatal(err)
+	}
+	if !c.StrictAudioSelection {
+		t.Fatal("expected StrictAudioSelection to default to true when the key is absent")
+	}
+	var c2 Config
+	if err := json.Unmarshal([]byte(`{"strict_audio_selection":false}`), &c2); err != nil {
+		t.Fatal(err)
+	}
+	if c2.StrictAudioSelection {
+		t.Fatal("expected StrictAudioSelection to be false when explicitly set")
+	}
+	if !Defaults().StrictAudioSelection {
+		t.Fatal("expected Defaults().StrictAudioSelection to be true")
+	}
+}
+
 // withTempConfigDir points the platform config dir at a temp dir, like
 // internal/testutil but without the import (config can't import testutil).
 func withTempConfigDir(t *testing.T) string {
