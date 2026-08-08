@@ -79,6 +79,7 @@ fretboard import path/to/tabs/
 | `v` | Toggle grid / linear layout |
 | `f` | Follow-mode auto-scroll |
 | `i`/`u`/`x` | Set loop point A / B / clear loop |
+| `X` | Export tab to file + clipboard |
 | `[`/`]` | Nudge audio sync ±0.5s (`{`/`}` = ±5s, `,`/`.` = ±0.1s, `o` resets) |
 | `s`/`S` | Sync current bar to audio / clear sync points |
 | `a` | Audio picker with strict badges (`[official]`/`[live]`/…, `★` recommended) |
