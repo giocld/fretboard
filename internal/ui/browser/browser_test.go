@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -237,3 +238,113 @@ func TestBrowserDeleteRequiresConfirmation(t *testing.T) {
 		t.Fatal("tab should be deleted after confirming with y")
 	}
 }
+
+// previewStore returns a browser bound to a store holding two tabs.
+func previewStore(t *testing.T) (*library.Store, BrowserModel) {
+	t.Helper()
+	st, err := library.NewStore(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	for i, name := range []string{"Sultans of Swing", "Layla"} {
+		f := filepath.Join(t.TempDir(), name+".txt")
+		tab := fmt.Sprintf("Dire Straits\n%s\nTuning: E Standard\n\ne|%d-%d-%d-|\n", name, i+1, i+2, i+3)
+		if err := os.WriteFile(f, []byte(tab), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := st.ImportFile(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := NewBrowserModel(st)
+	rows, err := st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.tabs = rows
+	m.loaded = true
+	m.width = 140
+	m.height = 30
+	return st, m
+}
+
+// TestBrowserPreviewLoadsForSelectedRow guards US-10: selecting a row loads
+// its tab in the background and renders it in the preview panel.
+func TestBrowserPreviewLoadsForSelectedRow(t *testing.T) {
+	_, m := previewStore(t)
+	m, cmd := m.Update(msgs.TabsLoadedMsg{Tabs: m.tabs})
+	if cmd == nil {
+		t.Fatal("loading tabs should request a preview")
+	}
+	updated, cmd := m.Update(cmd())
+	m = updated
+	if m.preview == "" {
+		t.Fatal("preview should be populated after load")
+	}
+	if m.previewTitle != "Layla" {
+		t.Fatalf("previewTitle = %q, want first sorted row", m.previewTitle)
+	}
+	if cmd != nil {
+		t.Fatal("no re-request for the same row")
+	}
+	view := m.View()
+	if !strings.Contains(view, "Preview · Layla") {
+		t.Fatalf("split view should show the preview panel, got:\n%s", view)
+	}
+}
+
+// TestBrowserPreviewFollowsCursor guards preview reload on row change.
+func TestBrowserPreviewFollowsCursor(t *testing.T) {
+	_, m := previewStore(t)
+	m, cmd := m.Update(msgs.TabsLoadedMsg{Tabs: m.tabs})
+	if cmd == nil {
+		t.Fatal("expected preview request on load")
+	}
+	m, _ = m.Update(cmd())
+	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if cmd == nil {
+		t.Fatal("moving the cursor should request a new preview")
+	}
+	m, _ = m.Update(cmd())
+	if m.previewTitle != "Sultans of Swing" {
+		t.Fatalf("preview should follow the cursor to %q, got %q", "Sultans of Swing", m.previewTitle)
+	}
+}
+
+// TestBrowserPreviewStaleGenerationIgnored guards the request-generation
+// guard: a slow load for a row the cursor has left must not clobber the
+// current preview.
+func TestBrowserPreviewStaleGenerationIgnored(t *testing.T) {
+	_, m := previewStore(t)
+	m, cmd := m.Update(msgs.TabsLoadedMsg{Tabs: m.tabs})
+	gen1 := m.previewGen
+	m, _ = m.Update(cmd()) // preview of row 1 (gen1)
+	m, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")})
+	if cmd == nil {
+		t.Fatal("expected preview request on cursor move")
+	}
+	// Deliver a stale gen1 message for a different row.
+	m, _ = m.Update(msgs.BrowserPreviewMsg{Gen: gen1, TabID: 99, Title: "Stale", Preview: "stale content"})
+	if m.previewTitle == "Stale" {
+		t.Fatal("stale generation must not clobber the current preview")
+	}
+}
+
+// TestBrowserPreviewCollapsesOnNarrowTerminal guards the responsive layout:
+// on narrow terminals the browser renders the list full width, as before.
+func TestBrowserPreviewCollapsesOnNarrowTerminal(t *testing.T) {
+	_, m := previewStore(t)
+	m, cmd := m.Update(msgs.TabsLoadedMsg{Tabs: m.tabs})
+	m, _ = m.Update(cmd())
+	m.width = 80
+	m.refresh()
+	view := m.View()
+	if strings.Contains(view, "Preview ·") {
+		t.Fatalf("narrow terminal must not split into a preview panel, got:\n%s", view)
+	}
+	if m.splitActive() {
+		t.Fatal("splitActive must be false on a narrow terminal")
+	}
+}
+

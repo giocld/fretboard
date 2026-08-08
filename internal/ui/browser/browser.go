@@ -12,6 +12,7 @@ import (
 	"fretboard/internal/ui/msgs"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sahilm/fuzzy"
 )
 
@@ -42,7 +43,18 @@ type BrowserModel struct {
 	errMsg         string
 	autoImportWarn string
 	confirmDelete  *library.TabRow
+	preview        string
+	previewTitle   string
+	previewTabID   int64
+	previewGen     int
 }
+
+// Preview panel layout: the browser splits into list + preview when the
+// terminal is wide enough for both to stay usable.
+const (
+	previewPanelWidth = 42
+	splitMinWidth     = 60 + 2 + previewPanelWidth + 2
+)
 
 // NewBrowserModel creates a browser bound to a library store.
 func NewBrowserModel(store *library.Store) BrowserModel {
@@ -77,7 +89,22 @@ func (m BrowserModel) Update(msg tea.Msg) (BrowserModel, tea.Cmd) {
 		m.loaded = true
 		m.loading = false
 		m.errMsg = ""
-		m.apply()
+		return m, m.apply()
+	case msgs.BrowserPreviewMsg:
+		if msg.Gen != m.previewGen {
+			return m, nil
+		}
+		if msg.Err != nil || msg.Preview == "" {
+			m.preview = ""
+			m.previewTitle = ""
+			m.previewTabID = 0
+		} else {
+			m.preview = msg.Preview
+			m.previewTitle = msg.Title
+			m.previewTabID = msg.TabID
+		}
+		m.refresh()
+		return m, nil
 	case msgs.AutoImportWarnMsg:
 		m.autoImportWarn = msg.Msg
 	case msgs.TabsLoadErrorMsg:
@@ -88,7 +115,7 @@ func (m BrowserModel) Update(msg tea.Msg) (BrowserModel, tea.Cmd) {
 		} else {
 			m.errMsg = "Could not load library"
 		}
-		m.apply()
+		return m, m.apply()
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -113,7 +140,7 @@ func (m BrowserModel) handleSearchKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 	case "esc":
 		if m.searchInput != "" {
 			m.searchInput = ""
-			m.apply()
+			return m, m.apply()
 		} else {
 			m.searchActive = false
 			return m, func() tea.Msg { return msgs.GoHomeMsg{} }
@@ -131,17 +158,17 @@ func (m BrowserModel) handleSearchKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 			}
 		}
 		// Stay in search mode so the user can keep typing.
-		m.apply()
+		return m, m.apply()
 	case "down":
-		m.moveCursor(1)
+		return m, m.moveCursor(1)
 	case "up":
-		m.moveCursor(-1)
+		return m, m.moveCursor(-1)
 	case "backspace":
 		r := []rune(m.searchInput)
 		if len(r) > 0 {
 			m.searchInput = string(r[:len(r)-1])
 			m.cursor = 0
-			m.apply()
+			return m, m.apply()
 		}
 	case kit.KeyQuit2:
 		return m, tea.Quit
@@ -149,7 +176,7 @@ func (m BrowserModel) handleSearchKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 		if len(msg.String()) == 1 && msg.String()[0] >= 32 && msg.String()[0] < 127 {
 			m.searchInput += msg.String()
 			m.cursor = 0
-			m.apply()
+			return m, m.apply()
 		}
 	}
 	return m, nil
@@ -165,7 +192,7 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 				if err := m.store.Delete(row.ID); err == nil {
 					m.errMsg = ""
 					m.removeTabRow(row.ID)
-					m.apply()
+					return m, m.apply()
 				} else {
 					m.errMsg = "Delete failed: " + err.Error()
 					m.refresh()
@@ -181,9 +208,9 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 	case kit.KeyQuit, kit.KeyQuit2:
 		return m, tea.Quit
 	case "down", kit.KeyDown:
-		m.moveCursor(1)
+		return m, m.moveCursor(1)
 	case "up", kit.KeyUp:
-		m.moveCursor(-1)
+		return m, m.moveCursor(-1)
 	case "enter":
 		if m.cursor >= 0 && m.cursor < len(m.filtered) {
 			return m, func() tea.Msg {
@@ -197,7 +224,7 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 			if err := m.store.SetFavorite(row.ID, newFav); err == nil {
 				m.errMsg = ""
 				m.updateTabRow(row.ID, func(r *library.TabRow) { r.Favorite = newFav })
-				m.apply()
+				return m, m.apply()
 			} else if err != nil {
 				m.errMsg = "Favorite failed: " + err.Error()
 				m.refresh()
@@ -218,7 +245,7 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 		}
 	case "s":
 		m.sortMode = (m.sortMode + 1) % 4
-		m.apply()
+		return m, m.apply()
 	case "/":
 		m.searchActive = true
 		m.cursor = 0
@@ -228,20 +255,18 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 			m.searchInput = ""
 			m.searchActive = false
 			m.cursor = 0
-			m.apply()
-			return m, nil
+			return m, m.apply()
 		}
 		if m.searchActive {
 			m.searchActive = false
-			m.apply()
-			return m, nil
+			return m, m.apply()
 		}
 		return m, func() tea.Msg { return msgs.GoHomeMsg{} }
 	}
 	return m, nil
 }
 
-func (m *BrowserModel) moveCursor(delta int) {
+func (m *BrowserModel) moveCursor(delta int) tea.Cmd {
 	m.cursor += delta
 	if m.cursor < 0 {
 		m.cursor = 0
@@ -251,6 +276,30 @@ func (m *BrowserModel) moveCursor(delta int) {
 	}
 	m.ensureCursorVisible()
 	m.refresh()
+	return m.requestPreview()
+}
+
+// requestPreview returns a command that renders the selected row's tab for
+// the right-side preview panel. Rows already previewed are skipped.
+func (m *BrowserModel) requestPreview() tea.Cmd {
+	if m.store == nil || m.cursor < 0 || m.cursor >= len(m.filtered) {
+		return nil
+	}
+	row := m.filtered[m.cursor]
+	if m.previewTabID == row.ID && m.preview != "" {
+		return nil
+	}
+	m.previewGen++
+	gen := m.previewGen
+	m.previewTabID = row.ID
+	m.previewTitle = row.Title
+	return func() tea.Msg {
+		tab, err := m.store.Get(row.ID)
+		if err != nil || tab == nil {
+			return msgs.BrowserPreviewMsg{Gen: gen, TabID: row.ID, Err: err}
+		}
+		return msgs.BrowserPreviewMsg{Gen: gen, TabID: row.ID, Title: row.Title, Preview: kit.RenderTabPreview(tab, 12)}
+	}
 }
 
 func (m *BrowserModel) ensureCursorVisible() {
@@ -285,7 +334,9 @@ func (m *BrowserModel) removeTabRow(id int64) {
 	m.tabs = out
 }
 
-func (m *BrowserModel) apply() {
+// apply recomputes the filtered/sorted list and reloads the preview for the
+// selected row if it changed.
+func (m *BrowserModel) apply() tea.Cmd {
 	m.filtered = m.filterAndSort(m.tabs)
 	if len(m.filtered) == 0 {
 		m.cursor = 0
@@ -299,6 +350,7 @@ func (m *BrowserModel) apply() {
 	}
 	m.ensureCursorVisible()
 	m.refresh()
+	return m.requestPreview()
 }
 
 func (m BrowserModel) filterAndSort(rows []library.TabRow) []library.TabRow {
@@ -343,7 +395,18 @@ func (m BrowserModel) filterAndSort(rows []library.TabRow) []library.TabRow {
 	return out
 }
 
+// splitActive reports whether the preview panel is shown beside the list.
+func (m BrowserModel) splitActive() bool {
+	return m.preview != "" && m.width >= splitMinWidth
+}
+
 func (m *BrowserModel) refresh() {
+	// The list viewport narrows when the preview panel shares the row.
+	if m.splitActive() {
+		m.viewport.Width = m.width - previewPanelWidth - 8
+	} else {
+		m.viewport.Width = m.width - 4
+	}
 	m.viewport.SetContent(m.renderList())
 }
 
@@ -355,33 +418,56 @@ func (m BrowserModel) renderList() string {
 		return kit.InfoStyle.Render("Loading library…")
 	}
 	if len(m.tabs) == 0 {
-		return kit.WarningStyle.Render("No tabs in library.") + "\n" +
-			kit.MutedStyle.Render("Import one with: fretboard import <file>")
+		return "\n\n  " + kit.WarningStyle.Render("No tabs in your library") + "\n\n  " +
+			kit.MutedStyle.Render("Import one from your shell:") + "\n  " +
+			kit.SuccessStyle.Render("fretboard import <file-or-directory>") + "\n"
 	}
 	var b strings.Builder
 	if m.searchActive {
 		b.WriteString(kit.InfoStyle.Render("Search: ") + m.searchInput + kit.MutedStyle.Render("_"))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	} else if m.searchInput != "" {
 		b.WriteString(kit.MutedStyle.Render("Filter: " + m.searchInput))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 	}
+	b.WriteString("\n")
 	if len(m.filtered) == 0 {
-		b.WriteString(kit.WarningStyle.Render("No matches."))
+		b.WriteString("  " + kit.WarningStyle.Render("No matches for \""+m.searchInput+"\""))
+		b.WriteString("\n  " + kit.MutedStyle.Render("Press Esc to clear the filter."))
 		b.WriteString("\n")
 		return b.String()
 	}
+
+	// Table header with a sort indicator on the active column.
+	header := fmt.Sprintf("%-3s %-34s %-24s %s", " ", "TITLE", "ARTIST", "TUNING")
+	switch m.sortMode {
+	case SortRecent:
+		header = fmt.Sprintf("%-3s %-34s %-24s %s", " ", "TITLE", "ARTIST", "TUNING")
+	case SortAlpha:
+		header = fmt.Sprintf("%-3s %-34s %-24s %s", " ", "TITLE ▼", "ARTIST", "TUNING")
+	case SortArtist:
+		header = fmt.Sprintf("%-3s %-34s %-24s %s", " ", "TITLE", "ARTIST ▼", "TUNING")
+	case SortPlays:
+		header = fmt.Sprintf("%-3s %-34s %-24s %s", " ", "TITLE", "ARTIST", "PLAYS ▼")
+	}
+	b.WriteString(kit.TableHeaderStyle.Render(header))
+	b.WriteString("\n")
+	b.WriteString(kit.PanelDividerStyle.Render(strings.Repeat("─", 3+34+24+10)))
+	b.WriteString("\n")
 	for i, row := range m.filtered {
-		star := kit.MutedStyle.Render(" ")
+		star := " "
 		if row.Favorite {
-			star = kit.SuccessStyle.Render("★")
+			star = "★"
 		}
-		meta := kit.MutedStyle.Render(formatRowTuning(row.Tuning))
-		line := fmt.Sprintf("%s  %s — %s", star, row.Title, row.Artist)
+		tuning := formatRowTuning(row.Tuning)
+		line := fmt.Sprintf("%-3s %-34s %-24s %s", star, kit.Truncate(row.Title, 34), kit.Truncate(row.Artist, 24), tuning)
+		if m.sortMode == SortPlays {
+			line = fmt.Sprintf("%-3s %-34s %-24s %d", star, kit.Truncate(row.Title, 34), kit.Truncate(row.Artist, 24), row.PlayCount)
+		}
 		if i == m.cursor {
-			b.WriteString(kit.ListSelected.Render("▸ "+line) + "  " + meta)
+			b.WriteString(kit.ListSelected.Render("▸ "+line[2:]))
 		} else {
-			b.WriteString(kit.ListNormal.Render(line) + "  " + meta)
+			b.WriteString(kit.ListNormal.Render(line))
 		}
 		b.WriteString("\n")
 	}
@@ -390,9 +476,25 @@ func (m BrowserModel) renderList() string {
 
 // View renders the browser.
 func (m BrowserModel) View() string {
-	count := fmt.Sprintf("%d tabs · sort: %s", len(m.filtered), sortLabel(m.sortMode))
-	panel := kit.RenderPanel(m.width-2, count, m.viewport.View())
-	body := "\n" + panel
+	status := fmt.Sprintf("%d tabs · %s", len(m.filtered), sortLabel(m.sortMode))
+	var body string
+	if m.splitActive() {
+		listW := m.width - 2 - previewPanelWidth - 2
+		panel := kit.RenderPanel(listW, "", m.viewport.View())
+		previewBody := m.preview
+		// Pad the preview to the list panel's height so both borders line up.
+		if pad := strings.Count(m.viewport.View(), "\n") - strings.Count(previewBody, "\n"); pad > 0 {
+			previewBody += strings.Repeat("\n", pad)
+		}
+		title := "Preview"
+		if m.previewTitle != "" {
+			title += " · " + kit.Truncate(m.previewTitle, previewPanelWidth-6)
+		}
+		previewPanel := kit.RenderPanel(previewPanelWidth, title, previewBody)
+		body = "\n" + lipgloss.JoinHorizontal(lipgloss.Top, panel, "  ", previewPanel)
+	} else {
+		body = "\n" + kit.RenderPanel(m.width-2, "", m.viewport.View())
+	}
 	if m.confirmDelete != nil {
 		body += "\n" + kit.WarningStyle.Render(fmt.Sprintf(
 			"Delete %q? [y]es [n]o (irreversible)", m.confirmDelete.Title))
@@ -412,7 +514,6 @@ func (m BrowserModel) View() string {
 		{Key: "d", Label: "delete"},
 		{Key: "o", Label: "online"},
 		{Key: "Esc", Label: "home"},
-		{Key: "?", Label: "help"},
 		{Key: "q", Label: "quit"},
 	}
 	if m.confirmDelete != nil {
@@ -426,11 +527,10 @@ func (m BrowserModel) View() string {
 			{Key: "↑/↓", Label: "move"},
 			{Key: "Enter", Label: "open"},
 			{Key: "Esc", Label: "clear/home"},
-			{Key: "o", Label: "online"},
 			{Key: "q", Label: "quit"},
 		}
 	}
-	footer := kit.RenderFooter(m.width, hints)
+	footer := kit.RenderFooterWithStatus(m.width, status, hints)
 	return kit.LayoutScreen(m.width, m.height, kit.FormatBreadcrumb("home", "library"), body, footer)
 }
 
