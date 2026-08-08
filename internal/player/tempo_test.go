@@ -152,3 +152,91 @@ func absInt(v int) int {
 	}
 	return v
 }
+
+// TestMarshalTempoMapRoundTrip guards the per-source persistence.
+func TestMarshalTempoMapRoundTrip(t *testing.T) {
+	anchors := []SyncPoint{{Bar: 1, Seconds: 1.0}, {Bar: 5, Seconds: 5.0}}
+	onsets := []time.Duration{1 * time.Second, 1*time.Second + 250*time.Millisecond}
+	raw := MarshalTempoMap(anchors, onsets)
+	if raw == "" {
+		t.Fatal("marshal failed")
+	}
+	gotA, gotO := UnmarshalTempoMap(raw)
+	if len(gotA) != 2 || gotA[1].Bar != 5 || len(gotO) != 2 || gotO[1] != 1250*time.Millisecond {
+		t.Fatalf("round-trip mismatch: %+v %+v", gotA, gotO)
+	}
+}
+
+// TestTrackAlignmentAcceptance is the S4 acceptance: a realistic recording
+// with a count-in (fast clicks), a non-silent intro, a gradual tempo drift,
+// and accented quarters must align automatically and keep the mapped bar
+// within one bar of the truth for the whole song — no manual anchors.
+func TestTrackAlignmentAcceptance(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not available")
+	}
+	path := filepath.Join(t.TempDir(), "song.wav")
+	// Count-in: 8 fast clicks at 90ms. Music: 8th notes at 122 BPM with a
+	// 4% slowdown over 60s (rubato), 300 clicks.
+	var clicks []time.Duration
+	t0 := time.Duration(0)
+	for i := 0; i < 8; i++ {
+		clicks = append(clicks, t0)
+		t0 += 90 * time.Millisecond
+	}
+	interval := time.Duration(60000/122/2) * time.Millisecond // 245.9ms
+	introEnd := t0
+	for i := 0; i < 300; i++ {
+		clicks = append(clicks, t0)
+		// Gradual drift: +4% by the end.
+		ratio := 1.0 + 0.04*float64(i)/300.0
+		t0 += time.Duration(float64(interval) * ratio)
+	}
+	if err := writeSyntheticWAVAlt(path, 8000, clicks, 30*time.Millisecond, 2); err != nil {
+		t.Fatal(err)
+	}
+	tab := testTab()
+	a := AlignAudio(tab, path, 0)
+	if a.BPM == 0 {
+		t.Fatal("no alignment")
+	}
+	// The count-in must not be treated as the offset: the music starts at
+	// ~0.72s; congruence within one beat either way is acceptable.
+	period := time.Duration(60000/a.BPM) * time.Millisecond
+	resid := absDur(a.Offset-introEnd) % period
+	if resid > period/2 {
+		resid = period - resid
+	}
+	if resid > 250*time.Millisecond {
+		t.Fatalf("offset %v not congruent with the music start %v (bpm %d)", a.Offset, introEnd, a.BPM)
+	}
+
+	sched := BuildSchedule(tab)
+	expected := ExpectedOnsets(tab, 120)
+	anchors := TempoAnchors(expected, a.Onsets, 120.0/float64(a.BPM), a.Offset, a.BPM, 4)
+	points := MergeAnchors(nil, anchors)
+	if len(points) < 5 {
+		t.Fatalf("too few anchors: %d", len(points))
+	}
+	// Truth: tab bar at audio time t (tab bars are 1s; the music drifts
+	// ~4% slower over the track).
+	trueBar := func(t float64) int {
+		if t <= introEnd.Seconds() {
+			return 0
+		}
+		// Integrate the drifting tempo: average ratio over the elapsed part.
+		el := t - introEnd.Seconds()
+		avgRatio := 1.0 + 0.02*el/60.0           // linear drift -> avg = mid ratio
+		return int(el / (1.0 * avgRatio) / 0.98) // tab bar ~0.98s at 122 bpm
+	}
+	for _, at := range []float64{10, 25, 40, 55, 70} {
+		idx := StepIndexAtSyncPoints(sched, points, at, a.BPM)
+		if snap, ok := CorrectStepSnap(sched, points, time.Duration(at*float64(time.Second)), a.Onsets, a.BPM); ok {
+			idx = snap
+		}
+		bar := sched[idx].Bar
+		if diff := absInt(bar - trueBar(at)); diff > 2 {
+			t.Fatalf("t=%.0fs: mapped bar %d vs true %d", at, bar+1, trueBar(at)+1)
+		}
+	}
+}

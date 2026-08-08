@@ -203,6 +203,16 @@ func (m *ViewerModel) restoreCalibrationForSource() {
 			break
 		}
 	}
+	// Restore the persisted auto tempo map for this source (measured bar
+	// anchors + onsets), so a later session keeps the alignment without
+	// re-running the analysis.
+	m.autoAnchors, m.autoOnsets = nil, nil
+	m.autoActive = false
+	if id := m.currentSourceID(); id != "" {
+		if anchors, onsets := player.UnmarshalTempoMap(m.tab.Metadata["tempo_map:"+id]); len(anchors) >= 2 {
+			m.autoAnchors, m.autoOnsets, m.autoActive = anchors, onsets, true
+		}
+	}
 }
 
 // saveCalibrationForSource persists the current offset and anchors under the
@@ -477,11 +487,15 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			m.infoMsg = fmt.Sprintf("Auto-aligned %d BPM, offset +%.1fs (confidence %.0f%%)", msg.BPM, m.audioOffset, msg.Confidence*100)
 		}
 		// The measured bar anchors become the auto tempo map; the onsets
-		// feed the live drift meter.
+		// feed the live drift meter. Persisted per source so later sessions
+		// restore it without re-running the analysis.
 		m.autoAnchors = msg.Anchors
 		m.autoOnsets = msg.Onsets
 		m.autoActive = len(msg.Anchors) >= 2
 		m.syncDrift = 0
+		if id := m.currentSourceID(); id != "" {
+			m.tab.Metadata["tempo_map:"+id] = player.MarshalTempoMap(msg.Anchors, msg.Onsets)
+		}
 		m.refresh()
 		return m, m.saveTabPrefsCmd()
 	case msgs.PlaybackStartedMsg:
@@ -868,6 +882,21 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		// candidate; the rejection is persisted so future sessions skip it.
 		m.jumpBuffer = ""
 		return m.rejectCurrentSource()
+	case "W":
+		// Re-run the auto alignment for the current source (e.g. after a
+		// better recording was downloaded).
+		m.jumpBuffer = ""
+		if m.tab != nil && m.alignedSources != nil {
+			if id := m.currentSourceID(); id != "" {
+				delete(m.alignedSources, id)
+			}
+			m.errMsg = ""
+			m.infoMsg = "Re-running audio alignment..."
+			m.refresh()
+			return m, m.maybeAlignCmd()
+		}
+		m.errMsg = "No audio source to align"
+		m.refresh()
 	case "m":
 		m.metronome = !m.metronome
 		m.jumpBuffer = ""

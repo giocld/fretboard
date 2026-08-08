@@ -1,6 +1,7 @@
 package player
 
 import (
+	"encoding/json"
 	"time"
 )
 
@@ -176,4 +177,38 @@ func CorrectStepSnap(schedule []PlaybackStep, points []SyncPoint, elapsed time.D
 		}
 	}
 	return 0, false
+}
+
+// TempoMap persists the auto tempo map for a source: the measured anchors
+// and the detected onsets, so a later session can restore the map without
+// re-running the analysis.
+type TempoMap struct {
+	Anchors []SyncPoint `json:"anchors"`
+	Onsets  []float64   `json:"onsets"` // seconds
+}
+
+// MarshalTempoMap serializes the map for tab metadata.
+func MarshalTempoMap(anchors []SyncPoint, onsets []time.Duration) string {
+	tm := TempoMap{Anchors: anchors, Onsets: make([]float64, len(onsets))}
+	for i, o := range onsets {
+		tm.Onsets[i] = o.Seconds()
+	}
+	data, err := json.Marshal(tm)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// UnmarshalTempoMap restores the map from tab metadata.
+func UnmarshalTempoMap(raw string) ([]SyncPoint, []time.Duration) {
+	var tm TempoMap
+	if err := json.Unmarshal([]byte(raw), &tm); err != nil {
+		return nil, nil
+	}
+	onsets := make([]time.Duration, len(tm.Onsets))
+	for i, s := range tm.Onsets {
+		onsets[i] = time.Duration(s * float64(time.Second))
+	}
+	return tm.Anchors, onsets
 }
