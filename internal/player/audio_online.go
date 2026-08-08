@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -67,6 +68,38 @@ func AudioSearchQueries(tab *model.Tab) []string {
 		add(artist + " " + title)
 	} else if title != "" {
 		add(title + " guitar")
+		add(title)
+	} else if artist != "" {
+		add(artist)
+	}
+	return out
+}
+
+// AudioSearchFallbackQueries returns second-pass queries used when the first
+// pass found nothing: song-only engines and phrasing variants that rescue
+// searches the primary list misses.
+func AudioSearchFallbackQueries(tab *model.Tab) []string {
+	if tab == nil {
+		return nil
+	}
+	title := strings.TrimSpace(tab.Title)
+	artist := strings.TrimSpace(tab.Artist)
+	var out []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return
+		}
+		for _, existing := range out {
+			if strings.EqualFold(existing, s) {
+				return
+			}
+		}
+		out = append(out, s)
+	}
+	if title != "" {
+		add(title + " official audio")
+		add(title + " lyrics")
 		add(title)
 	} else if artist != "" {
 		add(artist)
@@ -160,6 +193,49 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 	if len(ranked) > limit*2 {
 		ranked = ranked[:limit*2]
 	}
+	// Second pass: when the primary queries found nothing (not even an
+	// error), retry with the fallback phrasing — song-only engines and
+	// "official audio"/"lyrics" variants often rescue the search.
+	if len(ranked) == 0 {
+		for _, query := range AudioSearchFallbackQueries(tab) {
+			entries, err := ytSearch(query, limit)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			for _, e := range entries {
+				if e.ID == "" {
+					continue
+				}
+				if _, ok := seen[e.ID]; ok {
+					continue
+				}
+				seen[e.ID] = struct{}{}
+				channel := e.Channel
+				if channel == "" {
+					channel = e.Uploader
+				}
+				cat := ClassifyAudioCandidate(tab.Artist, tab.Title, e.Title, channel, e.Description)
+				strictOK := StrictCompatible(cat)
+				if cat == CatOther && strings.Contains(strings.ToLower(e.Title), strings.ToLower(strings.TrimSpace(tab.Title))) {
+					strictOK = true
+				}
+				ranked = append(ranked, AudioSource{
+					ID:       "yt:" + e.ID,
+					Kind:     SourceOnline,
+					Label:    e.Title,
+					Path:     cachedPathForVideo(tab, e.ID),
+					VideoID:  e.ID,
+					Duration: time.Duration(e.Duration) * time.Second,
+					Score:    ScoreYouTubeResult(tab, e.Title, channel, e.Description, e.Duration),
+					Detail:   formatDuration(time.Duration(e.Duration)*time.Second) + " · " + channel + " · online",
+					Category: cat,
+					StrictOK: strictOK,
+				})
+			}
+		}
+		sortAudioSources(ranked)
+	}
 	// A total failure must not be reported as "no matches": the real cause
 	// (yt-dlp missing, timed out, network error) is what the user needs.
 	if len(ranked) == 0 && lastErr != nil {
@@ -250,14 +326,17 @@ func EnsureAudioSource(tab *model.Tab, src AudioSource) (string, error) {
 		if src.VideoID == "" {
 			return "", errors.New("missing video id for online audio")
 		}
-		return DownloadYouTubeAudio(tab, src.VideoID)
+		return DownloadYouTubeAudio(tab, src.VideoID, src.Duration)
 	default:
 		return "", fmt.Errorf("unknown audio source kind: %s", src.Kind)
 	}
 }
 
-// DownloadYouTubeAudio fetches audio for a specific YouTube video id.
-func DownloadYouTubeAudio(tab *model.Tab, videoID string) (string, error) {
+// DownloadYouTubeAudio fetches audio for a specific YouTube video id,
+// validating the result against the search entry's duration (within 30%) so
+// a mismatched download is caught and removed instead of silently becoming
+// "the" audio.
+func DownloadYouTubeAudio(tab *model.Tab, videoID string, expected time.Duration) (string, error) {
 	if videoID == "" {
 		return "", errors.New("empty video id")
 	}
@@ -296,6 +375,17 @@ func DownloadYouTubeAudio(tab *model.Tab, videoID string) (string, error) {
 	for _, ext := range audioExtensions {
 		p := targetBase + ext
 		if fileExists(p) {
+			// Post-download validation: the file must be plausibly the same
+			// recording the search promised.
+			if expected > 0 {
+				if dur, err := ProbeDuration(p); err == nil && dur > 0 {
+					diff := float64(dur-expected) / float64(expected)
+					if diff < -0.3 || diff > 0.3 {
+						_ = os.Remove(p)
+						return "", fmt.Errorf("downloaded audio does not match the search result (%s vs expected %s) — try another source", formatDuration(dur), formatDuration(expected))
+					}
+				}
+			}
 			return p, nil
 		}
 	}

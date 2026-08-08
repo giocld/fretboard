@@ -208,7 +208,7 @@ func TestRenderAudioPickerShowsBadges(t *testing.T) {
 		{ID: "yt:official", Kind: player.SourceOnline, Label: "Sultans of Swing", Category: player.CatOfficial, StrictOK: true},
 		{ID: "yt:live", Kind: player.SourceOnline, Label: "Sultans of Swing Live", Category: player.CatLive, StrictOK: false},
 	}}
-	rendered := renderAudioPickerBody(cat, 0, false, true, 1)
+	rendered := renderAudioPickerBody(cat, 0, false, true, 1, nil)
 	if !strings.Contains(rendered, "[official]") {
 		t.Fatalf("picker should badge official sources, got:\n%s", rendered)
 	}

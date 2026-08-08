@@ -41,7 +41,7 @@ func TestDownloadYouTubeAudioTimeoutKillsHangingYtDlp(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := DownloadYouTubeAudio(&model.Tab{Artist: "Test", Title: "Track"}, "abc123")
+		_, err := DownloadYouTubeAudio(&model.Tab{Artist: "Test", Title: "Track"}, "abc123", 0)
 		done <- err
 	}()
 

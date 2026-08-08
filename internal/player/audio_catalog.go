@@ -143,6 +143,7 @@ func BuildAudioCatalog(tab *model.Tab, tabPath string, extraDirs []string, searc
 		}
 		seen[path] = struct{}{}
 		dur, _ := ProbeDuration(path)
+		localCat := ClassifyLocalFilename(filepath.Base(path))
 		cat.Sources = append(cat.Sources, AudioSource{
 			ID:       "local:" + path,
 			Kind:     SourceLocal,
@@ -151,8 +152,8 @@ func BuildAudioCatalog(tab *model.Tab, tabPath string, extraDirs []string, searc
 			Duration: dur,
 			Score:    100,
 			Detail:   formatDuration(dur) + " · local file",
-			Category: CatLocal,
-			StrictOK: true,
+			Category: localCat,
+			StrictOK: StrictCompatible(localCat),
 		})
 	}
 
@@ -175,6 +176,36 @@ func BuildAudioCatalog(tab *model.Tab, tabPath string, extraDirs []string, searc
 	}
 
 	return cat, nil
+}
+
+// ClassifyLocalFilename classifies a local audio file from its name, so the
+// strict picker treats "Song (Live).mp3" the same way it treats a live
+// YouTube result instead of blindly trusting any local file.
+func ClassifyLocalFilename(name string) AudioCategory {
+	n := strings.ToLower(strings.TrimSpace(name))
+	containsAny := func(kws ...string) bool {
+		for _, kw := range kws {
+			if strings.Contains(n, kw) {
+				return true
+			}
+		}
+		return false
+	}
+	// Lessons first, then covers (before live: "live cover"), then live.
+	switch {
+	case containsAny("lesson", "tutorial", "how to play", "chord chart"):
+		return CatLesson
+	case containsAny("karaoke", "backing track", "minus one", "without vocals", "no vocals"):
+		return CatBacking
+	case containsAny("cover", "tribute", "reimagined", "reinterpretation"):
+		return CatCover
+	case containsAny("live", "mtv unplugged", "session", "soundcheck"):
+		return CatLive
+	case containsAny("official audio", "official video", "official music video", "(official)", "studio"):
+		return CatOfficial
+	default:
+		return CatLocal
+	}
 }
 
 func formatDuration(d time.Duration) string {
@@ -303,6 +334,22 @@ func ScoreYouTubeResult(tab *model.Tab, title, channel, description string, dura
 			score -= 8
 		} else if durationSec >= 120 && durationSec <= 480 {
 			score += 6
+		}
+	}
+	// Duration proximity: the recording should be about as long as the tab
+	// implies. A live jam twice the length and a 40-second clip both fail
+	// this test even when the keywords miss them.
+	if want := ScheduleDurationSeconds(tab, TabBPM(tab)); want > 30 && durationSec > 0 {
+		ratio := float64(durationSec) / want
+		switch {
+		case ratio >= 0.95 && ratio <= 1.08:
+			score += 40 // the right length: studio version territory
+		case ratio >= 0.8 && ratio < 0.95:
+			score += 12 // radio edit: shorter but same recording
+		case ratio > 1.6:
+			score -= 25 // live marathon / medley
+		case ratio < 0.5:
+			score -= 10 // clip / preview
 		}
 	}
 

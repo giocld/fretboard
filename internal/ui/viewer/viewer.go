@@ -441,6 +441,17 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		m.tickDur = msg.Duration
 		m.audioSync = msg.AudioSync
 		m.practiceStart = time.Now()
+		// Drift nudge: without sync points the cursor maps at the tab's
+		// BPM; if the recording is a different tempo, warn once so the user
+		// knows to anchor.
+		if m.audioSync && len(m.syncPoints) == 0 && m.tab != nil {
+			if dur := m.engine.AudioDuration(); dur > 0 && len(m.schedule) > 0 {
+				derived := player.DeriveBPMFromAudio(m.schedule, dur, m.audioOffsetDur())
+				if hint := driftNudge(derived, m.bpm); hint != "" && m.infoMsg == "" {
+					m.infoMsg = hint
+				}
+			}
+		}
 		// Re-arm the A-B loop region from the stored bars: loop points set
 		// while paused never reached the engine before, so audio-synced
 		// playback silently never looped.
@@ -755,13 +766,19 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		m.engine.SetLoop(0, 0)
 		m.refresh()
 	case ">":
-		_ = m.engine.SetRate(m.engine.Rate() * 1.1)
+		if err := m.engine.SetRate(m.engine.Rate() * 1.1); err != nil {
+			m.errMsg = err.Error()
+		}
 		m.refresh()
 	case "<":
-		_ = m.engine.SetRate(m.engine.Rate() / 1.1)
+		if err := m.engine.SetRate(m.engine.Rate() / 1.1); err != nil {
+			m.errMsg = err.Error()
+		}
 		m.refresh()
 	case "r":
-		_ = m.engine.SetRate(1)
+		if err := m.engine.SetRate(1); err != nil {
+			m.errMsg = err.Error()
+		}
 		m.refresh()
 	case "v":
 		m.linear = !m.linear
@@ -782,6 +799,11 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.infoMsg = msg
 			m.refresh()
 		}
+	case "w":
+		// "Wrong version": reject the current source and move to the next
+		// candidate; the rejection is persisted so future sessions skip it.
+		m.jumpBuffer = ""
+		return m.rejectCurrentSource()
 	case "m":
 		m.metronome = !m.metronome
 		m.jumpBuffer = ""
@@ -1575,7 +1597,7 @@ func (m ViewerModel) View() string {
 		body += kit.RenderPanel(m.width-2, "Tab", m.viewport.View())
 	}
 	if m.showAudioPicker {
-		body += RenderAudioPicker(m.width, m.audioCatalog, m.audioCursor, m.fetchingCatalog, m.strictAudio, m.recommendedSourceIdx())
+		body += RenderAudioPicker(m.width, m.audioCatalog, m.audioCursor, m.fetchingCatalog, m.strictAudio, m.recommendedSourceIdx(), rejectedSources(m.tab))
 	}
 
 	playLabel := "play"
@@ -1619,8 +1641,9 @@ func (m *ViewerModel) SetAudioDirs(dirs []string) {
 }
 
 func pickAudioSourceIndex(tab *model.Tab, cat player.AudioCatalog) int {
+	rejected := rejectedSources(tab)
 	if tab != nil && tab.Metadata != nil {
-		if srcID := strings.TrimSpace(tab.Metadata["audio_source"]); srcID != "" {
+		if srcID := strings.TrimSpace(tab.Metadata["audio_source"]); srcID != "" && !rejected[srcID] {
 			if found := cat.FindByID(srcID); found >= 0 {
 				return found
 			}
@@ -1628,11 +1651,71 @@ func pickAudioSourceIndex(tab *model.Tab, cat player.AudioCatalog) int {
 	}
 	// Prefer a ready local backing track; default to MIDI tab synth (not online/BestIndex).
 	for i, src := range cat.Sources {
-		if src.Kind == player.SourceLocal && src.Path != "" && player.FileExists(src.Path) {
+		if src.Kind == player.SourceLocal && src.Path != "" && player.FileExists(src.Path) && !rejected[src.ID] {
 			return i
 		}
 	}
 	return 0
+}
+
+// rejectedSources returns the set of audio source IDs the user marked as the
+// wrong version (persisted under the rejected_audio metadata key).
+func rejectedSources(tab *model.Tab) map[string]bool {
+	out := map[string]bool{}
+	if tab == nil || tab.Metadata == nil {
+		return out
+	}
+	var ids []string
+	if err := json.Unmarshal([]byte(tab.Metadata["rejected_audio"]), &ids); err != nil {
+		return out
+	}
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out
+}
+
+// rejectCurrentSource records the selected source as the wrong version and
+// re-picks the next best candidate, skipping every rejected source.
+func (m *ViewerModel) rejectCurrentSource() (ViewerModel, tea.Cmd) {
+	if m.tab == nil {
+		return *m, nil
+	}
+	src := m.selectedSource()
+	if src.Kind == player.SourceMIDI {
+		m.errMsg = "Nothing to reject — MIDI is not a recording"
+		m.refresh()
+		return *m, nil
+	}
+	if m.tab.Metadata == nil {
+		m.tab.Metadata = map[string]string{}
+	}
+	var ids []string
+	_ = json.Unmarshal([]byte(m.tab.Metadata["rejected_audio"]), &ids)
+	ids = append(ids, src.ID)
+	data, _ := json.Marshal(ids)
+	m.tab.Metadata["rejected_audio"] = string(data)
+
+	m.manualPick = false
+	m.selectedSourceIdx = m.autoPickIndex(m.audioCatalog)
+	if m.selectedSourceIdx >= len(m.audioCatalog.Sources) {
+		m.selectedSourceIdx = 0
+	}
+	m.audioCursor = m.selectedSourceIdx
+	m.restoreCalibrationForSource()
+	newSrc := m.selectedSource()
+	m.infoMsg = fmt.Sprintf("Rejected %q — now on %q", src.Label, newSrc.Label)
+	m.refresh()
+	var cmds []tea.Cmd
+	cmds = append(cmds, m.saveTabPrefsCmd())
+	if newSrc.Kind == player.SourceOnline && (newSrc.Path == "" || !player.FileExists(newSrc.Path)) {
+		m.fetchingAudio = true
+		cmds = append(cmds, m.downloadSelectedSourceCmd())
+	}
+	if len(cmds) > 0 {
+		return *m, tea.Batch(cmds...)
+	}
+	return *m, nil
 }
 
 // pickStrictAudioSourceIndex is the studio-lock variant: local files first,
@@ -1640,8 +1723,9 @@ func pickAudioSourceIndex(tab *model.Tab, cat player.AudioCatalog) int {
 // backing), then MIDI. Live shows, covers, and lessons are never auto-picked
 // because they fight the tab's tempo and arrangement.
 func pickStrictAudioSourceIndex(tab *model.Tab, cat player.AudioCatalog) int {
+	rejected := rejectedSources(tab)
 	if tab != nil && tab.Metadata != nil {
-		if srcID := strings.TrimSpace(tab.Metadata["audio_source"]); srcID != "" {
+		if srcID := strings.TrimSpace(tab.Metadata["audio_source"]); srcID != "" && !rejected[srcID] {
 			if found := cat.FindByID(srcID); found >= 0 {
 				return found
 			}
@@ -1649,10 +1733,12 @@ func pickStrictAudioSourceIndex(tab *model.Tab, cat player.AudioCatalog) int {
 	}
 	best := -1
 	for i, src := range cat.Sources {
-		if src.Kind == player.SourceLocal && src.Path != "" && player.FileExists(src.Path) {
+		// Only studio-compatible local files win the local shortcut: a
+		// "Song (Live).mp3" must not outrank the official recording.
+		if src.Kind == player.SourceLocal && src.Path != "" && player.FileExists(src.Path) && src.StrictOK && !rejected[src.ID] {
 			return i
 		}
-		if !src.StrictOK {
+		if !src.StrictOK || rejected[src.ID] {
 			continue
 		}
 		if best < 0 || src.Score > cat.Sources[best].Score {
@@ -1935,4 +2021,18 @@ func (m ViewerModel) SearchMatchesForTest() []searchMatch { return m.searchMatch
 // keyFromMouse builds a key message from a mouse-driven action name.
 func keyFromMouse(k string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
+}
+
+// driftNudge returns a one-time hint when the recording's derived tempo
+// differs enough from the tab's that the un-anchored cursor will drift, or
+// "" when the tempos agree (or can't be derived).
+func driftNudge(derived, tabBPM int) string {
+	if derived <= 0 || tabBPM <= 0 {
+		return ""
+	}
+	diff := math.Abs(float64(derived-tabBPM)) / float64(tabBPM)
+	if diff <= 0.02 {
+		return ""
+	}
+	return fmt.Sprintf("Audio tempo ≈ %d BPM vs tab %d — drifting ~%.0fs/min; press s at a recognizable bar to anchor", derived, tabBPM, diff*60)
 }

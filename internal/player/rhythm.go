@@ -337,3 +337,22 @@ func restBarTicks(bar model.Bar, cols int) int {
 	}
 	return ticks
 }
+
+// ScheduleDurationSeconds returns the schedule's total wall-clock length at
+// the given BPM — the expected duration of the song as written.
+func ScheduleDurationSeconds(tab *model.Tab, bpm int) float64 {
+	if tab == nil {
+		return 0
+	}
+	if bpm <= 0 {
+		bpm = 120
+	}
+	var total int64
+	for _, s := range BuildSchedule(tab) {
+		total += int64(s.Ticks)
+	}
+	if total <= 0 {
+		return 0
+	}
+	return float64(total) * 60.0 / float64(bpm) / float64(ticksPerQuarter)
+}

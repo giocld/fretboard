@@ -51,3 +51,39 @@ func TestLeadingSilenceAbsentFFmpeg(t *testing.T) {
 		t.Fatalf("no ffmpeg should yield 0, got %v", got)
 	}
 }
+
+// TestLeadingSilenceCountIn guards the count-in-aware detection: silence →
+// click bursts → music anchors at the music, not at the first silence end.
+func TestLeadingSilenceCountIn(t *testing.T) {
+	log := "[silence_start: 0\n" +
+		"[silence_end: 2.0\n" + // end of true intro silence
+		"[silence_start: 2.3\n" + // silence between click groups
+		"[silence_end: 2.6\n" +
+		"[silence_start: 2.9\n" +
+		"[silence_end: 3.1\n" + // last silence before the music
+		"[silence_start: 12.0\n" + // a musical pause much later
+		"[silence_end: 12.4\n"
+	got, err := introOffsetFromSilenceLog(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Seconds() != 3.1 {
+		t.Fatalf("count-in intro should anchor at 3.1s (music start), got %v", got)
+	}
+}
+
+// TestLeadingSilencePauseNotMistakenForIntro guards the first-sustained
+// rule: a pause after the music started must not shift the offset.
+func TestLeadingSilencePauseNotMistakenForIntro(t *testing.T) {
+	log := "[silence_start: 0\n" +
+		"[silence_end: 1.5\n" + // intro silence, music from 1.5
+		"[silence_start: 20.0\n" + // pause at 20s
+		"[silence_end: 21.0\n"
+	got, err := introOffsetFromSilenceLog(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Seconds() != 1.5 {
+		t.Fatalf("offset should stay at the intro end (1.5s), got %v", got)
+	}
+}

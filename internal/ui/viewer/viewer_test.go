@@ -1156,3 +1156,53 @@ func TestBpmChangeRebasesClockWithoutRestart(t *testing.T) {
 		t.Fatalf("session state must survive a BPM change: %+v", m.schedule)
 	}
 }
+
+// TestRejectWrongSource guards the wrong-version feedback loop: w records
+// the current source as rejected, re-picks the next candidate, persists the
+// rejection, and the picker badges it.
+func TestRejectWrongSource(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	m.strictAudio = true
+	m.audioCatalog = player.AudioCatalog{Sources: []player.AudioSource{
+		{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI"},
+		{ID: "yt:live", Kind: player.SourceOnline, Label: "Live version", Category: player.CatLive, StrictOK: false, Score: 100},
+		{ID: "yt:studio", Kind: player.SourceOnline, Label: "Studio version", Category: player.CatOfficial, StrictOK: true, Score: 500},
+	}}
+	m.selectedSourceIdx = 2
+	m.manualPick = true
+
+	// Reject the studio pick; the next strict-compatible candidate is MIDI.
+	m, _ = m.Update(key("w"))
+	if m.selectedSourceIdx != 0 {
+		t.Fatalf("w should re-pick the next candidate, got idx %d", m.selectedSourceIdx)
+	}
+	rej := rejectedSources(m.tab)
+	if !rej["yt:studio"] {
+		t.Fatal("the rejected source should be persisted in metadata")
+	}
+	if !strings.Contains(m.infoMsg, "Rejected") {
+		t.Fatalf("expected a rejection message, got %q", m.infoMsg)
+	}
+	// Picker badges rejected sources.
+	body := renderAudioPickerBody(m.audioCatalog, 0, false, true, 0, rej)
+	if !strings.Contains(body, "⛔ rejected") {
+		t.Fatalf("picker should badge the rejected source:\n%s", body)
+	}
+}
+
+// TestDriftNudge guards the one-time hint when the recording's tempo
+// differs from the tab's.
+func TestDriftNudge(t *testing.T) {
+	if got := driftNudge(117, 120); got == "" || !strings.Contains(got, "drift") {
+		t.Fatalf("3 BPM difference should produce a nudge, got %q", got)
+	}
+	if got := driftNudge(120, 120); got != "" {
+		t.Fatalf("matching tempos must not nudge, got %q", got)
+	}
+	if got := driftNudge(0, 120); got != "" {
+		t.Fatalf("underviable tempo must not nudge, got %q", got)
+	}
+}

@@ -73,3 +73,17 @@ func writeFakeFluidsynth(t *testing.T) string {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return log
 }
+
+// writeFakeMPV writes a fake mpv that prints mpv-style status lines
+// (position feedback) and loops forever, then prepends its directory to
+// PATH.
+func writeFakeMPV(t *testing.T, status string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mpv")
+	script := "#!/bin/sh\nwhile true; do echo '" + status + "'; sleep 0.2; done\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}

@@ -29,12 +29,12 @@ func fetchAudioCatalogCmd(tab *model.Tab, tabPath string, tabID int64, audioDirs
 }
 
 // RenderAudioPicker draws the source selection overlay.
-func RenderAudioPicker(width int, catalog player.AudioCatalog, cursor int, fetching bool, strict bool, recommended int) string {
+func RenderAudioPicker(width int, catalog player.AudioCatalog, cursor int, fetching bool, strict bool, recommended int, rejected map[string]bool) string {
 	title := "Audio source"
 	if fetching {
 		title += "  … searching"
 	}
-	body := renderAudioPickerBody(catalog, cursor, fetching, strict, recommended)
+	body := renderAudioPickerBody(catalog, cursor, fetching, strict, recommended, rejected)
 	return "\n" + kit.RenderPanel(width-2, title, body)
 }
 
@@ -58,7 +58,7 @@ func categoryBadge(c player.AudioCategory) string {
 	}
 }
 
-func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching bool, strict bool, recommended int) string {
+func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching bool, strict bool, recommended int, rejected map[string]bool) string {
 	if fetching && len(catalog.Sources) <= 1 {
 		return kit.MutedStyle.Render("Searching for matching recordings…")
 	}
@@ -72,12 +72,16 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 			prefix = "▸ "
 		}
 		kind := string(src.Kind)
-		rejected := strict && src.Kind == player.SourceOnline && !src.StrictOK
+		notStudio := strict && src.Kind == player.SourceOnline && !src.StrictOK
+		userRejected := rejected[src.ID]
+		dim := notStudio || userRejected
 		line := fmt.Sprintf("%s%s %s%s", prefix, kind, categoryBadge(src.Category), src.Label)
-		if i == recommended && !rejected {
+		if i == recommended && !dim {
 			line += kit.SuccessStyle.Render("  ★")
 		}
-		if rejected {
+		if userRejected {
+			line += kit.MutedStyle.Render("  ⛔ rejected")
+		} else if notStudio {
 			line += kit.MutedStyle.Render("  ⛔ not studio")
 		}
 		if src.Detail != "" {
@@ -88,7 +92,7 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 		}
 		if i == cursor {
 			line = kit.ListSelected.Render(line)
-		} else if rejected {
+		} else if dim {
 			line = kit.MutedStyle.Render(line)
 		} else {
 			line = kit.ListNormal.Render(line)

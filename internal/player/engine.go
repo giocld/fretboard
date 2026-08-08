@@ -27,6 +27,7 @@ type Engine struct {
 	rate          float64       // playback rate (1 = normal)
 	loopStart     time.Duration
 	loopEnd       time.Duration
+	posFB         posFeedback // mpv --term-status-msg feedback (audio mode)
 	shutdown      bool
 }
 
@@ -114,6 +115,15 @@ func (e *Engine) AudioDuration() time.Duration {
 func (e *Engine) Elapsed() time.Duration {
 	if e.mode != "audio" || e.playbackStart.IsZero() {
 		return 0
+	}
+	// mpv reports its true output position — that includes startup latency,
+	// atempo latency, and seek resumption, so the wall-clock estimate is
+	// only used when no feedback has arrived yet.
+	e.posFB.mu.Lock()
+	fb := e.posFB
+	e.posFB.mu.Unlock()
+	if fb.seen {
+		return fb.pos
 	}
 	return e.audioBase + time.Duration(float64(time.Since(e.playbackStart))*e.rate)
 }
