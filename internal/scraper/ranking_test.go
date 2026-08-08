@@ -1,6 +1,10 @@
 package scraper
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Pilfer/ultimate-guitar-scraper/pkg/ultimateguitar"
+)
 
 // TestResultScorePrefersTabsAndRating pins the ranking priority: tabs (by
 // rating) outrank chord sheets — the type gate is hard so a strongly rated
@@ -91,5 +95,57 @@ func TestIsTopRated(t *testing.T) {
 	}
 	if IsTopRated(SearchResult{Rating: 0, Votes: 0}) {
 		t.Fatal("unrated results must not be top-rated")
+	}
+}
+
+// fakePageScraper records the page param it was asked for and returns one
+// result so SearchPage's page plumbing is observable.
+type fakePageScraper struct {
+	gotPage int32
+}
+
+func (f *fakePageScraper) Search(p ultimateguitar.SearchParams) (ultimateguitar.SearchResult, error) {
+	f.gotPage = p.Page
+	return ultimateguitar.SearchResult{}, nil
+}
+
+func (f *fakePageScraper) GetTabByID(id int64) (ultimateguitar.TabResult, error) {
+	return ultimateguitar.TabResult{}, nil
+}
+
+// TestClientSearchPagePassesPage guards G1.3: page 2 reaches the UG backend
+// and the merged result is returned.
+func TestClientSearchPagePassesPage(t *testing.T) {
+	fake := &fakePageScraper{}
+	c := &Client{
+		ug: &ugAPIClient{scraper: fake, rl: &rateLimiter{}},
+	}
+	if _, err := c.SearchPage("layla", 2); err != nil {
+		t.Fatal(err)
+	}
+	if fake.gotPage != 2 {
+		t.Fatalf("UG backend should get page 2, got %d", fake.gotPage)
+	}
+	// Page 1 (the default Search) asks for page 1.
+	fake.gotPage = 0
+	if _, err := c.Search("layla"); err != nil {
+		t.Fatal(err)
+	}
+	if fake.gotPage != 1 {
+		t.Fatalf("default Search should use page 1, got %d", fake.gotPage)
+	}
+}
+
+// TestMergeResultsExported guards the load-more merge: new results append
+// after the existing ones, duplicates collapse.
+func TestMergeResultsExported(t *testing.T) {
+	a := SearchResult{Source: SourceUG, SongName: "Layla", ArtistName: "Clapton", Type: "Tabs", Rating: 4.9}
+	b := SearchResult{Source: SourceSongsterr, SongName: "Layla", ArtistName: "Clapton", Type: "Tabs"}
+	merged := MergeResults([]SearchResult{a}, []SearchResult{b, a})
+	if len(merged) != 2 {
+		t.Fatalf("expected 2 merged results, got %+v", merged)
+	}
+	if merged[0].Source != SourceUG {
+		t.Fatalf("higher-rated duplicate should win, got %+v", merged[0])
 	}
 }

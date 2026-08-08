@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,8 +26,19 @@ func newSongsterrClient(rl *rateLimiter) *songsterrClient {
 }
 
 func (c *songsterrClient) Search(query string) ([]SearchResult, error) {
+	return c.SearchPage(query, 1)
+}
+
+// SearchPage queries Songsterr with a per-page result size (page 1 = 15,
+// page 2 = 30, …). Songsterr has no real pagination, so later pages simply
+// ask for more matches.
+func (c *songsterrClient) SearchPage(query string, page int) ([]SearchResult, error) {
+	if page < 1 {
+		page = 1
+	}
 	c.rl.throttle()
-	u := "https://www.songsterr.com/api/songs?pattern=" + url.QueryEscape(query) + "&size=15"
+	size := 15 * page
+	u := "https://www.songsterr.com/api/songs?pattern=" + url.QueryEscape(query) + "&size=" + strconv.Itoa(size)
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err

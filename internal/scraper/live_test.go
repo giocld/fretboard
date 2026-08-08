@@ -80,3 +80,26 @@ func TestLiveSearchRankedOfficialFirst(t *testing.T) {
 	}
 	t.Logf("PASS: top result is the official tab: %s — %s (%.1f★, %d votes, %s)", top.SongName, top.ArtistName, top.Rating, top.Votes, top.Source)
 }
+
+// TestLiveSearchPage2FindsMore guards G1.3: a second page returns results
+// beyond the first page (new or at least still valid, deduped by the UI).
+// go test -tags live -run LiveSearchPage2 ./internal/scraper/ -v
+func TestLiveSearchPage2FindsMore(t *testing.T) {
+	c := NewClient(1100 * time.Millisecond)
+	p1, err := c.SearchPage("sultans of swing dire straits", 1)
+	if err != nil {
+		t.Fatalf("page 1: %v", err)
+	}
+	p2, err := c.SearchPage("sultans of swing dire straits", 2)
+	if err != nil {
+		t.Fatalf("page 2: %v", err)
+	}
+	if len(p1) == 0 {
+		t.Fatal("page 1 returned nothing")
+	}
+	merged := MergeResults(p1, p2)
+	t.Logf("page1=%d page2=%d merged=%d", len(p1), len(p2), len(merged))
+	if len(merged) <= len(p1) {
+		t.Fatalf("page 2 should surface more results, merged=%d <= page1=%d", len(merged), len(p1))
+	}
+}

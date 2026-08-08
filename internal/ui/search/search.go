@@ -28,6 +28,10 @@ type SearchModel struct {
 	height      int
 	inputActive bool // true = typing query; false = navigating results
 	reqGen      int
+	history     []string // persisted query history, newest first
+	histIdx     int      // position while recalling history with up/down
+	cacheNote   string   // "offline cache" note when results came from cache
+	lastQuery   string   // the query of the current result set
 }
 
 // NewSearchModel creates an online search view.
@@ -44,6 +48,7 @@ func NewSearchModel(client *scraper.Client) SearchModel {
 		width:       80,
 		height:      24,
 		inputActive: true,
+		history:     loadHistory(),
 	}
 }
 
@@ -52,12 +57,15 @@ func (m *SearchModel) Reset() {
 	m.results = nil
 	m.cursor = 0
 	m.errMsg = ""
+	m.cacheNote = ""
 	m.loading = false
 	m.importing = false
 	m.reqGen++
 	m.input.SetValue("")
 	m.inputActive = true
 	m.input.Focus()
+	m.history = loadHistory()
+	m.histIdx = 0
 	m.refresh()
 }
 
@@ -131,6 +139,8 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 					m.refresh()
 					return m, nil
 				}
+				m.lastQuery = q
+				m.cacheNote = ""
 				m.loading = true
 				m.importing = false
 				m.errMsg = ""
@@ -146,7 +156,17 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 				gen := m.reqGen
 				return m, m.importCmd(m.results[m.cursor], gen)
 			}
-		case "tab", "down":
+		case "m":
+			// Load more results from the next page, merged with the current
+			// list (only meaningful in results mode).
+			if !m.inputActive && m.lastQuery != "" && m.client != nil && !m.loading {
+				m.loading = true
+				m.errMsg = ""
+				m.reqGen++
+				gen := m.reqGen
+				return m, m.searchMoreCmd(m.lastQuery, gen)
+			}
+		case "tab":
 			if m.inputActive && len(m.results) > 0 {
 				m.focusResults()
 				return m, nil
@@ -155,19 +175,51 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 				m.moveCursor(1)
 			}
 		case "up":
-			if m.inputActive && len(m.results) > 0 {
-				m.focusResults()
-				if m.cursor > 0 {
-					m.moveCursor(-1)
+			if m.inputActive {
+				// Recall the query history: from an empty box, or continuing
+				// from the query the previous up filled in.
+				cur := m.input.Value()
+				if m.histIdx < len(m.history) && (cur == "" || cur == m.history[m.histIdx-1]) {
+					m.histIdx++
+					m.input.SetValue(m.history[m.histIdx-1])
+					m.refresh()
+					return m, nil
+				}
+				if len(m.results) > 0 {
+					m.focusResults()
+					if m.cursor > 0 {
+						m.moveCursor(-1)
+					}
+					return m, nil
+				}
+				return m, nil
+			}
+			if m.cursor == 0 {
+				m.focusQuery()
+			} else {
+				m.moveCursor(-1)
+			}
+		case "down":
+			if m.inputActive {
+				// Walk forward through the recalled history.
+				if m.histIdx > 0 {
+					m.histIdx--
+					if m.histIdx == 0 {
+						m.input.SetValue("")
+					} else {
+						m.input.SetValue(m.history[m.histIdx-1])
+					}
+					m.refresh()
+					return m, nil
+				}
+				if len(m.results) > 0 {
+					m.focusResults()
+					return m, nil
 				}
 				return m, nil
 			}
 			if !m.inputActive {
-				if m.cursor == 0 {
-					m.focusQuery()
-				} else {
-					m.moveCursor(-1)
-				}
+				m.moveCursor(1)
 			}
 		case "j":
 			if m.inputActive && len(m.results) > 0 {
@@ -204,12 +256,44 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 		}
 		m.loading = false
 		m.importing = false
+		if msg.More {
+			// Load-more pass: merge the next page into the current list.
+			if msg.Err != nil {
+				m.errMsg = "Could not load more: " + msg.Err.Error()
+			} else {
+				prev := len(m.results)
+				merged := scraper.MergeResults(m.results, msg.Results)
+				m.results = merged
+				if n := len(merged) - prev; n > 0 {
+					m.errMsg = fmt.Sprintf("Loaded %d more results", n)
+				} else {
+					m.errMsg = "No more results"
+				}
+			}
+			m.refresh()
+			return m, nil
+		}
 		if msg.Err != nil {
 			m.errMsg = msg.Err.Error()
-			m.focusQuery()
+			// Offline fallback: serve the cached result set for this query
+			// instead of an empty dead end.
+			if cached, ok := loadCache(m.lastQuery); ok {
+				m.results = cached
+				m.cursor = 0
+				m.cacheNote = "offline cache — " + msg.Err.Error()
+				m.errMsg = ""
+				m.focusResults()
+				m.viewport.SetYOffset(0)
+			} else {
+				m.focusQuery()
+			}
 		} else {
 			m.results = msg.Results
 			m.cursor = 0
+			m.cacheNote = ""
+			m.history = addHistory(m.history, m.lastQuery)
+			saveHistory(m.history)
+			saveCache(m.lastQuery, msg.Results)
 			if len(m.results) == 0 {
 				m.errMsg = "No results — try a different query"
 				m.focusQuery()
@@ -270,6 +354,14 @@ func (m *SearchModel) searchCmd(query string, gen int) tea.Cmd {
 	return func() tea.Msg {
 		res, err := m.client.Search(query)
 		return msgs.SearchPerformedMsg{Results: res, Err: err, Gen: gen}
+	}
+}
+
+// searchMoreCmd fetches the next page of results for the current query.
+func (m *SearchModel) searchMoreCmd(query string, gen int) tea.Cmd {
+	return func() tea.Msg {
+		res, err := m.client.SearchPage(query, 2)
+		return msgs.SearchPerformedMsg{Results: res, Err: err, Gen: gen, More: true}
 	}
 }
 
@@ -341,6 +433,9 @@ func (m SearchModel) renderResults() string {
 	if m.errMsg != "" {
 		return kit.ErrorStyle.Render(m.errMsg)
 	}
+	if m.cacheNote != "" {
+		return kit.WarningStyle.Render(m.cacheNote) + "\n\n" + m.renderResultList()
+	}
 	if len(m.results) == 0 {
 		hint := "Type a query and press Enter to search."
 		if m.inputActive {
@@ -348,6 +443,11 @@ func (m SearchModel) renderResults() string {
 		}
 		return kit.MutedStyle.Render(hint)
 	}
+	return m.renderResultList()
+}
+
+// renderResultList renders the ranked result rows.
+func (m SearchModel) renderResultList() string {
 	var b strings.Builder
 	for i, r := range m.results {
 		line := formatResult(r)
@@ -360,7 +460,7 @@ func (m SearchModel) renderResults() string {
 	}
 	if !m.inputActive {
 		b.WriteString("\n")
-		b.WriteString(kit.MutedStyle.Render("/ or i — edit query   Enter — open tab"))
+		b.WriteString(kit.MutedStyle.Render("/ or i — edit query   Enter — open tab   m — more results"))
 	}
 	return b.String()
 }

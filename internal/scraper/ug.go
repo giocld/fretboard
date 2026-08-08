@@ -40,11 +40,19 @@ func newUGAPIClient(rl *rateLimiter) *ugAPIClient {
 
 // Search queries Ultimate Guitar API for tabs matching query.
 func (c *ugAPIClient) Search(query string) ([]SearchResult, error) {
+	return c.SearchPage(query, 1)
+}
+
+// SearchPage queries a specific page of Ultimate Guitar results.
+func (c *ugAPIClient) SearchPage(query string, page int) ([]SearchResult, error) {
+	if page < 1 {
+		page = 1
+	}
 	c.rl.throttle()
 	res, err := c.scraper.Search(ultimateguitar.SearchParams{
 		Title: query,
 		Type:  []ultimateguitar.TabType{ultimateguitar.TabTypeTabs},
-		Page:  1,
+		Page:  int32(page),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("ug search: %w", err)

@@ -81,6 +81,7 @@ type SearchPerformedMsg struct {
 	Results []scraper.SearchResult
 	Err     error
 	Gen     int
+	More    bool // true when this is a load-more page, merged into the list
 }
 
 // TabFetchedMsg is sent when an online tab has been fetched and parsed.

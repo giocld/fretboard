@@ -36,18 +36,26 @@ func NewClient(delay time.Duration) *Client {
 // and the plain-text tab sites (guitartabs.cc, guitaretab.com), merged and
 // deduplicated.
 func (c *Client) Search(query string) ([]SearchResult, error) {
+	return c.SearchPage(query, 1)
+}
+
+// SearchPage searches every backend for one page of results (page 1 = the
+// default search; later pages ask UG for its next page and Songsterr for a
+// larger result set; sources without pagination return their single page,
+// which callers deduplicate against the existing list).
+func (c *Client) SearchPage(query string, page int) ([]SearchResult, error) {
 	var results []SearchResult
 	var lastErr error
 
 	if c.ug != nil {
-		res, err := c.ug.Search(query)
+		res, err := c.ug.SearchPage(query, page)
 		if err == nil && len(res) > 0 {
 			results = append(results, res...)
 		} else if err != nil {
 			lastErr = err
 		}
 	}
-	if len(results) == 0 && c.ugHTML != nil {
+	if page <= 1 && len(results) == 0 && c.ugHTML != nil {
 		res, err := c.ugHTML.Search(query)
 		if err == nil && len(res) > 0 {
 			results = append(results, res...)
@@ -56,7 +64,7 @@ func (c *Client) Search(query string) ([]SearchResult, error) {
 		}
 	}
 	if c.songsterr != nil {
-		st, err := c.songsterr.Search(query)
+		st, err := c.songsterr.SearchPage(query, page)
 		if err == nil {
 			results = mergeSearchResults(results, st)
 		} else if len(results) == 0 && lastErr == nil {
@@ -138,6 +146,13 @@ func resultScore(r SearchResult) int {
 		score += 10
 	}
 	return score
+}
+
+// MergeResults combines two result sets, deduplicating by source + artist +
+// song + type and keeping the higher-rated copy of a duplicate. The merged
+// list is ranked best-first (tabs, then rating/votes/source trust).
+func MergeResults(primary, extra []SearchResult) []SearchResult {
+	return mergeSearchResults(primary, extra)
 }
 
 func mergeSearchResults(primary, extra []SearchResult) []SearchResult {
