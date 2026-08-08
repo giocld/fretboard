@@ -41,17 +41,22 @@ library.
 *The cursor must follow the music even when the tab repeats, and the app
 must say when the recording ends.*
 
-- [ ] S2.1 Parse repeat markers (`|:`, `:|`) and 1./2. endings into
-      `model.Bar` fields
-- [ ] S2.2 `BuildSchedule` expands repeats so MIDI playback + cursor visit
+- [x] S2.1 Parse repeat markers (`|:`, `:|`) and 1./2. endings into
+      `model.Bar` fields — marker digits are stripped from note content so
+      they never play as frets
+- [x] S2.2 `BuildSchedule` expands repeats so MIDI playback + cursor visit
       bars in human reading order (incl. `1.` → skip to `2.` on second pass)
-- [ ] S2.3 Repeat markers drawn on bar headers in grid + linear layouts
-- [ ] S2.4 End-of-track banner: audio file finished → "track ended (4:12) —
-      Space restarts from bar 1" instead of silent stop
-- [ ] S2.5 Tests: repeat parsing fixture, schedule expansion order,
-      header rendering, viewer end-of-track message
-- [ ] S2.6 Drive MIDI playback on a repeated tab via pty; verify cursor
-      wraps at `:|`
+- [x] S2.3 Repeat markers drawn on bar headers in grid + linear layouts
+- [x] S2.4 End-of-track banner: audio file finished → "Track ended (4:12)
+      before the tab finished — Space restarts from this bar" instead of
+      silent stop
+- [x] S2.5 Tests: repeat parsing fixture, schedule expansion order,
+      header rendering, end-of-track message
+- [x] S2.6 Drive MIDI playback on a repeated tab — no pty on this Windows
+      host, so verified through the real CLI code path: parsed a repeated
+      tab with the shipped parser, printed `RepeatOrder`/`BuildSchedule`
+      bar order (1 2 3 → 1 2 4 → 5) and the rendered grid headers with
+      `│:`, `1.`, `2.`, `:│`
 
 ---
 

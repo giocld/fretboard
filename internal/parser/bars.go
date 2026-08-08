@@ -87,12 +87,65 @@ func barsFromColumn(col []string, stringsPerColumn, startNum int, rhythm []model
 				stop = len(line)
 			}
 			sliced[s] = line[start:stop]
+			// A "1."/"2." ending marker is notation, not a note: strip it
+			// from the content so it never plays as a fret.
+			if idx := leadingEndingIndex(sliced[s]); idx >= 0 {
+				sliced[s] = sliced[s][:idx] + sliced[s][idx+2:]
+			}
 		}
 		bar.Strings = reverseAndParse(sliced)
+		bar.RepeatStart, bar.RepeatEnd, bar.Ending = repeatMarkers(col, start, end)
 		bars = append(bars, bar)
 		barNum++
 	}
 	return bars
+}
+
+// repeatMarkers inspects the raw chunk lines for one bar's pipe-delimited
+// range and reports its repeat structure: a "|" followed by ":" opens a
+// repeat ("|:--0--|"), a ":" before the closing "|" closes one
+// ("--0--:|"), and a leading "1." / "2." marks a first/second ending. The
+// markers usually sit on the top string line, but every line is checked so
+// tabs that repeat the marker on each line work too.
+func repeatMarkers(col []string, start, end int) (repeatStart, repeatEnd bool, ending int) {
+	for _, line := range col {
+		if start < len(line) && line[start] == ':' {
+			repeatStart = true
+		}
+		if end > 0 && end-1 < len(line) && line[end-1] == ':' {
+			repeatEnd = true
+		}
+		if n := leadingEndingNumber(line, start, end); n > 0 {
+			ending = n
+		}
+	}
+	return repeatStart, repeatEnd, ending
+}
+
+// leadingEndingNumber looks for a "1." or "2." ending marker at the start
+// of a bar's content (after optional spaces), e.g. "|1.---|" or "| 2.--|".
+func leadingEndingNumber(line string, start, end int) int {
+	i := leadingEndingIndex(line[start:end])
+	if i < 0 {
+		return 0
+	}
+	return int(line[start+i] - '0')
+}
+
+// leadingEndingIndex returns the index of the "N." ending marker within a
+// bar's content slice, or -1 when there is none.
+func leadingEndingIndex(content string) int {
+	if content == "" {
+		return -1
+	}
+	i := 0
+	for i < len(content) && content[i] == ' ' {
+		i++
+	}
+	if i+1 < len(content) && content[i] >= '1' && content[i] <= '2' && content[i+1] == '.' {
+		return i
+	}
+	return -1
 }
 
 // rhythmForBar filters rhythm marks to the pipe-delimited range [start, end)

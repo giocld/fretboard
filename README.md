@@ -7,7 +7,7 @@ from a keyboard-driven Bubble Tea TUI.
 ## Features
 
 - **ASCII tab viewer** with syntax highlighting, string colors, and vim-style navigation.
-- **Rhythm-aware playback** — infers note durations from column spacing; honors rhythm rows (`| q e e q |`) when present.
+- **Rhythm-aware playback** — infers note durations from column spacing; honors rhythm rows (`| q e e q |`) when present; plays repeats (`|:` `:|`) and 1./2. endings in human reading order.
 - **Audio playback** — tries a real backing track first (`ffplay`/`mpv`), then MIDI via `fluidsynth`/`timidity`, with a moving cursor.
 - **Online tab search** across four sources — Ultimate Guitar (API + HTML fallback), Songsterr, GuitarTabs.cc, and GuitareTab.com (`o` in library), merged **best-first**: tabs outrank chord sheets, and UG rating/votes (`★ 4.9 · 2.1k`) decide the order, so the official version surfaces above covers.
 - **Guitar Pro import** for `.gp3`, `.gp4`, `.gp5`, `.gpx` via the bundled `gp-parser` helper (Rust + `guitarpro`).

@@ -598,3 +598,17 @@ func sampleTab() *model.Tab {
 		Metadata: map[string]string{},
 	}
 }
+
+// TestTrackEndedBanner guards S2.4: an audio file that ends before the tab
+// finishes produces an explanatory message with a restart hint.
+func TestTrackEndedBanner(t *testing.T) {
+	got := trackEndedBanner(4*time.Minute + 12*time.Second)
+	for _, want := range []string{"4:12", "Track ended", "Space restarts"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("banner %q missing %q", got, want)
+		}
+	}
+	if got := trackEndedBanner(0); !strings.Contains(got, "Track ended") {
+		t.Fatalf("unknown-duration banner should still explain, got %q", got)
+	}
+}

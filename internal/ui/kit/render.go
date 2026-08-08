@@ -78,7 +78,7 @@ func renderTabLinear(tab *model.Tab, offset int, cur *TabCursor, withHeader bool
 			sb.WriteString("\n")
 		}
 		highlight := cur != nil && cur.Bar == i
-		sb.WriteString(barHeader(bar.Number, barWidthInLinear(bar, tab)))
+		sb.WriteString(barHeaderWithMarkers(bar))
 		sb.WriteString("\n")
 		// String rows prefix their content with a 3-wide right-aligned label
 		// plus 2 spaces; the ruler must use the same 5-column prefix or the
@@ -113,6 +113,24 @@ func barWidthInLinear(bar model.Bar, tab *model.Tab) int {
 // barHeader renders the "│ N ───" bar-number line.
 func barHeader(number int, width int) string {
 	return BarNumberStyle.Render(fmt.Sprintf("│ %d %s", number, strings.Repeat("─", width)))
+}
+
+// barHeaderWithMarkers renders the linear-layout bar header including repeat
+// structure markers ("|:", ":|", "1."/"2.") when present.
+func barHeaderWithMarkers(bar model.Bar) string {
+	open := "│"
+	if bar.RepeatStart {
+		open = "│:"
+	}
+	close := ""
+	if bar.RepeatEnd {
+		close = ":│"
+	}
+	ending := ""
+	if bar.Ending == 1 || bar.Ending == 2 {
+		ending = fmt.Sprintf("%d.", bar.Ending)
+	}
+	return BarNumberStyle.Render(fmt.Sprintf("%s %d %s%s%s", open, bar.Number, ending, strings.Repeat("─", barWidthInLinear(bar, nil)), close))
 }
 
 // RenderTabWithCursor renders a tab and optionally draws a vertical playhead.
@@ -295,8 +313,22 @@ func renderBarRow(b *strings.Builder, tab *model.Tab, start, end, barWidth, offs
 		bar := tab.Bars[barIdx]
 		highlight := cur != nil && barIdx == cur.Bar
 
-		header := fmt.Sprintf("│ %d ", bar.Number)
-		header += strings.Repeat("─", 12)
+		// Repeat structure markers: "|:" opens a repeat, ":|" closes one,
+		// "1."/"2." label endings — mirrored on the bar header so the
+		// player sees the same structure the playback follows.
+		open := "│"
+		if bar.RepeatStart {
+			open = "│:"
+		}
+		close := ""
+		if bar.RepeatEnd {
+			close = ":│"
+		}
+		ending := ""
+		if bar.Ending == 1 || bar.Ending == 2 {
+			ending = fmt.Sprintf("%d.", bar.Ending)
+		}
+		header := fmt.Sprintf("%s %d %s%s%s ", open, bar.Number, ending, strings.Repeat("─", 12), close)
 		headerStyle := MutedStyle
 		switch {
 		case highlight:

@@ -24,6 +24,13 @@ type Bar struct {
 	Capo        int
 	Rhythm      []RhythmMark // optional rhythm row above the strings
 	ColumnTicks []int        // optional per-column MIDI tick durations (GP import)
+
+	// Repeat structure ("|:" ":|" and 1./2. endings): playback visits the
+	// section twice, skipping first-ending bars on the second pass and
+	// second-ending bars on the first pass.
+	RepeatStart bool
+	RepeatEnd   bool
+	Ending      int // 1 or 2 for first/second endings; 0 = no ending
 }
 
 // StringLine represents one string in one bar.

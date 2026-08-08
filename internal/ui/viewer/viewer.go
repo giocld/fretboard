@@ -376,6 +376,12 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		if m.engine.PlaybackEnded() {
 			atEnd := len(m.schedule) == 0 || m.stepIdx >= len(m.schedule)-1
 			if m.audioSync {
+				// A recording that ends before the tab does (radio edit, live
+				// cut) must not look like a crash: say what happened and how
+				// to restart.
+				if !atEnd {
+					m.errMsg = trackEndedBanner(m.engine.AudioDuration())
+				}
 				m.stopPlayback()
 				m.refresh()
 				return m, nil
@@ -739,6 +745,18 @@ func (m *ViewerModel) saveSyncPoints() {
 	}
 	m.tab.Metadata[m.syncPointsKey()] = string(data)
 	m.tab.Metadata[model.MetaKeySyncPoints] = string(data)
+}
+
+// trackEndedBanner explains an early audio-file end (radio edits, live
+// cuts) and the restart path. "before the tab finished" is the key
+// distinction from a normal end-of-tab stop.
+func trackEndedBanner(dur time.Duration) string {
+	if dur > 0 {
+		m := int(dur / time.Minute)
+		s := int(dur/time.Second) % 60
+		return fmt.Sprintf("Track ended (%d:%02d) before the tab finished — Space restarts from this bar", m, s)
+	}
+	return "Track ended before the tab finished — Space restarts from this bar"
 }
 
 // loopStartTime returns the audio file position of the loop start bar:

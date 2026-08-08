@@ -206,3 +206,28 @@ func displayColumnOf(s, marker string) int {
 	}
 	return lipgloss.Width(s[:idx])
 }
+
+// TestBarHeaderShowsRepeatMarkers guards S2.3: repeat structure is visible on
+// the grid bar headers so the player sees the same form playback follows.
+func TestBarHeaderShowsRepeatMarkers(t *testing.T) {
+	tab := &model.Tab{
+		Tuning: model.Standard,
+		Bars: []model.Bar{
+			{Number: 1, RepeatStart: true, Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}},
+			{Number: 2, Ending: 1, Strings: []model.StringLine{{Segments: []model.Segment{{Char: '3', Value: 3, Position: 0, Width: 1}}}}},
+			{Number: 3, Ending: 2, RepeatEnd: true, Strings: []model.StringLine{{Segments: []model.Segment{{Char: '5', Value: 5, Position: 0, Width: 1}}}}},
+		},
+	}
+	out := RenderTabGridBody(tab, 60, 0, nil)
+	for _, want := range []string{"│:", ":│", "1.", "2."} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("grid header missing repeat marker %q in:\n%s", want, out)
+		}
+	}
+	out = RenderTabLinearBody(tab, 0, nil)
+	for _, want := range []string{"│:", ":│", "1.", "2."} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("linear header missing repeat marker %q in:\n%s", want, out)
+		}
+	}
+}

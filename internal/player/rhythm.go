@@ -126,12 +126,17 @@ func columnTicks(bar model.Bar, col, cols int, noteCols []int, idx int) int {
 }
 
 // BuildSchedule returns playback steps with rhythm-aware tick durations.
+// Bars are visited in repeat-aware performance order (RepeatOrder), so "|:"
+// ":|" sections and 1./2. endings play the way a human reads them: the
+// section is repeated once, first-ending bars are skipped on the second pass
+// and second-ending bars are skipped on the first.
 func BuildSchedule(tab *model.Tab) []PlaybackStep {
 	if tab == nil || len(tab.Bars) == 0 {
 		return nil
 	}
 	var steps []PlaybackStep
-	for b, bar := range tab.Bars {
+	for _, b := range RepeatOrder(tab) {
+		bar := tab.Bars[b]
 		if len(bar.Strings) == 0 {
 			continue
 		}
@@ -159,6 +164,73 @@ func BuildSchedule(tab *model.Tab) []PlaybackStep {
 		}
 	}
 	return steps
+}
+
+// RepeatOrder returns the bar indices in performance order, expanding "|:"
+// ":|" repeat sections once and resolving 1./2. endings. Sections without
+// endings simply play twice; a section with endings plays ending-1 bars on
+// the first pass and ending-2 bars on the second. Malformed markers (an
+// unpaired ":|" or "|:") fall back to playing the bar once.
+func RepeatOrder(tab *model.Tab) []int {
+	if tab == nil {
+		return nil
+	}
+	bars := tab.Bars
+	endToSection := map[int][2]int{}
+	stack := -1
+	for i, b := range bars {
+		if b.RepeatStart {
+			stack = i
+		}
+		if b.RepeatEnd {
+			if stack >= 0 {
+				endToSection[i] = [2]int{stack, i}
+				stack = -1
+			}
+		}
+	}
+	inSection := func(i int) bool {
+		for _, s := range endToSection {
+			if i >= s[0] && i <= s[1] {
+				return true
+			}
+		}
+		return false
+	}
+
+	var order []int
+	i := 0
+	for i < len(bars) {
+		if sec, ok := endToSection[i]; ok {
+			// Bar i closes a repeat section that started at sec[0]. The walk
+			// already emitted sec[0]..i-1 on the first pass; emit bar i too
+			// (unless it is a second ending, which only plays on pass 2),
+			// then replay the whole section, skipping first endings.
+			if bars[i].Ending != 2 {
+				order = append(order, i)
+			}
+			for j := sec[0]; j <= sec[1]; j++ {
+				if bars[j].Ending == 1 {
+					continue
+				}
+				order = append(order, j)
+			}
+			i++
+			continue
+		}
+		if inSection(i) && bars[i].Ending == 2 {
+			i++ // second-ending bar: skip on the first pass
+			continue
+		}
+		order = append(order, i)
+		i++
+	}
+	// Safety net against pathological marker chains: never expand beyond a
+	// sane multiple of the tab size.
+	if len(order) > len(bars)*3 {
+		order = order[:len(bars)*3]
+	}
+	return order
 }
 
 // StepIndexAtPosition returns the first schedule index at or after bar/col.
