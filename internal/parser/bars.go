@@ -136,7 +136,16 @@ func repeatMarkers(col []string, start, end int) (repeatStart, repeatEnd bool, e
 
 // leadingEndingNumber looks for a "1." or "2." ending marker at the start
 // of a bar's content (after optional spaces), e.g. "|1.---|" or "| 2.--|".
+// String lines in a column can be shorter than the bar range taken from the
+// top line, so the slice is bounds-guarded (this used to panic on real
+// fetched tabs with ragged line lengths).
 func leadingEndingNumber(line string, start, end int) int {
+	if start < 0 || start >= len(line) {
+		return 0
+	}
+	if end > len(line) {
+		end = len(line)
+	}
 	i := leadingEndingIndex(line[start:end])
 	if i < 0 {
 		return 0
