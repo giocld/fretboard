@@ -129,18 +129,21 @@ read, and pair the MP3s you already own.*
 
 *Small confirm-and-fix items that protect existing work.*
 
-- [ ] S6.1 `S` removes the last sync anchor (undo); repeated presses remove
-      more; help/footer updated; nudge `o` becomes undo-able (press again
-      restores previous offset)
-- [ ] S6.2 Recursive watcher: subdirectories of `auto_import_path` are
-      watched too
-- [ ] S6.3 Sticky manual audio pick: a manual picker selection survives
-      catalog refreshes
-- [ ] S6.4 Crash log: panic in the TUI writes `~/.config/fretboard/crash.log`
-      and shows a friendly message
-- [ ] S6.5 Tests: anchor undo order, nested watcher event, sticky pick,
-      crash-log write
-- [ ] S6.6 Full regression: `go test ./...` + `cd tests && go test ./...`
+- [x] S6.1 `S` removes the last sync anchor (undo, repeat to remove more);
+      `o` reset is undo-able (press again restores); help/footer updated
+- [x] S6.2 Recursive watcher: subdirectories of `auto_import_path` are
+      watched (initial walk + Create-event walk + debounced re-walk that
+      closes the parent-before-child registration race)
+- [x] S6.3 Sticky manual audio pick: a manual picker selection survives
+      catalog refreshes (falls back to auto-pick only when the source
+      disappears)
+- [x] S6.4 Crash log: a TUI panic writes `~/.config/fretboard/crash.log`
+      (timestamp + panic + stack) and shows a friendly message instead of
+      a raw stack
+- [x] S6.5 Tests: anchor undo order, offset-reset undo, sticky pick +
+      fallback, crash-log write, recursive watcher (watchlist polling makes
+      the Windows event tests deterministic)
+- [x] S6.6 Full regression: all 14 packages + e2e module green
 
 ---
 

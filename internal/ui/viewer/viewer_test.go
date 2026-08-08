@@ -883,3 +883,82 @@ func TestNoteNamesKey(t *testing.T) {
 		t.Fatal("e should toggle notes back off")
 	}
 }
+
+// TestSyncBarUndoRemovesLastAnchor guards S6.1: S removes the most recent
+// sync anchor instead of wiping all of them.
+func TestSyncBarUndoRemovesLastAnchor(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	m.syncPoints = []player.SyncPoint{{Bar: 1, Seconds: 0.5}, {Bar: 3, Seconds: 12.0}, {Bar: 5, Seconds: 25.0}}
+
+	m, _ = m.Update(key("S"))
+	if len(m.syncPoints) != 2 || m.syncPoints[1].Bar != 3 {
+		t.Fatalf("S should drop the last anchor, got %+v", m.syncPoints)
+	}
+	if !strings.Contains(m.infoMsg, "Removed sync anchor at bar 5") {
+		t.Fatalf("expected an undo message, got %q", m.infoMsg)
+	}
+	m, _ = m.Update(key("S"))
+	m, _ = m.Update(key("S"))
+	if len(m.syncPoints) != 0 {
+		t.Fatalf("repeated S should remove all anchors, got %+v", m.syncPoints)
+	}
+	m, _ = m.Update(key("S"))
+	if !strings.Contains(m.errMsg, "No sync points") {
+		t.Fatalf("S on empty anchors should say so, got %q", m.errMsg)
+	}
+}
+
+// TestOffsetResetUndoRestores guards S6.1: o resets the offset and pressing
+// o again restores the previous value.
+func TestOffsetResetUndoRestores(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	m.audioOffset = 3.5
+
+	m, _ = m.Update(key("o"))
+	if m.audioOffset != 0 {
+		t.Fatalf("o should reset the offset, got %v", m.audioOffset)
+	}
+	m, _ = m.Update(key("o"))
+	if m.audioOffset != 3.5 {
+		t.Fatalf("second o should restore the previous offset, got %v", m.audioOffset)
+	}
+}
+
+// TestManualPickStickyAcrossRefresh guards S6.3: a manually chosen audio
+// source survives a catalog refresh (auto-pick must not snap back).
+func TestManualPickStickyAcrossRefresh(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	cat := player.AudioCatalog{Sources: []player.AudioSource{
+		{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI"},
+		{ID: "yt:abc", Kind: player.SourceOnline, Label: "Studio", Category: player.CatOfficial, StrictOK: true, Score: 500},
+		{ID: "yt:live", Kind: player.SourceOnline, Label: "Live", Category: player.CatLive, StrictOK: false, Score: 100},
+	}}
+	m.audioCatalog = cat
+	m.selectedSourceIdx = 2 // user picked the live version deliberately
+	m.manualPick = true
+	m.strictAudio = true
+
+	// A refreshed catalog (same sources) must keep the manual pick.
+	m, _ = m.Update(msgs.AudioCatalogMsg{Catalog: cat, TabID: 0, TabPath: "x.txt", Artist: "", Title: "X"})
+	if m.selectedSourceIdx != 2 {
+		t.Fatalf("manual pick should survive refresh, got idx %d", m.selectedSourceIdx)
+	}
+	// If the picked source disappears, fall back to auto-pick (MIDI-safe).
+	shrunken := player.AudioCatalog{Sources: []player.AudioSource{
+		{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI"},
+		{ID: "yt:abc", Kind: player.SourceOnline, Label: "Studio", Category: player.CatOfficial, StrictOK: true, Score: 500},
+	}}
+	m, _ = m.Update(msgs.AudioCatalogMsg{Catalog: shrunken, TabID: 0, TabPath: "x.txt", Artist: "", Title: "X"})
+	if m.selectedSourceIdx != 1 {
+		t.Fatalf("missing source should fall back to auto-pick, got idx %d", m.selectedSourceIdx)
+	}
+}

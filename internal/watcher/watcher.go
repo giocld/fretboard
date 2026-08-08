@@ -26,24 +26,29 @@ type Watcher struct {
 	Events chan FileAddedMsg
 	dir    string
 	done   chan struct{}
+	fw     *fsnotify.Watcher // registered watch handles (test helper)
 
 	closeOnce sync.Once
 
 	debounceMu sync.Mutex
 	debounce   map[string]*time.Timer
+	rewalkMu   sync.Mutex
+	rewalk     *time.Timer // debounced full-tree re-registration
 }
 
-// NewWatcher creates and starts a watcher for dir.
+// NewWatcher creates and starts a watcher for dir, including every
+// subdirectory (recursive), so tabs dropped anywhere under the tree are
+// auto-imported.
 func NewWatcher(dir string) (*Watcher, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, fmt.Errorf("watcher: %w", err)
 	}
-	w, err := fsnotify.NewWatcher()
+	fw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("watcher: %w", err)
 	}
-	if err := w.Add(dir); err != nil {
-		w.Close()
+	if err := addRecursive(fw, dir); err != nil {
+		fw.Close()
 		return nil, fmt.Errorf("watcher: %w", err)
 	}
 	watcher := &Watcher{
@@ -52,8 +57,32 @@ func NewWatcher(dir string) (*Watcher, error) {
 		done:     make(chan struct{}),
 		debounce: make(map[string]*time.Timer),
 	}
-	go watcher.loop(w)
+	watcher.fw = fw
+	go watcher.loop(fw)
 	return watcher, nil
+}
+
+// addRecursive registers dir and all of its subdirectories with fsnotify.
+func addRecursive(fw *fsnotify.Watcher, dir string) error {
+	var lastErr error
+	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // unreadable subtree: skip, keep the rest
+		}
+		if info.IsDir() {
+			if err := fw.Add(p); err != nil {
+				lastErr = err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if lastErr != nil && len(fw.WatchList()) == 0 {
+		return lastErr
+	}
+	return nil
 }
 
 // NextEventCmd returns a tea.Cmd that waits for the next file event.
@@ -104,6 +133,24 @@ func (w *Watcher) Close() {
 	})
 }
 
+// scheduleRewalk re-registers the whole tree shortly after a directory was
+// created. A race exists where a subdirectory is created before its parent
+// watch is active, so its Create event is never delivered; the re-walk
+// closes that gap.
+func (w *Watcher) scheduleRewalk() {
+	w.rewalkMu.Lock()
+	defer w.rewalkMu.Unlock()
+	if w.rewalk == nil {
+		w.rewalk = time.AfterFunc(300*time.Millisecond, func() {
+			w.rewalkMu.Lock()
+			w.rewalk = nil
+			w.rewalkMu.Unlock()
+			fmt.Fprintf(os.Stderr, "REWALK dir=%s\n", w.dir)
+			_ = addRecursive(w.fw, w.dir)
+		})
+	}
+}
+
 func (w *Watcher) scheduleImport(path string) {
 	w.debounceMu.Lock()
 	defer w.debounceMu.Unlock()
@@ -131,6 +178,14 @@ func (w *Watcher) loop(fw *fsnotify.Watcher) {
 		case ev, ok := <-fw.Events:
 			if !ok {
 				return
+			}
+			if ev.Op&fsnotify.Create != 0 {
+				// A new directory under the tree: watch it (and any nested
+				// directories it already contains) so deeper tabs are seen.
+				if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
+					_ = addRecursive(fw, ev.Name)
+					w.scheduleRewalk()
+				}
 			}
 			if ev.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename) != 0 && isTabImportPath(ev.Name) {
 				w.scheduleImport(ev.Name)
@@ -163,4 +218,9 @@ func isTabImportPath(path string) bool {
 	default:
 		return false
 	}
+}
+
+// fsnotifyWatchList returns the registered watch paths (test helper).
+func (w *Watcher) fsnotifyWatchList() []string {
+	return w.fw.WatchList()
 }

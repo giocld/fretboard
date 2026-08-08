@@ -54,6 +54,9 @@ type ViewerModel struct {
 	searchInput   string
 	searchMatches []searchMatch
 	searchIdx     int
+	// Undo support.
+	prevOffset float64 // offset value before the last `o` reset
+	manualPick bool    // user chose the source manually; keep it across refreshes
 
 	cursorBar  int
 	cursorCol  int
@@ -113,6 +116,8 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.loopEndBar = 0
 	m.follow = true
 	m.infoMsg = ""
+	m.prevOffset = 0
+	m.manualPick = false
 	m.restoreCalibrationForSource()
 	_ = m.engine.Stop()
 	m.engine.SetLoop(0, 0)
@@ -352,7 +357,18 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 						m.audioCursor = len(m.audioCatalog.Sources) - 1
 					}
 				} else if !m.playing {
-					m.selectedSourceIdx = m.autoPickIndex(msg.Catalog)
+					if m.manualPick && m.selectedSourceIdx >= 0 && m.selectedSourceIdx < len(msg.Catalog.Sources) {
+						// A manually chosen source survives catalog refreshes:
+						// keep it when it is still available.
+						cur := msg.Catalog.Sources[m.selectedSourceIdx]
+						if idx := msg.Catalog.FindByID(cur.ID); idx >= 0 {
+							m.selectedSourceIdx = idx
+						} else {
+							m.selectedSourceIdx = m.autoPickIndex(msg.Catalog)
+						}
+					} else {
+						m.selectedSourceIdx = m.autoPickIndex(msg.Catalog)
+					}
 					if m.selectedSourceIdx >= len(m.audioCatalog.Sources) {
 						m.selectedSourceIdx = 0
 					}
@@ -656,12 +672,14 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		m.refresh()
 	case "S":
 		if len(m.syncPoints) > 0 {
-			m.syncPoints = nil
+			last := m.syncPoints[len(m.syncPoints)-1]
+			m.syncPoints = m.syncPoints[:len(m.syncPoints)-1]
 			m.saveSyncPoints()
 			m.errMsg = ""
+			m.infoMsg = fmt.Sprintf("Removed sync anchor at bar %d — press S again to remove more", last.Bar)
 			m.refresh()
 		} else {
-			m.errMsg = "No sync points to clear"
+			m.errMsg = "No sync points to remove"
 			m.refresh()
 		}
 	case "i":
@@ -850,7 +868,14 @@ func (m ViewerModel) adjustAudioOffset(key string) (ViewerModel, tea.Cmd) {
 	case "}":
 		m.audioOffset += 5
 	case "o":
-		m.audioOffset = 0
+		// Reset, with undo: pressing o again restores the previous offset
+		// (a fat-fingered reset must not be irreversible).
+		if m.audioOffset != 0 {
+			m.prevOffset = m.audioOffset
+			m.audioOffset = 0
+		} else if m.prevOffset != 0 {
+			m.audioOffset, m.prevOffset = m.prevOffset, 0
+		}
 	}
 	if m.audioOffset < -60 {
 		m.audioOffset = -60
@@ -1539,6 +1564,7 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 		}
 		m.selectedSourceIdx = m.audioCursor
 		m.showAudioPicker = false
+		m.manualPick = true // sticky: keep this choice across catalog refreshes
 		src := m.selectedSource()
 		// Switching recordings means switching calibration: restore the new
 		// source's intro offset and sync anchors.

@@ -115,7 +115,8 @@ Tab viewer
   X          export tab to file + clipboard
   [ / ]      nudge audio sync ±0.5s ({ } = ±5s, , . = ±0.1s, o resets)
   s          sync current bar to audio position (during audio playback)
-  S          clear all sync points
+  S          remove the last sync anchor (repeat to remove more)
+  o          reset offset (press again to undo the reset)
   Esc        clear/back/stop
   b          back to library
   H          back to home

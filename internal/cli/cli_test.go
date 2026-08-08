@@ -77,3 +77,24 @@ func TestRunHelpExitsZero(t *testing.T) {
 		t.Fatalf("code=%d, want 0 for -h", code)
 	}
 }
+
+// TestWriteCrashLog guards S6.4: a panic writes a stack report into the
+// config dir and returns its path.
+func TestWriteCrashLog(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("APPDATA", dir) // Windows config dir; other OSes ignore it
+	path := writeCrashLog("boom", []byte("goroutine 1 [running]:\nmain.fail()\n"))
+	if path == "" {
+		t.Skip("config dir not resolvable in this environment")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("crash log not written: %v", err)
+	}
+	content := string(data)
+	for _, want := range []string{"boom", "main.fail"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("crash log missing %q:\n%s", want, content)
+		}
+	}
+}

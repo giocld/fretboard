@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"path/filepath"
 	"strings"
 	"time"
@@ -131,18 +132,48 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	// senders on bubbletea's unbuffered message channel deadlock its shutdown.
 	// Cleanup runs against the live model returned by p.Run() below.
 
+	return runProgram(app, p)
+}
+
+// runProgram runs the bubbletea program and converts a panic into a crash
+// log plus a friendly message instead of a raw stack on the terminal.
+func runProgram(app apppkg.AppModel, p *tea.Program) (exitCode int) {
+	defer func() {
+		if r := recover(); r != nil {
+			app.Shutdown()
+			path := writeCrashLog(r, debug.Stack())
+			fmt.Fprintf(os.Stderr, "fretboard crashed: %v\ncrash details: %s\n", r, path)
+			exitCode = 1
+		}
+	}()
 	if mFinal, err := p.Run(); err != nil {
 		if appModel, ok := mFinal.(apppkg.AppModel); ok {
 			appModel.Shutdown()
 		}
 		if !errors.Is(err, tea.ErrInterrupted) {
-			fmt.Fprintf(stderr, "tui: %v\n", err)
+			fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 			return 1
 		}
 	} else if appModel, ok := mFinal.(apppkg.AppModel); ok {
 		appModel.Shutdown()
 	}
 	return 0
+}
+
+// writeCrashLog writes a panic report to the config dir so crashes are
+// debuggable even when the terminal is gone. Returns the log path.
+func writeCrashLog(recovered any, stack []byte) string {
+	dir, err := config.Dir()
+	if err != nil {
+		return ""
+	}
+	path := filepath.Join(dir, "crash.log")
+	data := fmt.Sprintf("fretboard crash at %s\npanic: %v\n\n%s\n",
+		time.Now().Format(time.RFC3339), recovered, stack)
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
+		return ""
+	}
+	return path
 }
 
 func importPath(store *library.Store, path string) error {
