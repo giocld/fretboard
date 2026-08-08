@@ -62,6 +62,8 @@ type ViewerModel struct {
 	// MIDI deadline clock: absolute step deadlines so the beat never drifts.
 	stepClock player.StepClock
 	driftMs   int64 // measured lateness of the last tick (ms, 0 = on time)
+	// Auto-alignment: which sources have been aligned this session.
+	alignedSources map[string]bool
 	// Undo support.
 	prevOffset float64 // offset value before the last `o` reset
 	manualPick bool    // user chose the source manually; keep it across refreshes
@@ -129,6 +131,7 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.perfMode = false
 	m.practiceStart = time.Time{}
 	m.practiceSecs = 0
+	m.alignedSources = map[string]bool{}
 	m.restoreCalibrationForSource()
 	_ = m.engine.Stop()
 	m.engine.SetLoop(0, 0)
@@ -408,7 +411,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 				}
 			}
 			m.refresh()
-			return m, m.maybeDetectIntroCmd()
+			return m, tea.Batch(m.maybeDetectIntroCmd(), m.maybeAlignCmd())
 		}
 	case msgs.IntroDetectedMsg:
 		if !m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
@@ -434,6 +437,38 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			return m, m.saveTabPrefsCmd()
 		}
 		return m, nil
+	case msgs.AlignmentMsg:
+		if !m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
+			return m, nil
+		}
+		if msg.SourceID != "" && msg.SourceID != m.currentSourceID() {
+			return m, nil // the user switched sources while the analysis ran
+		}
+		if msg.BPM <= 0 || msg.Confidence < 0.6 {
+			if msg.BPM > 0 && msg.Confidence >= 0.4 {
+				m.infoMsg = "Audio alignment is weak — press s at a recognizable bar to anchor"
+				m.refresh()
+			}
+			return m, nil
+		}
+		// Apply the detected tempo and the per-source intro offset (marked
+		// auto so silence probing does not re-run).
+		m.bpm = player.ClampBPM(msg.BPM)
+		if m.audioOffset == 0 && len(m.syncPoints) == 0 {
+			m.audioOffset = msg.Offset.Seconds()
+			if m.tab.Metadata == nil {
+				m.tab.Metadata = map[string]string{}
+			}
+			offset := strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+			m.tab.Metadata[m.audioOffsetKey()] = offset
+			m.tab.Metadata[model.MetaKeyAudioOffset] = offset
+			if msg.SourceID != "" {
+				m.tab.Metadata["audio_aligned:"+msg.SourceID] = "1"
+			}
+			m.infoMsg = fmt.Sprintf("Auto-aligned %d BPM, offset +%.1fs (confidence %.0f%%)", msg.BPM, m.audioOffset, msg.Confidence*100)
+		}
+		m.refresh()
+		return m, m.saveTabPrefsCmd()
 	case msgs.PlaybackStartedMsg:
 		m.playing = true
 		m.schedule = msg.Schedule
@@ -1872,9 +1907,40 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 			}
 			m.tab.Metadata["audio_source"] = src.ID
 		}
-		return m, tea.Batch(m.saveTabPrefsCmd(), m.maybeDetectIntroCmd())
+		return m, tea.Batch(m.saveTabPrefsCmd(), m.maybeDetectIntroCmd(), m.maybeAlignCmd())
 	}
 	return m, nil
+}
+
+// maybeAlignCmd returns a command that auto-aligns the selected audio
+// source against the tab (once per source per session): it probes the
+// leading silence for an offset prior, runs the onset analysis, and delivers
+// the result for the viewer to apply.
+func (m *ViewerModel) maybeAlignCmd() tea.Cmd {
+	if m.tab == nil || m.alignedSources == nil {
+		return nil
+	}
+	src := m.selectedSource()
+	if src.Kind == player.SourceMIDI {
+		return nil
+	}
+	path := src.Path
+	if path == "" || !player.FileExists(path) {
+		return nil
+	}
+	if m.alignedSources[src.ID] {
+		return nil
+	}
+	m.alignedSources[src.ID] = true
+	tab, tabID, tabPath, srcID := m.tab, m.tabID, m.tabPath, src.ID
+	return func() tea.Msg {
+		hint, _ := player.LeadingSilence(path)
+		a := player.AlignAudio(tab, path, hint)
+		return msgs.AlignmentMsg{
+			SourceID: srcID, BPM: a.BPM, Offset: a.Offset, Confidence: a.Confidence,
+			Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath,
+		}
+	}
 }
 
 // maybeDetectIntroCmd returns a command that probes the selected audio file's
@@ -1938,7 +2004,7 @@ func (m *ViewerModel) BeginAudioFetch(allowOnline bool) tea.Cmd {
 		m.applySelectedSource(true)
 	}
 	if !allowOnline || !player.OnlineAudioAvailable() || player.AudioSearchQuery(m.tab) == "" {
-		return m.maybeDetectIntroCmd()
+		return tea.Batch(m.maybeDetectIntroCmd(), m.maybeAlignCmd())
 	}
 	m.fetchingCatalog = true
 	return tea.Batch(fetchAudioCatalogCmd(m.tab, m.tabPath, m.tabID, m.audioDirs, allowOnline), m.maybeDetectIntroCmd())

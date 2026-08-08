@@ -1206,3 +1206,54 @@ func TestDriftNudge(t *testing.T) {
 		t.Fatalf("underviable tempo must not nudge, got %q", got)
 	}
 }
+
+// TestAutoAlignmentApplied guards the alignment integration: a confident
+// result sets the tempo and per-source offset; a weak one only hints.
+func TestAutoAlignmentApplied(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Artist: "Y", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	audio := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(audio, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.audioCatalog = player.AudioCatalog{Sources: []player.AudioSource{
+		{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI"},
+		{ID: "local:" + audio, Kind: player.SourceLocal, Label: "song.mp3", Path: audio, Category: player.CatLocal, StrictOK: true},
+	}}
+	m.selectedSourceIdx = 1
+	m.restoreCalibrationForSource()
+
+	m, _ = m.Update(msgs.AlignmentMsg{SourceID: "local:" + audio, BPM: 118, Offset: 3200 * time.Millisecond,
+		Confidence: 0.85, Artist: "Y", Title: "X", TabID: 0, TabPath: "x.txt"})
+	if m.bpm != 118 {
+		t.Fatalf("bpm should be aligned to 118, got %d", m.bpm)
+	}
+	if m.audioOffset != 3.2 {
+		t.Fatalf("offset should be aligned to 3.2s, got %v", m.audioOffset)
+	}
+	if !strings.Contains(m.infoMsg, "Auto-aligned") {
+		t.Fatalf("expected an auto-aligned message, got %q", m.infoMsg)
+	}
+	if m.tab.Metadata["audio_aligned:local:"+audio] != "1" {
+		t.Fatal("source should be marked aligned")
+	}
+
+	// A weak result only hints; it never touches the calibration.
+	m, _ = m.Update(msgs.AlignmentMsg{SourceID: "local:" + audio, BPM: 100, Offset: 0,
+		Confidence: 0.45, Artist: "Y", Title: "X", TabID: 0, TabPath: "x.txt"})
+	if m.bpm != 118 || m.audioOffset != 3.2 {
+		t.Fatalf("weak alignment must not apply: bpm=%d offset=%v", m.bpm, m.audioOffset)
+	}
+	if !strings.Contains(m.infoMsg, "weak") {
+		t.Fatalf("weak alignment should hint, got %q", m.infoMsg)
+	}
+
+	// A stale source is ignored entirely.
+	m, _ = m.Update(msgs.AlignmentMsg{SourceID: "yt:other", BPM: 140, Offset: 0,
+		Confidence: 0.9, Artist: "Y", Title: "X", TabID: 0, TabPath: "x.txt"})
+	if m.bpm != 118 {
+		t.Fatalf("stale source must be ignored, bpm=%d", m.bpm)
+	}
+}

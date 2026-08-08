@@ -165,3 +165,15 @@ type OpenSettingsMsg struct{}
 
 // HomeSettingsMsg opens the settings screen from the home page.
 type HomeSettingsMsg struct{}
+
+// AlignmentMsg delivers an automatic audio-alignment result for a source.
+type AlignmentMsg struct {
+	SourceID   string
+	BPM        int
+	Offset     time.Duration
+	Confidence float64
+	Artist     string
+	Title      string
+	TabID      int64
+	TabPath    string
+}
