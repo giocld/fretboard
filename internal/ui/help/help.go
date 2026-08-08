@@ -95,6 +95,9 @@ Tab viewer
   Space / p  play/pause
   + / -      BPM up/down
   > / <      playback speed up/down (r resets)
+  m          metronome on/off (MIDI playback)
+  C          count-in: 1-2 bars of lead-in clicks before playback
+  y          cycle MIDI instrument (steel/nylon/clean/overdrive/bass)
   j / k      prev/next bar (shown in header)
   h / l      pan left/right
   gg         first bar

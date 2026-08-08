@@ -27,11 +27,17 @@ type Synth struct {
 	Soundfont    string
 	ActiveDriver string
 	LastError    string
+	// Practice helpers (realtime MIDI only).
+	Metronome bool // click on every beat (GM 37 woodblock)
+	Program   int  // GM program for channel 0; 0 = default (25, steel guitar)
 
 	mu      sync.Mutex
 	noteGen map[int]int
 	playGen uint64
 }
+
+// clickNote is the GM woodblock used for metronome and count-in clicks.
+const clickNote = 37
 
 // NewSynth creates a stopped synth.
 func NewSynth() *Synth {

@@ -261,3 +261,27 @@ func StepDuration(ticks, bpm int) int64 {
 	den := int64(bpm) * int64(ticksPerQuarter)
 	return (num + den - 1) / den
 }
+
+// BeatColumns returns the note columns of a bar that start a quarter-note
+// beat, derived from the bar's own column tick durations. The first note of
+// the bar is always a beat (accented by the metronome).
+func BeatColumns(bar model.Bar) []int {
+	cols := NoteColumns(bar)
+	if len(cols) == 0 {
+		return nil
+	}
+	maxC := maxColumns(bar.Strings)
+	var beats []int
+	acc := 0
+	for i, c := range cols {
+		ticks := columnTicks(bar, c, maxC, cols, i)
+		if ticks < 1 {
+			ticks = ticksPerQuarter / 4
+		}
+		if acc%ticksPerQuarter == 0 {
+			beats = append(beats, c)
+		}
+		acc += ticks
+	}
+	return beats
+}

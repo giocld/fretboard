@@ -39,10 +39,15 @@ type ViewerModel struct {
 	syncPoints        []player.SyncPoint
 	strictAudio       bool
 	infoMsg           string
-	loopStartBar      int
-	loopEndBar        int
-	follow            bool
-	linear            bool
+	// Practice tools (realtime MIDI).
+	metronome bool
+	countIn   int // 0/1/2 bars of lead-in clicks
+	program   int // GM program for MIDI playback (0 = default steel)
+	loopStartBar int
+	loopEndBar   int
+	follow       bool
+	linear       bool
+
 	cursorBar         int
 	cursorCol         int
 	panOffset         int
@@ -238,7 +243,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 				m.restoreCalibrationForSource()
 				var cmds []tea.Cmd
 				if wantPlay {
-					cmds = append(cmds, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex()))
+					cmds = append(cmds, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts()))
 				}
 				if cmd := m.saveTabPrefsCmd(); cmd != nil {
 					cmds = append(cmds, cmd)
@@ -482,7 +487,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			_ = m.engine.Stop()
 			m.resetPlayback()
 			m.refresh()
-			return m, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex())
+			return m, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
 		}
 		m.refresh()
 	case "-", "_":
@@ -492,7 +497,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			_ = m.engine.Stop()
 			m.resetPlayback()
 			m.refresh()
-			return m, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex())
+			return m, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
 		}
 		m.refresh()
 	case "g":
@@ -589,6 +594,24 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.panOffset++
 			m.refresh()
 		}
+	case "m":
+		m.metronome = !m.metronome
+		m.jumpBuffer = ""
+		m.refresh()
+	case "C":
+		m.countIn = (m.countIn + 1) % 3
+		m.jumpBuffer = ""
+		m.refresh()
+	case "y":
+		m.program = nextProgram(m.program)
+		m.jumpBuffer = ""
+		if m.playing && m.tab != nil && m.engine.Mode() == "midi" {
+			_ = m.engine.Stop()
+			m.resetPlayback()
+			m.refresh()
+			return m, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+		}
+		m.refresh()
 	case "[", "{", "]", "}", ",", ".", "o":
 		return m.adjustAudioOffset(msg.String())
 	case "esc":
@@ -745,6 +768,39 @@ func (m *ViewerModel) saveSyncPoints() {
 	}
 	m.tab.Metadata[m.syncPointsKey()] = string(data)
 	m.tab.Metadata[model.MetaKeySyncPoints] = string(data)
+}
+
+// programNames is the instrument cycle for MIDI playback (`y`): GM programs
+// a guitarist would actually pick, starting with the steel-guitar default.
+var programNames = []struct {
+	num  int
+	name string
+}{
+	{25, "steel"},
+	{24, "nylon"},
+	{27, "clean"},
+	{29, "overdrive"},
+	{33, "bass"},
+}
+
+// nextProgram cycles the GM program through programNames.
+func nextProgram(current int) int {
+	for i, p := range programNames {
+		if p.num == current {
+			return programNames[(i+1)%len(programNames)].num
+		}
+	}
+	return programNames[0].num
+}
+
+// programLabel renders a GM program number as its display name.
+func programLabel(program int) string {
+	for _, p := range programNames {
+		if p.num == program {
+			return p.name
+		}
+	}
+	return fmt.Sprintf("prog %d", program)
 }
 
 // trackEndedBanner explains an early audio-file end (radio edits, live
@@ -964,7 +1020,7 @@ func (m *ViewerModel) togglePlayback() tea.Cmd {
 			return m.downloadSelectedSourceCmd()
 		}
 	}
-	return startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, src, m.playbackStartIndex())
+	return startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, src, m.playbackStartIndex(), m.playbackOpts())
 }
 
 func (m *ViewerModel) maxPanOffset() int {
@@ -1069,6 +1125,15 @@ func (m ViewerModel) View() string {
 		if m.loopStartBar > 0 && m.loopEndBar > 0 {
 			status += kit.MutedStyle.Render(fmt.Sprintf("  ↻ %d-%d", m.loopStartBar, m.loopEndBar))
 		}
+		if m.metronome {
+			status += kit.MutedStyle.Render("  ♪ metronome")
+		}
+		if m.countIn > 0 {
+			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏱ %d-bar count-in", m.countIn))
+		}
+		if m.program != 0 {
+			status += kit.InfoStyle.Render("  " + programLabel(m.program))
+		}
 		if rate := m.engine.Rate(); rate != 1 {
 			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏩ ×%.2f", rate))
 		}
@@ -1112,6 +1177,9 @@ func (m ViewerModel) View() string {
 		{Key: "Space/p", Label: playLabel},
 		{Key: "+/-", Label: "BPM"},
 		{Key: "> <", Label: "speed"},
+		{Key: "m", Label: "metronome"},
+		{Key: "C", Label: "count-in"},
+		{Key: "y", Label: "instrument"},
 		{Key: "[ ] , .", Label: "sync"},
 		{Key: "o", Label: "reset"},
 		{Key: "s", Label: "sync bar"},

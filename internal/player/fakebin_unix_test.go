@@ -56,3 +56,20 @@ func writeFakeFFmpeg(t *testing.T, log string) {
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
+
+// writeFakeFluidsynth writes a fake fluidsynth shell script that echoes
+// every stdin command line to synth.log and prepends its directory to PATH.
+// It returns the log path so tests can assert on the commands the synth
+// received.
+func writeFakeFluidsynth(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fluidsynth")
+	log := filepath.Join(dir, "synth.log")
+	script := "#!/bin/sh\nwhile read line; do echo \"$line\" >> \"" + log + "\"; done\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}

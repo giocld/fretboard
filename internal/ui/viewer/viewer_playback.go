@@ -36,8 +36,9 @@ func fetchAudioCmd(tab *model.Tab, tabPath string, tabID int64, audioDirs []stri
 	}
 }
 
-// startPlaybackCmd launches playback for the selected audio source.
-func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath string, audioDirs []string, src player.AudioSource, startIdx int) tea.Cmd {
+// startPlaybackCmd launches playback for the selected audio source,
+// applying the practice-tool settings (metronome, count-in, program).
+func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath string, audioDirs []string, src player.AudioSource, startIdx int, opts playbackOpts) tea.Cmd {
 	return func() tea.Msg {
 		if engine.ShutdownRequested() {
 			return msgs.PlaybackErrorMsg{Err: errPlaybackStopped}
@@ -62,8 +63,15 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 		step := schedule[startIdx]
 		dur := time.Duration(player.StepDuration(step.Ticks, bpm)) * time.Millisecond
 		if src.Kind == player.SourceMIDI {
+			engine.Synth.Metronome = opts.metronome
+			engine.Synth.Program = opts.program
 			if err := engine.StartMIDIRealtime(); err != nil {
 				return msgs.PlaybackErrorMsg{Err: err}
+			}
+			// Lead-in clicks before the first tab note; blocks for the
+			// count-in duration inside this command's goroutine.
+			if opts.countIn > 0 {
+				engine.Synth.CountIn(opts.countIn, bpm)
 			}
 			if err := engine.PlayMIDIStep(tab, step, bpm); err != nil {
 				_ = engine.Stop()
@@ -90,6 +98,18 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 			AudioSync: synced,
 		}
 	}
+}
+
+// playbackOpts carries the practice-tool settings applied at playback start.
+type playbackOpts struct {
+	metronome bool
+	countIn   int
+	program   int
+}
+
+// playbackOpts snapshots the current practice-tool state.
+func (m ViewerModel) playbackOpts() playbackOpts {
+	return playbackOpts{metronome: m.metronome, countIn: m.countIn, program: m.program}
 }
 
 // tickCmd returns a command that waits for the next playback tick.

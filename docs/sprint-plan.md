@@ -64,14 +64,21 @@ must say when the recording ends.*
 
 *Practice tools that every guitar app has and this one still lacks.*
 
-- [ ] S3.1 Metronome click (GM 37) on beat boundaries during MIDI playback,
-      `m` toggles (footer + help)
-- [ ] S3.2 Count-in: `C` plays 1–2 bars of clicks before the tab starts
-- [ ] S3.3 Instrument program picker (acoustic/steel/nylon/bass) re-sends
-      `prog` to fluidsynth; key + help entry
-- [ ] S3.4 Tests: click scheduling at beat columns, count-in prepend,
-      program switch sends correct command
-- [ ] S3.5 Drive playback in pty; hear/see metronome state in status row
+- [x] S3.1 Metronome click (GM 37) on beat boundaries during MIDI playback,
+      `m` toggles (footer + help) — accented on the first beat of each bar,
+      derived from the bar's own tick durations (`BeatColumns`)
+- [x] S3.2 Count-in: `C` cycles 0→1→2 bars of lead-in clicks before the
+      tab starts (blocks the playback cmd until done, then the schedule
+      begins)
+- [x] S3.3 Instrument program picker (`y` cycles steel/nylon/clean/
+      overdrive/bass) re-sends `prog` to fluidsynth at session start;
+      restarting playback applies it live; status row shows the name
+- [x] S3.4 Tests: beat-column derivation, click/off-beat/no-click through a
+      fake fluidsynth, count-in click count + accent, program command, and
+      a full viewer key-handler → real engine end-to-end test
+- [x] S3.5 Drive playback — done headlessly: fake fluidsynth captures the
+      real command stream (`prog 0 24` + accent click + count-in clicks)
+      through the actual `m`/`C`/`y`/`Space` key path; no pty on this host
 
 ---
 

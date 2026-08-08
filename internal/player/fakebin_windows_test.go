@@ -72,3 +72,26 @@ func splitLines(s string) []string {
 	}
 	return strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 }
+
+// writeFakeFluidsynth writes a fake fluidsynth.cmd that echoes every stdin
+// command line to synth.log and prepends its directory to PATH. It returns
+// the log path so tests can assert on the commands the synth received.
+func writeFakeFluidsynth(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fluidsynth.cmd")
+	log := filepath.Join(dir, "synth.log")
+	script := "@echo off\r\n" +
+		"setlocal enabledelayedexpansion\r\n" +
+		":loop\r\n" +
+		"set \"line=\"\r\n" +
+		"set /p line=\r\n" +
+		"if not defined line goto loop\r\n" +
+		"echo !line!>> \"" + log + "\"\r\n" +
+		"goto loop\r\n"
+	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}

@@ -68,6 +68,9 @@ fretboard import path/to/tabs/
 | `Space` | Play/pause |
 | `+`/`-` | BPM up/down |
 | `>`/`<` | Playback speed up/down (`r` resets) |
+| `m` | Metronome on/off (MIDI playback) |
+| `C` | Count-in: 1–2 bars of lead-in clicks |
+| `y` | Cycle MIDI instrument (steel/nylon/clean/overdrive/bass) |
 | `j`/`k` | Scroll down/up |
 | `h`/`l` | Pan left/right |
 | `gg` | First bar |
