@@ -4,6 +4,10 @@ Execution model: one group per iteration. For each group: implement subtasks
 in order → unit tests → build + full test suite → drive the CLI/TUI to verify
 behavior → commit with a simple message → move to the next group.
 
+**Status: S1–S6 all shipped** (each group is one commit with tests and a
+live verification through the real CLI/TUI code paths; full regression
+green: 14 packages + e2e module).
+
 Priority is value-per-effort × user-visible trust. Within a group, subtasks
 are ordered so earlier ones unblock or de-risk later ones.
 
