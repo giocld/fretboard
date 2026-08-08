@@ -108,15 +108,20 @@ read, and pair the MP3s you already own.*
 
 *Find the solo, play it in another key, see the notes.*
 
-- [ ] S5.1 Search within a tab (`/` — bar number or fret pattern), `n`/`N`
-      next/prev match, highlight in grid + linear
-- [ ] S5.2 Transpose ±semitone (`T` up, `Z` down — display + MIDI
-      playback), capo-aware, reset key; shows `transpose +2` in status
-- [ ] S5.3 Note-name view (`n` toggles fret digits → note names) using
-      `Tuning.Semitone`
-- [ ] S5.4 Tests: pattern match positions, transpose shifts MIDI +
-      rendering, note-name rendering
-- [ ] S5.5 Drive viewer via pty: search a pattern, transpose, toggle notes
+- [x] S5.1 Search within a tab (`/` — bar number or fret pattern, live
+      match count, `n`/`N` cycle, Enter jumps and closes; match bar
+      highlighted with SearchBarStyle; paste-friendly input)
+- [x] S5.2 Transpose ±semitone (`T` up, `Z` down, `R` reset, ±12 clamp) —
+      display and MIDI playback both use the transposed copy
+      (`model.TransposedTab`), metadata untouched
+- [x] S5.3 Note-name view (`e` toggles fret digits → note names via
+      `Tuning.NoteNameAt`, same column width)
+- [x] S5.4 Tests: transposed copy + clamp + metadata, note naming math,
+      note-name render, search-highlight render, viewer key flows
+      (transpose/playback, search/cycle/jump, notes toggle)
+- [x] S5.5 Drive the viewer: `/` + `33` found the bar-2 riff, Enter jumped
+      the cursor to bar 2, `T`+`e` showed `transpose +1 ♪ notes [33] 1/1`
+      in the status row — no pty on this host
 
 ---
 

@@ -106,6 +106,9 @@ Tab viewer
   gg         first bar
   G          last bar
   0-9 Enter  jump to bar
+  /          search bar number or fret pattern (n/N next/prev)
+  T / Z      transpose ±1 semitone (R resets)
+  e          toggle note names instead of fret numbers
   v          toggle grid / linear layout
   f          follow-mode auto-scroll
   i / u      set loop point A / B (x clears)

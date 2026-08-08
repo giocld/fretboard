@@ -46,6 +46,48 @@ func (t Tuning) NoteName(stringIdx int) string {
 	return midiToNoteName(t[stringIdx])
 }
 
+// NoteNameAt returns the display label of the note played at fret on
+// stringIdx, e.g. "G2" for the 3rd fret of the low E string.
+func (t Tuning) NoteNameAt(stringIdx, fret int) string {
+	if stringIdx < 0 || stringIdx >= len(t) {
+		return ""
+	}
+	return midiToNoteName(t[stringIdx] + fret)
+}
+
+// TransposedTab returns a copy of tab with every fretted note shifted by
+// semitones (clamped at fret 0); open strings, rests, rhythm, and metadata
+// are preserved. A nil tab or a zero shift returns the input unchanged.
+func TransposedTab(tab *Tab, semitones int) *Tab {
+	if tab == nil || semitones == 0 {
+		return tab
+	}
+	out := *tab
+	out.Bars = make([]Bar, len(tab.Bars))
+	for i, b := range tab.Bars {
+		nb := b
+		nb.Strings = make([]StringLine, len(b.Strings))
+		for s, sl := range b.Strings {
+			nsl := StringLine{Segments: make([]Segment, len(sl.Segments))}
+			for j, seg := range sl.Segments {
+				ns := seg
+				if seg.Value > 0 {
+					ns.Value = seg.Value + semitones
+					if ns.Value < 0 {
+						ns.Value = 0
+					}
+					digits := strconv.Itoa(ns.Value)
+					ns.Width = len(digits)
+				}
+				nsl.Segments[j] = ns
+			}
+			nb.Strings[s] = nsl
+		}
+		out.Bars[i] = nb
+	}
+	return &out
+}
+
 // Strings returns the number of strings in the tuning.
 func (t Tuning) Strings() int { return len(t) }
 

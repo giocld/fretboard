@@ -47,6 +47,13 @@ type ViewerModel struct {
 	loopEndBar   int
 	follow       bool
 	linear       bool
+	// Reading tools.
+	transpose     int          // ±semitones, session-only (0 = as written)
+	showNotes     bool
+	searchActive  bool
+	searchInput   string
+	searchMatches []searchMatch
+	searchIdx     int
 
 	cursorBar  int
 	cursorCol  int
@@ -186,20 +193,86 @@ func (m *ViewerModel) saveCalibrationForSource() {
 	m.saveSyncPoints()
 }
 
+// displayTab returns the tab as it should be rendered and played: the
+// original when no transpose is set, otherwise a transposed copy. Metadata
+// (calibration, badge) stays on the original.
+func (m ViewerModel) displayTab() *model.Tab {
+	if m.transpose == 0 {
+		return m.tab
+	}
+	return model.TransposedTab(m.tab, m.transpose)
+}
+
+// searchMatch is one in-tab search hit: a bar index and the column where
+// the pattern starts.
+type searchMatch struct{ bar, col int }
+
+// computeSearchMatches re-runs the in-tab search for the current query. A
+// plain bar number jumps straight to that bar; otherwise the query is
+// matched against each string's fret-digit sequence.
+func (m *ViewerModel) computeSearchMatches() {
+	m.searchMatches = nil
+	m.searchIdx = 0
+	q := strings.TrimSpace(m.searchInput)
+	if q == "" || m.tab == nil {
+		return
+	}
+	if n, err := strconv.Atoi(q); err == nil && n >= 1 && n <= len(m.tab.Bars) {
+		m.searchMatches = []searchMatch{{bar: n - 1, col: 0}}
+		return
+	}
+	for bi, bar := range m.tab.Bars {
+		for _, sl := range bar.Strings {
+			var digits strings.Builder
+			var cols []int
+			for _, seg := range sl.Segments {
+				if seg.Char >= '0' && seg.Char <= '9' {
+					digits.WriteRune(seg.Char)
+					cols = append(cols, seg.Position)
+				}
+			}
+			seq := digits.String()
+			if idx := strings.Index(seq, q); idx >= 0 && idx < len(cols) {
+				m.searchMatches = append(m.searchMatches, searchMatch{bar: bi, col: cols[idx]})
+				break
+			}
+		}
+	}
+}
+
+// jumpToMatch moves the cursor to the current search match and wraps.
+func (m *ViewerModel) jumpToMatch(delta int) {
+	if len(m.searchMatches) == 0 || m.tab == nil {
+		return
+	}
+	m.searchIdx = (m.searchIdx + delta + len(m.searchMatches)) % len(m.searchMatches)
+	match := m.searchMatches[m.searchIdx]
+	m.cursorBar = match.bar
+	m.cursorCol = match.col
+	m.follow = false
+	m.ensureCursorVisible()
+	m.refresh()
+}
+
 func (m *ViewerModel) refresh() {
 	if m.tab == nil {
 		m.viewport.SetContent(kit.MutedStyle.Render("No tab loaded."))
 		return
 	}
-	cur := &kit.TabCursor{Bar: m.cursorBar, Col: m.cursorCol, Playing: m.playing}
+	cur := &kit.TabCursor{Bar: m.cursorBar, Col: m.cursorCol, Playing: m.playing, ShowNotes: m.showNotes, SearchBar: -1, SearchCol: -1}
+	if m.searchIdx >= 0 && m.searchIdx < len(m.searchMatches) {
+		cur.SearchBar = m.searchMatches[m.searchIdx].bar
+		cur.SearchCol = m.searchMatches[m.searchIdx].col
+	}
 	if m.loopStartBar > 0 && m.loopEndBar > m.loopStartBar {
 		cur.LoopStartBar = m.loopStartBar - 1
 		cur.LoopEndBar = m.loopEndBar
 	}
+	display := m.displayTab()
 	if m.linear {
-		m.viewport.SetContent(kit.RenderTabLinearBody(m.tab, m.panOffset, cur))
+		m.viewport.SetContent(kit.RenderTabLinearBody(display, m.panOffset, cur))
 	} else {
-		m.viewport.SetContent(kit.RenderTabGridBody(m.tab, m.viewport.Width, m.panOffset, cur))
+		m.viewport.SetContent(kit.RenderTabGridBody(display, m.viewport.Width, m.panOffset, cur))
 	}
 	if m.follow {
 		m.ensureCursorVisible()
@@ -243,7 +316,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 				m.restoreCalibrationForSource()
 				var cmds []tea.Cmd
 				if wantPlay {
-					cmds = append(cmds, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts()))
+					cmds = append(cmds, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts()))
 				}
 				if cmd := m.saveTabPrefsCmd(); cmd != nil {
 					cmds = append(cmds, cmd)
@@ -438,7 +511,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		m.cursorCol = step.Col
 		m.tickDur = time.Duration(player.StepDuration(step.Ticks, m.bpm)) * time.Millisecond
 		if m.engine.Mode() == "midi" {
-			if err := m.engine.PlayMIDIStep(m.tab, step, m.bpm); err != nil {
+			if err := m.engine.PlayMIDIStep(m.displayTab(), step, m.bpm); err != nil {
 				m.errMsg = err.Error()
 			}
 		}
@@ -456,6 +529,9 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	if m.showAudioPicker {
 		return m.handleAudioPickerKey(msg)
+	}
+	if m.searchActive {
+		return m.handleSearchKey(msg)
 	}
 	if s := msg.String(); len(s) == 1 && s[0] >= '0' && s[0] <= '9' {
 		m.jumpBuffer += s
@@ -487,7 +563,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			_ = m.engine.Stop()
 			m.resetPlayback()
 			m.refresh()
-			return m, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+			return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
 		}
 		m.refresh()
 	case "-", "_":
@@ -497,8 +573,35 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			_ = m.engine.Stop()
 			m.resetPlayback()
 			m.refresh()
-			return m, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+			return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
 		}
+		m.refresh()
+	case "/":
+		m.jumpBuffer = ""
+		m.searchActive = true
+		m.searchInput = ""
+		m.searchMatches = nil
+		m.searchIdx = 0
+		m.refresh()
+	case "n":
+		m.jumpToMatch(1)
+	case "N":
+		m.jumpToMatch(-1)
+	case "T":
+		m.transpose = clampTranspose(m.transpose + 1)
+		m.jumpBuffer = ""
+		m.refresh()
+	case "Z":
+		m.transpose = clampTranspose(m.transpose - 1)
+		m.jumpBuffer = ""
+		m.refresh()
+	case "R":
+		m.transpose = 0
+		m.jumpBuffer = ""
+		m.refresh()
+	case "e":
+		m.showNotes = !m.showNotes
+		m.jumpBuffer = ""
 		m.refresh()
 	case "g":
 		m.stopPlaybackForNav()
@@ -616,7 +719,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			_ = m.engine.Stop()
 			m.resetPlayback()
 			m.refresh()
-			return m, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+			return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
 		}
 		m.refresh()
 	case "[", "{", "]", "}", ",", ".", "o":
@@ -664,6 +767,70 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
+}
+
+// clampTranspose keeps the session transpose within a playable range.
+func clampTranspose(n int) int {
+	if n > 12 {
+		return 12
+	}
+	if n < -12 {
+		return -12
+	}
+	return n
+}
+
+// handleSearchKey drives the in-tab search box (`/`): printable keys edit
+// the query and recompute matches, Enter jumps to the first match, n/N cycle
+// while typing too, Esc closes.
+func (m ViewerModel) handleSearchKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.searchActive = false
+		m.searchInput = ""
+		m.searchMatches = nil
+		m.searchIdx = 0
+		m.refresh()
+		return m, nil
+	case "enter":
+		if len(m.searchMatches) > 0 {
+			m.jumpToMatch(0)
+		}
+		m.searchActive = false
+		m.refresh()
+		return m, nil
+	case "n":
+		m.jumpToMatch(1)
+		return m, nil
+	case "N":
+		m.jumpToMatch(-1)
+		return m, nil
+	case "backspace":
+		r := []rune(m.searchInput)
+		if len(r) > 0 {
+			m.searchInput = string(r[:len(r)-1])
+			m.computeSearchMatches()
+			m.refresh()
+		}
+		return m, nil
+	default:
+		// Printable characters only (single keys and pastes); arrow/ctrl
+		// sequences must never land in the query.
+		s := msg.String()
+		printable := s != ""
+		for _, r := range s {
+			if r < 32 || r >= 127 {
+				printable = false
+				break
+			}
+		}
+		if printable {
+			m.searchInput += s
+			m.computeSearchMatches()
+			m.refresh()
+		}
+	}
+	return m, nil
 }
 
 // adjustAudioOffset nudges the audio start offset used to sync the tab cursor
@@ -1027,7 +1194,7 @@ func (m *ViewerModel) togglePlayback() tea.Cmd {
 			return m.downloadSelectedSourceCmd()
 		}
 	}
-	return startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, src, m.playbackStartIndex(), m.playbackOpts())
+	return startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, src, m.playbackStartIndex(), m.playbackOpts())
 }
 
 func (m *ViewerModel) maxPanOffset() int {
@@ -1140,6 +1307,15 @@ func (m ViewerModel) View() string {
 		if m.program != 0 {
 			status += kit.InfoStyle.Render("  " + programLabel(m.program))
 		}
+		if m.transpose != 0 {
+			status += kit.InfoStyle.Render(fmt.Sprintf("  transpose %+d", m.transpose))
+		}
+		if m.showNotes {
+			status += kit.InfoStyle.Render("  ♪ notes")
+		}
+		if len(m.searchMatches) > 0 {
+			status += kit.WarningStyle.Render(fmt.Sprintf("  [%s] %d/%d", m.searchInput, m.searchIdx+1, len(m.searchMatches)))
+		}
 		if rate := m.engine.Rate(); rate != 1 {
 			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏩ ×%.2f", rate))
 		}
@@ -1157,6 +1333,9 @@ func (m ViewerModel) View() string {
 
 	body := "\n"
 	if m.tab != nil {
+		if m.searchActive {
+			body += kit.RenderPanel(m.width-2, "Search tab", "/ "+m.searchInput+"_") + "\n"
+		}
 		body += title + "\n"
 		if status != "" {
 			body += status + "\n"
@@ -1194,6 +1373,10 @@ func (m ViewerModel) View() string {
 		{Key: "f", Label: "follow"},
 		{Key: "X", Label: "export"},
 		{Key: "j/k", Label: "scroll"},
+		{Key: "/", Label: "search"},
+		{Key: "n/N", Label: "next"},
+		{Key: "T/Z", Label: "transpose"},
+		{Key: "e", Label: "notes"},
 		{Key: "b", Label: "library"},
 		{Key: "q", Label: "quit"},
 	})
@@ -1475,3 +1658,7 @@ func (m *ViewerModel) TabPath() string { return m.tabPath }
 
 // TabID returns the library id of the currently loaded tab.
 func (m *ViewerModel) TabID() int64 { return m.tabID }
+
+// SearchMatchesForTest exposes the current search matches for tests and
+// external drivers.
+func (m ViewerModel) SearchMatchesForTest() []searchMatch { return m.searchMatches }

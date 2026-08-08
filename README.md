@@ -76,6 +76,9 @@ fretboard import path/to/tabs/
 | `gg` | First bar |
 | `G` | Last bar |
 | `0-9` + `Enter` | Jump to bar |
+| `/` | Search bar number or fret pattern (`n`/`N` next/prev) |
+| `T`/`Z` | Transpose ±1 semitone (`R` resets) |
+| `e` | Toggle note names instead of fret numbers |
 | `v` | Toggle grid / linear layout |
 | `f` | Follow-mode auto-scroll |
 | `i`/`u`/`x` | Set loop point A / B / clear loop |

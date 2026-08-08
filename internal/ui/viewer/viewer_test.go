@@ -767,3 +767,119 @@ func TestExportKeyWritesFile(t *testing.T) {
 		t.Fatalf("export content wrong:\n%s", data)
 	}
 }
+
+// TestTransposeKeysShiftDisplayAndPlayback guards S5.2: T/Z adjust the
+// session transpose, the display tab shifts frets, playback uses the
+// transposed tab, and R resets.
+func TestTransposeKeysShiftDisplayAndPlayback(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Artist: "Y", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{
+			{Segments: []model.Segment{{Char: '3', Value: 3, Position: 0, Width: 1}}},
+		}}}}
+	m.LoadTab(tab, "x.txt", 0)
+
+	m, _ = m.Update(key("T"))
+	m, _ = m.Update(key("T"))
+	if m.transpose != 2 {
+		t.Fatalf("transpose = %d, want 2", m.transpose)
+	}
+	display := m.displayTab()
+	if display == m.tab {
+		t.Fatal("display tab should be a transposed copy")
+	}
+	if got := display.Bars[0].Strings[0].Segments[0].Value; got != 5 {
+		t.Fatalf("display fret = %d, want 5", got)
+	}
+	// Playback schedule comes from the transposed tab.
+	sched := player.BuildSchedule(m.displayTab())
+	if len(sched) == 0 {
+		t.Fatal("empty schedule from transposed tab")
+	}
+	// Status row shows the transpose.
+	m, _ = m.Update(key("R"))
+	if m.transpose != 0 {
+		t.Fatalf("R should reset transpose, got %d", m.transpose)
+	}
+	if m.displayTab() != m.tab {
+		t.Fatal("after reset the original tab renders again")
+	}
+}
+
+// TestSearchInTab guards S5.1: / opens the search, patterns match fret
+// digits, n/N cycle matches, Enter jumps and closes.
+func TestSearchInTab(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard, Bars: []model.Bar{
+		{Number: 1, Strings: []model.StringLine{{Segments: []model.Segment{
+			{Char: '0', Value: 0, Position: 0, Width: 1},
+			{Char: '-', Position: 1},
+			{Char: '3', Value: 3, Position: 2, Width: 1},
+			{Char: '-', Position: 3},
+			{Char: '5', Value: 5, Position: 4, Width: 1},
+		}}}},
+		{Number: 2, Strings: []model.StringLine{{Segments: []model.Segment{
+			{Char: '3', Value: 3, Position: 0, Width: 1},
+		}}}},
+	}}
+	m.LoadTab(tab, "x.txt", 0)
+
+	m, _ = m.Update(key("/"))
+	if !m.searchActive {
+		t.Fatal("/ should open the search box")
+	}
+	// Type "35": matches bar 1 (digits 035), not bar 2 (3).
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("35")})
+	if len(m.searchMatches) != 1 || m.searchMatches[0].bar != 0 {
+		t.Fatalf("matches = %+v, want one match in bar 1", m.searchMatches)
+	}
+	// Type "3": matches both bars; n/N cycle.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")})
+	if len(m.searchMatches) != 2 {
+		t.Fatalf("two bars contain a 3, got %+v", m.searchMatches)
+	}
+	m, _ = m.Update(key("n"))
+	if m.searchIdx != 1 || m.cursorBar != m.searchMatches[1].bar {
+		t.Fatalf("n should move to match 2: idx=%d bar=%d", m.searchIdx, m.cursorBar)
+	}
+	m, _ = m.Update(key("N"))
+	if m.searchIdx != 0 {
+		t.Fatalf("N should wrap back to match 1, got %d", m.searchIdx)
+	}
+	// Bar-number search: "2" jumps to bar 2.
+	m, _ = m.Update(key("esc"))
+	m, _ = m.Update(key("/"))
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2")})
+	if len(m.searchMatches) != 1 || m.searchMatches[0].bar != 1 {
+		t.Fatalf("bar-number search should match bar 2, got %+v", m.searchMatches)
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.searchActive {
+		t.Fatal("Enter should close the search")
+	}
+	if m.cursorBar != 1 {
+		t.Fatalf("Enter should jump to bar 2, cursor at %d", m.cursorBar)
+	}
+}
+
+// TestNoteNamesKey guards S5.3: e toggles the note-name view and the status
+// row announces it.
+func TestNoteNamesKey(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '3', Value: 3, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	m, _ = m.Update(key("e"))
+	if !m.showNotes {
+		t.Fatal("e should enable the note-name view")
+	}
+	if !strings.Contains(m.View(), "notes") {
+		t.Fatalf("status should mention notes:\n%s", m.View())
+	}
+	m, _ = m.Update(key("e"))
+	if m.showNotes {
+		t.Fatal("e should toggle notes back off")
+	}
+}

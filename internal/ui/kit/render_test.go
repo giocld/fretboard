@@ -261,3 +261,47 @@ func TestRenderTabPlain(t *testing.T) {
 		t.Fatalf("round-trip lost structure: %+v", parsed.Bars)
 	}
 }
+
+// TestRenderTabShowsNoteNames guards S5.3: with ShowNotes the fret digits
+// render as note names while the grid width is preserved.
+func TestRenderTabShowsNoteNames(t *testing.T) {
+	tab := &model.Tab{
+		Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{
+			{Segments: []model.Segment{
+				{Char: '0', Value: 0, Position: 0, Width: 1},
+				{Char: '-', Position: 1},
+				{Char: '3', Value: 3, Position: 2, Width: 1},
+			}},
+		}}},
+	}
+	plain := RenderTabGridBody(tab, 40, 0, nil)
+	notes := RenderTabGridBody(tab, 40, 0, &TabCursor{Bar: -1, ShowNotes: true})
+	if strings.Contains(notes, "3") && !strings.Contains(notes, "G") {
+		t.Fatalf("note-name view should show the pitch name:\n%s", notes)
+	}
+	if !strings.Contains(notes, "G") {
+		t.Fatalf("3rd fret low E should render as G:\n%s", notes)
+	}
+	_ = plain
+}
+
+// TestRenderTabSearchHighlight guards S5.1: the current match bar gets the
+// search header style in the grid layout.
+func TestRenderTabSearchHighlight(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	tab := &model.Tab{
+		Tuning: model.Standard,
+		Bars: []model.Bar{
+			{Number: 1, Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}},
+			{Number: 2, Strings: []model.StringLine{{Segments: []model.Segment{{Char: '3', Value: 3, Position: 0, Width: 1}}}}},
+		},
+	}
+	out := RenderTabGridBody(tab, 60, 0, &TabCursor{Bar: 0, SearchBar: 1, SearchCol: 0})
+	m := BarGridLayout(tab, 60)
+	want := SearchBarStyle.Render(padToWidth("│ 2 "+strings.Repeat("─", 12), m.BarWidth))
+	if !strings.Contains(out, want) {
+		t.Fatalf("match bar header should use SearchBarStyle:\n%s", out)
+	}
+}

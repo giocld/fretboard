@@ -18,11 +18,22 @@ type TabCursor struct {
 	// 0-based bar range (end exclusive). 0/0 means no loop.
 	LoopStartBar int
 	LoopEndBar   int
+	// ShowNotes renders fret numbers as note names instead of digits.
+	ShowNotes bool
+	// SearchBar/SearchCol mark the current in-tab search match
+	// (0-based; -1/-1 means no active match).
+	SearchBar int
+	SearchCol int
 }
 
 // InLoop reports whether barIdx falls inside the cursor's A-B loop region.
 func (c *TabCursor) InLoop(barIdx int) bool {
 	return c != nil && c.LoopEndBar > c.LoopStartBar && barIdx >= c.LoopStartBar && barIdx < c.LoopEndBar
+}
+
+// InSearch reports whether barIdx is the current search match.
+func (c *TabCursor) InSearch(barIdx int) bool {
+	return c != nil && c.SearchBar == barIdx
 }
 
 // RenderTab renders a parsed tab as a styled string for the terminal.
@@ -151,7 +162,11 @@ func renderTabLinear(tab *model.Tab, offset int, cur *TabCursor, withHeader bool
 			sb.WriteString("\n")
 		}
 		highlight := cur != nil && cur.Bar == i
-		sb.WriteString(barHeaderWithMarkers(bar))
+		header := barHeaderWithMarkers(bar)
+		if cur.InSearch(i) {
+			header = SearchBarStyle.Render(header)
+		}
+		sb.WriteString(header)
 		sb.WriteString("\n")
 		// String rows prefix their content with a 3-wide right-aligned label
 		// plus 2 spaces; the ruler must use the same 5-column prefix or the
@@ -171,7 +186,7 @@ func renderTabLinear(tab *model.Tab, offset int, cur *TabCursor, withHeader bool
 			}
 			sb.WriteString(StringLabel.Render(label))
 			sb.WriteString(strings.Repeat(" ", 2))
-			sb.WriteString(renderStringContent(bar.Strings[si], si, offset, curCol(cur, highlight), highlight))
+			sb.WriteString(renderStringContent(bar.Strings[si], si, offset, curCol(cur, highlight), highlight, tab, cur))
 			sb.WriteString("\n")
 		}
 	}
@@ -408,6 +423,8 @@ func renderBarRow(b *strings.Builder, tab *model.Tab, start, end, barWidth, offs
 			headerStyle = CursorStyle
 		case cur.InLoop(barIdx):
 			headerStyle = LoopBarStyle
+		case cur.InSearch(barIdx):
+			headerStyle = SearchBarStyle
 		}
 		// pad the header to the bar column width
 		b.WriteString(headerStyle.Render(padToWidth(header, barWidth)))
@@ -428,7 +445,7 @@ func renderBarRow(b *strings.Builder, tab *model.Tab, start, end, barWidth, offs
 				line = bar.Strings[s]
 			}
 			highlight := cur != nil && barIdx == cur.Bar
-			content := renderStringContent(line, s, offset, curCol(cur, highlight), highlight)
+			content := renderStringContent(line, s, offset, curCol(cur, highlight), highlight, tab, cur)
 			// Pad the content to the bar column width so string rows line up
 			// under the bar headers; the prefix width is measured because the
 			// string label style has its own fixed width.
@@ -466,7 +483,7 @@ func curCol(cur *TabCursor, highlight bool) int {
 	return cur.Col
 }
 
-func renderStringContent(line model.StringLine, stringIdx, offset, cursorCol int, highlight bool) string {
+func renderStringContent(line model.StringLine, stringIdx, offset, cursorCol int, highlight bool, tab *model.Tab, cur *TabCursor) string {
 	maxCol := 0
 	for _, seg := range line.Segments {
 		if end := seg.Position + seg.Width; end > maxCol {
@@ -493,7 +510,7 @@ func renderStringContent(line model.StringLine, stringIdx, offset, cursorCol int
 			col++
 			continue
 		}
-		rendered := renderSegment(seg, stringIdx)
+		rendered := renderSegment(seg, stringIdx, tab, cur)
 		if highlight && cursorCol >= seg.Position && cursorCol < seg.Position+seg.Width {
 			rendered = CursorStyle.Render(rendered)
 		}
@@ -512,10 +529,21 @@ func segmentAt(line model.StringLine, col int) (model.Segment, bool) {
 	return model.Segment{}, false
 }
 
-func renderSegment(seg model.Segment, stringIdx int) string {
+func renderSegment(seg model.Segment, stringIdx int, tab *model.Tab, cur *TabCursor) string {
 	str := string(seg.Char)
 	if seg.Char >= '0' && seg.Char <= '9' {
-		str = fmt.Sprintf("%-*d", seg.Width, seg.Value)
+		// Note-name view: show the pitch instead of the fret number, using
+		// the same column width so the grid stays aligned.
+		if cur != nil && cur.ShowNotes && tab != nil && tab.Tuning != nil && seg.Value >= 0 {
+			name := tab.Tuning.NoteNameAt(stringIdx, seg.Value)
+			if name != "" {
+				str = fmt.Sprintf("%-*s", seg.Width, name)
+			} else {
+				str = fmt.Sprintf("%-*d", seg.Width, seg.Value)
+			}
+		} else {
+			str = fmt.Sprintf("%-*d", seg.Width, seg.Value)
+		}
 	} else if seg.Width > 1 {
 		str = fmt.Sprintf("%-*s", seg.Width, str)
 	}

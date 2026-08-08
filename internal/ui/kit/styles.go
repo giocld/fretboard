@@ -12,6 +12,7 @@ var (
 	CursorStyle    lipgloss.Style
 	PlayheadStyle  lipgloss.Style
 	LoopBarStyle   lipgloss.Style
+	SearchBarStyle lipgloss.Style
 	StatusBarStyle lipgloss.Style
 	ListNormal     lipgloss.Style
 	ListSelected   lipgloss.Style
@@ -61,6 +62,7 @@ func applyTheme(t Theme) {
 	CursorStyle = lipgloss.NewStyle().Reverse(true)
 	PlayheadStyle = lipgloss.NewStyle().Foreground(t.Accent).Bold(true)
 	LoopBarStyle = lipgloss.NewStyle().Foreground(t.Success).Bold(true)
+	SearchBarStyle = lipgloss.NewStyle().Foreground(t.Warning).Bold(true)
 	StatusBarStyle = lipgloss.NewStyle().Background(t.StatusBG).Foreground(t.Primary).Padding(0, 1)
 	ListNormal = lipgloss.NewStyle().Padding(0, 1).Foreground(t.Primary)
 	ListSelected = ListNormal.Copy().Background(t.Overlay).Foreground(t.Emphasis).Bold(true)
