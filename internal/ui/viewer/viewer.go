@@ -1805,6 +1805,44 @@ func (m *ViewerModel) SetSoundfont(path string) { m.engine.Soundfont = path }
 // SetError sets the viewer error banner.
 func (m *ViewerModel) SetError(msg string) { m.errMsg = msg }
 
+// SetCursorBar moves the cursor to a 0-based bar (clamped).
+func (m *ViewerModel) SetCursorBar(bar int) {
+	if m.tab == nil {
+		return
+	}
+	if bar < 0 {
+		bar = 0
+	}
+	if bar >= len(m.tab.Bars) {
+		bar = len(m.tab.Bars) - 1
+	}
+	m.cursorBar = bar
+	m.cursorCol = 0
+	m.ensureCursorVisible()
+	m.refresh()
+}
+
+// SetBPM sets the playback tempo (clamped to the playable range).
+func (m *ViewerModel) SetBPM(bpm int) {
+	m.bpm = player.ClampBPM(bpm)
+	m.refresh()
+}
+
+// SetLinear sets the layout mode.
+func (m *ViewerModel) SetLinear(linear bool) {
+	m.linear = linear
+	m.refresh()
+}
+
+// CursorBar returns the current 0-based cursor bar.
+func (m ViewerModel) CursorBar() int { return m.cursorBar }
+
+// BPM returns the current tempo.
+func (m ViewerModel) BPM() int { return m.bpm }
+
+// Linear reports the active layout mode.
+func (m ViewerModel) Linear() bool { return m.linear }
+
 // Tab returns the currently loaded tab, or nil.
 func (m *ViewerModel) Tab() *model.Tab { return m.tab }
 

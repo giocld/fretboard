@@ -124,3 +124,19 @@ func TestSaveIsAtomicAndRoundTrips(t *testing.T) {
 		t.Fatalf("round trip mismatch: %+v", got)
 	}
 }
+
+// TestSessionRoundTrip guards G4.1: the session persists through the config
+// dir and restores with a zero session when absent.
+func TestSessionRoundTrip(t *testing.T) {
+	t.Setenv("APPDATA", t.TempDir())
+	if s := LoadSession(); s.TabID != 0 {
+		t.Fatalf("no session file should load a zero session, got %+v", s)
+	}
+	if err := SaveSession(Session{TabID: 7, Bar: 12, BPM: 96, Linear: true}); err != nil {
+		t.Fatal(err)
+	}
+	got := LoadSession()
+	if got.TabID != 7 || got.Bar != 12 || got.BPM != 96 || !got.Linear {
+		t.Fatalf("session round-trip mismatch: %+v", got)
+	}
+}

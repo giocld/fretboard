@@ -332,7 +332,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // Shutdown stops audio and releases background resources. The live tab's
-// metadata (calibration, practice time) is persisted on the way out.
+// metadata (calibration, practice time) is persisted on the way out, and the
+// session (tab + cursor + settings) is saved for the next start.
 func (m *AppModel) Shutdown() {
 	m.viewer.StopPlayback()
 	m.viewer.ShutdownAudio()
@@ -347,9 +348,43 @@ func (m *AppModel) Shutdown() {
 			_, _ = m.store.Import(path, m.viewer.Tab())
 		}
 	}
+	if m.viewer.Tab() != nil {
+		_ = config.SaveSession(config.Session{
+			TabID:   m.viewer.TabID(),
+			TabPath: m.viewer.TabPath(),
+			Bar:     m.viewer.CursorBar() + 1,
+			BPM:     m.viewer.BPM(),
+			Linear:  m.viewer.Linear(),
+		})
+	}
 	if m.watcher != nil {
 		m.watcher.Close()
 	}
+}
+
+// RestoreSession opens the last-used tab at its saved cursor position and
+// settings; returns a startup command (nil when there is nothing to resume).
+func (m *AppModel) RestoreSession() tea.Cmd {
+	s := config.LoadSession()
+	if s.TabID <= 0 || m.store == nil {
+		return nil
+	}
+	cmd := m.openTab(s.TabID)
+	if m.viewer.Tab() != nil {
+		if s.Bar >= 1 {
+			m.viewer.SetCursorBar(s.Bar - 1)
+		}
+		if s.BPM >= 40 && s.BPM <= 300 {
+			m.viewer.SetBPM(s.BPM)
+		}
+		m.viewer.SetLinear(s.Linear)
+	}
+	return cmd
+}
+
+// SetStartupCmd queues a command to run on the first Init.
+func (m *AppModel) SetStartupCmd(cmd tea.Cmd) {
+	m.startupCmd = cmd
 }
 
 func (m AppModel) textInputActive() bool {

@@ -108,6 +108,11 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		app.LoadViewerTab(tab, filePath)
 	} else {
 		app = apppkg.NewAppWithOptions(store, client, cfg.AutoImportPath, cfg.AudioSearchPaths)
+		// Resume the last session (tab, cursor, settings) when no file is
+		// given; the startup command runs on the first Init.
+		if cmd := app.RestoreSession(); cmd != nil {
+			app.SetStartupCmd(cmd)
+		}
 	}
 	app.SetVolume(cfg.VolumePercent)
 	app.SetStrictAudio(cfg.StrictAudioSelection)
