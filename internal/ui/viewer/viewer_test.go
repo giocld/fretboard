@@ -418,6 +418,10 @@ func TestMidiLoopWrapsAtLastBar(t *testing.T) {
 	m.loopEndBar = 2 // loop is the whole 2-bar tab: end bar == last bar
 	m.stepIdx = 3    // last step of the schedule
 	m.tab = &model.Tab{Tuning: model.Standard, Bars: make([]model.Bar, 2)}
+	// The deadline clock was started when playback began; the tick that
+	// fires now belongs to the step after the last one — which the loop
+	// wrap sends back to bar 1.
+	m.stepClock.Start(stepDur(m.schedule[3].Ticks, m.bpm))
 
 	updated, _ := m.Update(msgs.PlaybackTickMsg{})
 	m = updated
@@ -429,7 +433,8 @@ func TestMidiLoopWrapsAtLastBar(t *testing.T) {
 	}
 }
 
-func TestAdjustAudioOffsetPersistsAndRounds(t *testing.T) {	tab := &model.Tab{Title: "T", Artist: "A", Metadata: map[string]string{}}
+func TestAdjustAudioOffsetPersistsAndRounds(t *testing.T) {
+	tab := &model.Tab{Title: "T", Artist: "A", Metadata: map[string]string{}}
 	m := NewViewerModel()
 	m.LoadTab(tab, "/tmp/off.txt", 42)
 
@@ -1070,5 +1075,84 @@ func TestMouseWheelMovesCursor(t *testing.T) {
 	m, _ = m.Update(tea.MouseMsg{Type: tea.MouseWheelUp})
 	if m.cursorBar != 0 {
 		t.Fatalf("wheel up should move back to bar 1, got %d", m.cursorBar)
+	}
+}
+
+// TestMidiTickLoopDeadlines guards the deadline-clock rework: repeated ticks
+// advance the schedule and the clock deadline rolls forward by each step's
+// duration — never re-based from "now", so processing time cannot drift the
+// beat.
+func TestMidiTickLoopDeadlines(t *testing.T) {
+	m := NewViewerModel()
+	sched := []player.PlaybackStep{
+		{Bar: 0, Col: 0, Ticks: 480},
+		{Bar: 0, Col: 4, Ticks: 480},
+		{Bar: 1, Col: 0, Ticks: 240},
+		{Bar: 1, Col: 2, Ticks: 240},
+		{Bar: 1, Col: 4, Ticks: 480},
+	}
+	m.schedule = sched
+	m.stepIdx = 0
+	m.playing = true
+	m.audioSync = false
+	m.tab = &model.Tab{Tuning: model.Standard, Bars: make([]model.Bar, 2)}
+	m.stepClock.Start(stepDur(sched[0].Ticks, m.bpm))
+	base := m.stepClock.Deadline()
+
+	want := []int{1, 2, 3, 4}
+	for i, wantIdx := range want {
+		m, _ = m.Update(msgs.PlaybackTickMsg{})
+		if m.stepIdx != wantIdx {
+			t.Fatalf("tick %d: stepIdx = %d, want %d", i, m.stepIdx, wantIdx)
+		}
+	}
+	// The deadline is exactly the cumulative duration from the base, not
+	// re-anchored to now.
+	// The deadline is exactly the cumulative duration of the steps the four
+	// ticks played (1..4) — the base already includes step 0 — and it is
+	// never re-anchored to now.
+	wantDur := stepDur(sched[1].Ticks, m.bpm) + stepDur(sched[2].Ticks, m.bpm) +
+		stepDur(sched[3].Ticks, m.bpm) + stepDur(sched[4].Ticks, m.bpm)
+	if m.stepClock.Deadline().Sub(base) != wantDur {
+		t.Fatalf("deadline advanced by %v, want %v", m.stepClock.Deadline().Sub(base), wantDur)
+	}
+
+	// Natural end: the next tick stops playback.
+	m, _ = m.Update(msgs.PlaybackTickMsg{})
+	if m.playing {
+		t.Fatal("playback should stop after the last step")
+	}
+}
+
+// TestBpmChangeRebasesClockWithoutRestart guards the BPM re-base: in MIDI
+// mode, + re-bases the clock and keeps the session (no stop/start).
+func TestBpmChangeRebasesClockWithoutRestart(t *testing.T) {
+	m := NewViewerModel()
+	sched := []player.PlaybackStep{{Bar: 0, Col: 0, Ticks: 480}, {Bar: 0, Col: 4, Ticks: 480}}
+	m.schedule = sched
+	m.stepIdx = 0
+	m.playing = true
+	m.audioSync = false
+	m.tab = &model.Tab{Tuning: model.Standard, Bars: make([]model.Bar, 1)}
+	m.stepClock.Start(stepDur(sched[0].Ticks, m.bpm))
+	oldBPM := m.bpm
+
+	m, cmd := m.Update(key("+"))
+	if !m.playing {
+		t.Fatal("BPM change must not stop MIDI playback")
+	}
+	if cmd != nil {
+		t.Fatal("BPM change must not restart playback (no cmd)")
+	}
+	if m.bpm != oldBPM+5 {
+		t.Fatalf("bpm should increase by 5, got %d", m.bpm)
+	}
+	// The clock re-based to roughly one step at the new tempo from now.
+	if d := m.stepClock.Until(); d > stepDur(sched[0].Ticks, m.bpm)+10*time.Millisecond || d < stepDur(sched[0].Ticks, m.bpm)-10*time.Millisecond {
+		t.Fatalf("clock should re-base to one step at the new tempo, got %v", d)
+	}
+	// The schedule and cursor are untouched — the session continues.
+	if len(m.schedule) != 2 || m.stepIdx != 0 {
+		t.Fatalf("session state must survive a BPM change: %+v", m.schedule)
 	}
 }

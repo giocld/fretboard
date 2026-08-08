@@ -219,3 +219,45 @@ func TestBeatColumns(t *testing.T) {
 		t.Fatalf("eighth-note bar should beat on cols 0 and 4, got %v", got)
 	}
 }
+
+// TestMetronomeClicksDuringRestBar guards the rest-bar fix: a rest step
+// produces no noteons but the metronome still beats on its quarter columns.
+func TestMetronomeClicksDuringRestBar(t *testing.T) {
+	log := writeFakeFluidsynth(t)
+	s := NewSynth()
+	s.Metronome = true
+	startFakeRealtime(t, s)
+	defer s.Stop()
+
+	tab := &model.Tab{
+		Tuning: model.Standard,
+		Bars: []model.Bar{{
+			Strings: []model.StringLine{{Segments: []model.Segment{
+				{Char: '-', Position: 0}, {Char: '-', Position: 1}, {Char: '-', Position: 2},
+				{Char: '-', Position: 3}, {Char: '-', Position: 4}, {Char: '-', Position: 5},
+				{Char: '-', Position: 6}, {Char: '-', Position: 7},
+				{Char: '-', Position: 8}, {Char: '-', Position: 9},
+			}}},
+		}},
+	}
+	if err := s.PlayStep(tab, PlaybackStep{Bar: 0, Col: 0, Ticks: 480, Rest: true}, 120); err != nil {
+		t.Fatal(err)
+	}
+	cmds := waitForSynthLog(t, log, "noteon 0 37", 3*time.Second)
+	clicks := 0
+	noteons := 0
+	for _, c := range cmds {
+		if strings.HasPrefix(c, "noteon 0 37 ") {
+			clicks++
+		}
+		if strings.HasPrefix(c, "noteon 0 ") && !strings.HasPrefix(c, "noteon 0 37 ") {
+			noteons++
+		}
+	}
+	if clicks == 0 {
+		t.Fatalf("rest bar should click the metronome, got %v", cmds)
+	}
+	if noteons != 0 {
+		t.Fatalf("rest bar must not play notes, got %d noteons", noteons)
+	}
+}

@@ -59,6 +59,9 @@ type ViewerModel struct {
 	perfMode      bool      // performance mode: hide the tab, show the section + progress
 	practiceStart time.Time // when the current playback session started
 	practiceSecs  int64     // practice seconds accumulated this session
+	// MIDI deadline clock: absolute step deadlines so the beat never drifts.
+	stepClock player.StepClock
+	driftMs   int64 // measured lateness of the last tick (ms, 0 = on time)
 	// Undo support.
 	prevOffset float64 // offset value before the last `o` reset
 	manualPick bool    // user chose the source manually; keep it across refreshes
@@ -449,6 +452,12 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			m.ensureCursorVisible()
 		}
 		m.refresh()
+		if !m.audioSync {
+			// Deadline clock for the MIDI loop: the first tick fires at the
+			// end of the step the start command already sounded.
+			m.stepClock.Start(m.tickDur)
+			m.driftMs = 0
+		}
 		return m, tea.Batch(tickCmd(m.tickDur), monitorPlaybackCmd(m.engine))
 	case msgs.PlaybackErrorMsg:
 		m.stopPlayback()
@@ -525,39 +534,53 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		if m.audioSync {
 			return m, monitorPlaybackCmd(m.engine)
 		}
-		m.stepIdx++
-		if m.loopEndBar > 0 {
-			atEnd := m.stepIdx >= len(m.schedule)
-			beyondLoop := !atEnd && m.schedule[m.stepIdx].Bar >= m.loopEndBar
-			if atEnd || beyondLoop {
-				// Wrap to the loop start. atEnd also covers a loop whose end
-				// bar is the tab's last bar (no later step can trigger it).
-				m.stepIdx = 0
-				for i, s2 := range m.schedule {
-					if s2.Bar >= m.loopStartBar-1 {
-						m.stepIdx = i
-						break
-					}
-				}
-			}
-		}
-		if m.stepIdx >= len(m.schedule) {
+		// Deadline-clock MIDI loop: the tick fired at the absolute deadline
+		// of the step we are about to play. Roll the clock past it (the
+		// advance is by the step being played, so render/processing time
+		// never shifts the beat), then catch up if we are late.
+		next := m.nextStepIndex()
+		if next >= len(m.schedule) {
 			m.stopPlayback()
 			m.refresh()
 			return m, nil
 		}
-		step := m.schedule[m.stepIdx]
+		m.stepClock.Next(stepDur(m.schedule[next].Ticks, m.bpm))
+		// Catch up: any step whose deadline already passed is skipped
+		// (bounded) instead of starting late — late ticks must never
+		// accumulate.
+		jumps := 0
+		for jumps < 8 && next < len(m.schedule)-1 && m.stepClock.Late(time.Now()) > 0 {
+			m.stepClock.Next(stepDur(m.schedule[next+1].Ticks, m.bpm))
+			next = m.nextStepIndexFrom(next)
+			jumps++
+		}
+		if next >= len(m.schedule) {
+			m.stopPlayback()
+			m.refresh()
+			return m, nil
+		}
+		m.stepIdx = next
+		step := m.schedule[next]
 		m.cursorBar = step.Bar
 		m.cursorCol = step.Col
-		m.tickDur = time.Duration(player.StepDuration(step.Ticks, m.bpm)) * time.Millisecond
+		m.tickDur = stepDur(step.Ticks, m.bpm)
 		if m.engine.Mode() == "midi" {
 			if err := m.engine.PlayMIDIStep(m.displayTab(), step, m.bpm); err != nil {
 				m.errMsg = err.Error()
 			}
 		}
+		// Drift telemetry: how late the clock was when the tick arrived.
+		m.driftMs = 0
+		if lat := m.stepClock.Late(time.Now()); lat > 20*time.Millisecond {
+			m.driftMs = lat.Milliseconds()
+		}
 		m.ensureCursorVisible()
 		m.refresh()
-		return m, tea.Batch(tickCmd(m.tickDur), monitorPlaybackCmd(m.engine))
+		wait := time.Until(m.stepClock.Deadline())
+		if wait < time.Millisecond {
+			wait = time.Millisecond
+		}
+		return m, tea.Batch(tickCmd(wait), monitorPlaybackCmd(m.engine))
 	case tea.KeyMsg:
 		return m.handleKey(msg)
 	}
@@ -600,20 +623,29 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		m.bpm = player.ClampBPM(m.bpm + 5)
 		m.jumpBuffer = ""
 		if m.playing && m.tab != nil {
-			_ = m.engine.Stop()
-			m.resetPlayback()
-			m.refresh()
-			return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+			if m.audioSync {
+				// Audio: restart the player so the mapping matches the new tempo.
+				_ = m.engine.Stop()
+				m.resetPlayback()
+				m.refresh()
+				return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+			}
+			// MIDI: re-base the deadline clock — the current step gets a
+			// fresh duration at the new tempo, the session never restarts.
+			m.stepClock.Rebase(stepDur(m.schedule[m.stepIdx].Ticks, m.bpm))
 		}
 		m.refresh()
 	case "-", "_":
 		m.bpm = player.ClampBPM(m.bpm - 5)
 		m.jumpBuffer = ""
 		if m.playing && m.tab != nil {
-			_ = m.engine.Stop()
-			m.resetPlayback()
-			m.refresh()
-			return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+			if m.audioSync {
+				_ = m.engine.Stop()
+				m.resetPlayback()
+				m.refresh()
+				return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+			}
+			m.stepClock.Rebase(stepDur(m.schedule[m.stepIdx].Ticks, m.bpm))
 		}
 		m.refresh()
 	case "P":
@@ -1206,6 +1238,38 @@ func (m *ViewerModel) stopPlaybackForNav() {
 	}
 }
 
+// nextStepIndex returns the schedule index to play after the sounding step,
+// applying the A-B loop wrap (and the natural end when the loop region ends
+// on the last bar).
+func (m ViewerModel) nextStepIndex() int {
+	return m.nextStepIndexFrom(m.stepIdx)
+}
+
+// nextStepIndexFrom returns the index to play after the step at idx, with
+// the A-B loop wrap applied.
+func (m ViewerModel) nextStepIndexFrom(idx int) int {
+	next := idx + 1
+	if m.loopEndBar > 0 {
+		atEnd := next >= len(m.schedule)
+		beyondLoop := !atEnd && m.schedule[next].Bar >= m.loopEndBar
+		if atEnd || beyondLoop {
+			// Wrap to the loop start; atEnd also covers a loop whose end bar
+			// is the tab's last bar (no later step can trigger it).
+			for i, s := range m.schedule {
+				if s.Bar >= m.loopStartBar-1 {
+					return i
+				}
+			}
+		}
+	}
+	return next
+}
+
+// stepDur converts ticks to the wall duration used by the deadline clock.
+func stepDur(ticks, bpm int) time.Duration {
+	return time.Duration(player.StepDuration(ticks, bpm)) * time.Millisecond
+}
+
 // stopPlayback halts audio, clears UI playback state, and banks the
 // practice time of the session that just ended.
 func (m *ViewerModel) stopPlayback() {
@@ -1474,6 +1538,9 @@ func (m ViewerModel) View() string {
 		}
 		if m.perfMode {
 			status += kit.InfoStyle.Render("  ◉ perf")
+		}
+		if m.driftMs != 0 && !m.audioSync {
+			status += kit.WarningStyle.Render(fmt.Sprintf("  ↕ %dms", m.driftMs))
 		}
 		if total := m.practiceTotal(); total > 0 {
 			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏱ %d:%02d", total/60, total%60))

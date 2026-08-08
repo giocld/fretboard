@@ -16,6 +16,7 @@ type PlaybackStep struct {
 	ColWidth int
 	Ticks    int
 	Sustain  int
+	Rest     bool // rest bar: no notes, but the clock and metronome continue
 }
 
 // NoteColumns returns sorted column indices in a bar that contain at least one
@@ -146,6 +147,16 @@ func BuildSchedule(tab *model.Tab) []PlaybackStep {
 		}
 		noteCols := NoteColumns(bar)
 		if len(noteCols) == 0 {
+			// Rest bar: emit one step with the bar's duration so the clock,
+			// the metronome, and the audio-sync mapping all stay correct —
+			// without it the cursor teleports over rests and the playhead
+			// runs ahead of the music.
+			steps = append(steps, PlaybackStep{
+				Bar:   b,
+				Col:   0,
+				Ticks: restBarTicks(bar, cols),
+				Rest:  true,
+			})
 			continue
 		}
 		for i, col := range noteCols {
@@ -264,11 +275,34 @@ func StepDuration(ticks, bpm int) int64 {
 
 // BeatColumns returns the note columns of a bar that start a quarter-note
 // beat, derived from the bar's own column tick durations. The first note of
-// the bar is always a beat (accented by the metronome).
+// the bar is always a beat (accented by the metronome). Rest bars have no
+// notes, so their beats come from the rhythm row or from the sixteenth-note
+// column grid (every 8 columns = one quarter).
 func BeatColumns(bar model.Bar) []int {
 	cols := NoteColumns(bar)
 	if len(cols) == 0 {
-		return nil
+		// Rest bar: rhythm marks on quarter boundaries, else the column
+		// grid (8 columns per quarter at the 16th-per-column heuristic).
+		if len(bar.Rhythm) > 0 {
+			var beats []int
+			for _, r := range bar.Rhythm {
+				if r.Ticks >= ticksPerQuarter {
+					beats = append(beats, r.Position)
+				}
+			}
+			if len(beats) > 0 {
+				return beats
+			}
+		}
+		width := maxColumns(bar.Strings)
+		var beats []int
+		for c := 0; c < width; c += 8 {
+			beats = append(beats, c)
+		}
+		if len(beats) == 0 {
+			beats = []int{0}
+		}
+		return beats
 	}
 	maxC := maxColumns(bar.Strings)
 	var beats []int
@@ -284,4 +318,22 @@ func BeatColumns(bar model.Bar) []int {
 		acc += ticks
 	}
 	return beats
+}
+
+// restBarTicks returns the MIDI tick duration of a rest bar: the rhythm
+// row's total when one is present, otherwise the bar's column span at the
+// sixteenth-note-per-column heuristic (the same rule note columns use).
+func restBarTicks(bar model.Bar, cols int) int {
+	total := 0
+	for _, r := range bar.Rhythm {
+		total += r.Ticks
+	}
+	if total > 0 {
+		return total
+	}
+	ticks := cols * (ticksPerQuarter / 4)
+	if ticks < 1 {
+		ticks = ticksPerQuarter
+	}
+	return ticks
 }
