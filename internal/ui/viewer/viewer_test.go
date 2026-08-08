@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -171,9 +172,167 @@ func TestSaveTabPrefsCmdAllowsTabPathWithoutID(t *testing.T) {
 	}
 }
 
-// TestSyncPointsZeroBased guards the 1-based (user/persisted) to 0-based
-// (schedule) bar conversion; feeding raw 1-based bars to the time mapping
-// shifts the playhead cursor one bar late past the first anchor.
+// TestLoopSetBeforePlayArmsEngineAtPlaybackStart guards US-6: loop points
+// set while paused (no schedule yet) must arm the engine region when playback
+// starts — before this, audio-synced playback silently never looped.
+func TestLoopSetBeforePlayArmsEngineAtPlaybackStart(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+	m.schedule = nil // paused before any playback
+
+	m, _ = m.setLoopPoint(true)  // A at bar 1
+	m, _ = m.setLoopPoint(false) // B at bar 2
+
+	if _, _, ok := m.engine.LoopRegion(); ok {
+		t.Fatal("engine must not be armed yet: no schedule exists")
+	}
+
+	schedule := player.BuildSchedule(m.tab)
+	updated, _ := m.Update(msgs.PlaybackStartedMsg{Schedule: schedule, StepIdx: 0, Duration: time.Millisecond, AudioSync: true})
+	m = updated
+	start, end, ok := m.engine.LoopRegion()
+	if !ok {
+		t.Fatal("engine loop region must be armed at playback start")
+	}
+	if end <= start {
+		t.Fatalf("loop region [%v, %v] must be non-empty", start, end)
+	}
+}
+
+// TestLoopClearWithoutScheduleClearsEngine guards the `x` key path: clearing
+// the loop while paused must still clear any previously armed engine region.
+func TestLoopClearWithoutScheduleClearsEngine(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+	m.schedule = player.BuildSchedule(m.tab)
+	m, _ = m.setLoopPoint(true)
+	m, _ = m.setLoopPoint(false)
+	if _, _, ok := m.engine.LoopRegion(); !ok {
+		t.Fatal("loop should be armed before clearing")
+	}
+	m.schedule = nil
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	if _, _, ok := m.engine.LoopRegion(); ok {
+		t.Fatal("x must clear the engine loop even with no schedule")
+	}
+}
+
+// TestSyncBarKeyGivesFeedbackWhenUnavailable guards US-7: pressing s outside
+// audio-synced playback must explain why it can't anchor, instead of silently
+// doing nothing (the footer advertises the key unconditionally).
+func TestSyncBarKeyGivesFeedbackWhenUnavailable(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m = updated
+	if m.errMsg == "" {
+		t.Fatal("s while paused should show a hint, not a silent no-op")
+	}
+	if len(m.syncPoints) != 0 {
+		t.Fatalf("s must not anchor while paused, got %+v", m.syncPoints)
+	}
+
+	// Playing via MIDI synth is still not a real recording: hint again.
+	m.errMsg = ""
+	m.playing = true
+	m.audioSync = false
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m = updated
+	if m.errMsg == "" {
+		t.Fatal("s during MIDI playback should show a hint")
+	}
+	if len(m.syncPoints) != 0 {
+		t.Fatalf("s must not anchor during MIDI, got %+v", m.syncPoints)
+	}
+
+	// A real audio-synced playback anchors as before.
+	m.errMsg = ""
+	m.audioSync = true
+	m.tabID = 7
+	m.cursorBar = 2
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m = updated
+	if len(m.syncPoints) != 1 || m.syncPoints[0].Bar != 3 {
+		t.Fatalf("s during audio playback should anchor bar 3, got %+v", m.syncPoints)
+	}
+	if cmd == nil {
+		t.Fatal("anchoring should persist tab prefs")
+	}
+}
+
+// TestSyncBarKeyFeedbackClearsOnEsc guards the errMsg escape hatch used for
+// the sync hint: Esc clears the message without navigating away.
+func TestSyncBarKeyFeedbackClearsOnEsc(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if m.errMsg == "" {
+		t.Fatal("precondition: hint should be set")
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.errMsg != "" {
+		t.Fatalf("Esc should clear the hint, got %q", m.errMsg)
+	}
+}
+
+// TestClearSyncPointsKeyReportsEmpty guards the S key when no anchors exist.
+func TestClearSyncPointsKeyReportsEmpty(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	if m.errMsg == "" {
+		t.Fatal("S with no anchors should say so")
+	}
+}
+
+// TestAudioCatalogMsgKeepsSourcesAndShowsError guards US-9: when the online
+// search fails, the catalog must still apply its local/MIDI sources and the
+// failure must surface as a message (previously the whole catalog was dropped).
+func TestAudioCatalogMsgKeepsSourcesAndShowsError(t *testing.T) {
+	m := NewViewerModel()
+	m.tab = &model.Tab{Title: "Layla", Artist: "Clapton"}
+	m.tabID = 42
+	updated, _ := m.Update(msgs.AudioCatalogMsg{
+		Catalog: player.AudioCatalog{Sources: []player.AudioSource{
+			{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI"},
+			{ID: "local:x", Kind: player.SourceLocal, Label: "Local", Path: "x.mp3"},
+		}},
+		Err:     fmt.Errorf("yt-dlp search timed out"),
+		Artist:  "Clapton",
+		Title:   "Layla",
+		TabID:   42,
+		TabPath: "online://ug/1",
+	})
+	m = updated
+	if len(m.audioCatalog.Sources) != 2 {
+		t.Fatalf("catalog must keep its sources on error, got %+v", m.audioCatalog.Sources)
+	}
+	if m.errMsg == "" || !strings.Contains(m.errMsg, "timed out") {
+		t.Fatalf("error must surface in errMsg, got %q", m.errMsg)
+	}
+}
+
+// TestAudioCatalogMsgErrorWithoutSourcesDoesNotCrash guards the empty-catalog
+// error path: no sources to keep, just the message.
+func TestAudioCatalogMsgErrorWithoutSourcesDoesNotCrash(t *testing.T) {
+	m := NewViewerModel()
+	m.tab = &model.Tab{Title: "Layla", Artist: "Clapton"}
+	m.tabID = 42
+	updated, _ := m.Update(msgs.AudioCatalogMsg{
+		Catalog: player.AudioCatalog{},
+		Err:     fmt.Errorf("network unreachable"),
+		Artist:  "Clapton",
+		Title:   "Layla",
+		TabID:   42,
+		TabPath: "online://ug/1",
+	})
+	m = updated
+	if m.errMsg == "" {
+		t.Fatal("error must surface")
+	}
+}
+
 func TestSyncPointsZeroBased(t *testing.T) {
 	points := []player.SyncPoint{{Bar: 1, Seconds: 5}, {Bar: 2, Seconds: 20}, {Bar: 5, Seconds: 40}}
 	got := syncPointsZeroBased(points)

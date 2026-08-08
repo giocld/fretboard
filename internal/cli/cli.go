@@ -109,6 +109,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		app = apppkg.NewAppWithOptions(store, client, cfg.AutoImportPath, cfg.AudioSearchPaths)
 	}
 	app.SetVolume(cfg.VolumePercent)
+	app.SetStrictAudio(cfg.StrictAudioSelection)
 	sf := cfg.Soundfont
 	if sf == "" {
 		sf = os.Getenv("FRETBOARD_SOUNDFONT")

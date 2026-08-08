@@ -29,16 +29,36 @@ func fetchAudioCatalogCmd(tab *model.Tab, tabPath string, tabID int64, audioDirs
 }
 
 // RenderAudioPicker draws the source selection overlay.
-func RenderAudioPicker(width int, catalog player.AudioCatalog, cursor int, fetching bool) string {
+func RenderAudioPicker(width int, catalog player.AudioCatalog, cursor int, fetching bool, strict bool, recommended int) string {
 	title := "Audio source"
 	if fetching {
 		title += "  … searching"
 	}
-	body := renderAudioPickerBody(catalog, cursor, fetching)
+	body := renderAudioPickerBody(catalog, cursor, fetching, strict, recommended)
 	return "\n" + kit.RenderPanel(width-2, title, body)
 }
 
-func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching bool) string {
+// categoryBadge renders a short performance-type badge for a source.
+func categoryBadge(c player.AudioCategory) string {
+	switch c {
+	case player.CatOfficial:
+		return kit.SuccessStyle.Render("[official]")
+	case player.CatBacking:
+		return kit.InfoStyle.Render("[backing]")
+	case player.CatLive:
+		return kit.WarningStyle.Render("[live]")
+	case player.CatCover:
+		return kit.WarningStyle.Render("[cover]")
+	case player.CatLesson:
+		return kit.MutedStyle.Render("[lesson]")
+	case player.CatLocal:
+		return kit.MutedStyle.Render("[local]")
+	default:
+		return kit.MutedStyle.Render("[?]")
+	}
+}
+
+func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching bool, strict bool, recommended int) string {
 	if fetching && len(catalog.Sources) <= 1 {
 		return kit.MutedStyle.Render("Searching for matching recordings…")
 	}
@@ -52,7 +72,14 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 			prefix = "▸ "
 		}
 		kind := string(src.Kind)
-		line := fmt.Sprintf("%s[%s] %s", prefix, kind, src.Label)
+		rejected := strict && src.Kind == player.SourceOnline && !src.StrictOK
+		line := fmt.Sprintf("%s%s %s%s", prefix, kind, categoryBadge(src.Category), src.Label)
+		if i == recommended && !rejected {
+			line += kit.SuccessStyle.Render("  ★")
+		}
+		if rejected {
+			line += kit.MutedStyle.Render("  ⛔ not studio")
+		}
 		if src.Detail != "" {
 			line += kit.MutedStyle.Render("  · " + src.Detail)
 		}
@@ -61,6 +88,8 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 		}
 		if i == cursor {
 			line = kit.ListSelected.Render(line)
+		} else if rejected {
+			line = kit.MutedStyle.Render(line)
 		} else {
 			line = kit.ListNormal.Render(line)
 		}
@@ -68,5 +97,8 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 	}
 	lines = append(lines, "")
 	lines = append(lines, kit.MutedStyle.Render("j/k move  Enter select  r refresh  Esc cancel"))
+	if strict {
+		lines = append(lines, kit.MutedStyle.Render("strict on: live/cover/lesson recordings are excluded from auto-pick (★ = recommended)"))
+	}
 	return strings.Join(lines, "\n")
 }

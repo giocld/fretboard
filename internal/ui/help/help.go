@@ -94,17 +94,36 @@ Tab viewer
   a          pick audio source (local / online / MIDI)
   Space / p  play/pause
   + / -      BPM up/down
+  > / <      playback speed up/down (r resets)
   j / k      prev/next bar (shown in header)
   h / l      pan left/right
   gg         first bar
   G          last bar
   0-9 Enter  jump to bar
+  v          toggle grid / linear layout
+  f          follow-mode auto-scroll
+  i / u      set loop point A / B (x clears)
+  [ / ]      nudge audio sync ±0.5s ({ } = ±5s, , . = ±0.1s, o resets)
+  s          sync current bar to audio position (during audio playback)
+  S          clear all sync points
   Esc        clear/back/stop
   b          back to library
   H          back to home
   t          cycle theme
   ?          help
   q / Ctrl+c quit
+
+Syncing with a recording
+  1. Pick the studio/official source (a) — in strict mode live,
+     cover, and lesson recordings are excluded from auto-pick.
+  2. Intros are auto-detected from leading silence (↔ +Xs); fine-tune
+     with [ ] (0.5 s) or , . (0.1 s).
+  3. During playback, jump to a bar you recognize (number + Enter), then
+     press s exactly when you hear it. Repeat at 2–3 bars.
+  4. Anchors build a tempo map (118→122 bpm) and a drift estimate
+     (±0.3 s); the playhead follows the audio even as the tempo changes.
+  Calibration is stored per audio source — switching to another recording
+  restores that source's own offset and anchors.
 
 Online search
   / / i      focus query box
@@ -114,6 +133,8 @@ Online search
   Esc        cancel / clear / back
   ?          help
   q / Ctrl+c quit
+  Sources: Ultimate Guitar [UG], Songsterr [ST], GuitarTabs.cc [GT],
+           GuitareTab.com [GR]
 
 Configuration: ~/.config/fretboard/config.json
 `)

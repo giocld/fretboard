@@ -59,6 +59,16 @@ type TabsLoadErrorMsg struct {
 	Err error
 }
 
+// BrowserPreviewMsg delivers a rendered preview of a library tab to the
+// browser's right-side preview panel. Gen guards against stale loads.
+type BrowserPreviewMsg struct {
+	TabID   int64
+	Title   string
+	Preview string
+	Err     error
+	Gen     int
+}
+
 // AutoImportWarnMsg surfaces watcher startup failures.
 type AutoImportWarnMsg struct {
 	Msg string
@@ -130,4 +140,17 @@ type AudioCatalogMsg struct {
 	Title   string
 	TabID   int64
 	TabPath string
+}
+
+// IntroDetectedMsg delivers an auto-detected leading-silence intro offset
+// for the selected audio source. The viewer applies it only if the source is
+// still selected and no manual calibration exists.
+type IntroDetectedMsg struct {
+	SourceID string
+	Offset   time.Duration
+	Err      error
+	Artist   string
+	Title    string
+	TabID    int64
+	TabPath  string
 }

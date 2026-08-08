@@ -3,6 +3,7 @@ package viewer
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -36,6 +37,8 @@ type ViewerModel struct {
 	audioSync         bool
 	audioOffset       float64 // seconds into the audio file where the tab starts
 	syncPoints        []player.SyncPoint
+	strictAudio       bool
+	infoMsg           string
 	loopStartBar      int
 	loopEndBar        int
 	follow            bool
@@ -97,17 +100,85 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.loopStartBar = 0
 	m.loopEndBar = 0
 	m.follow = true
-	if tab != nil && tab.Metadata != nil {
-		if raw := strings.TrimSpace(tab.Metadata[model.MetaKeyAudioOffset]); raw != "" {
-			if v, err := strconv.ParseFloat(raw, 64); err == nil {
-				m.audioOffset = v
-			}
-		}
-		m.syncPoints = parseSyncPoints(tab.Metadata[model.MetaKeySyncPoints])
-	}
+	m.infoMsg = ""
+	m.restoreCalibrationForSource()
 	_ = m.engine.Stop()
 	m.engine.SetLoop(0, 0)
 	m.refresh()
+}
+
+// currentSourceID returns the ID of the selected audio source, or "" when no
+// catalog is loaded. Calibration is stored per source so switching from a
+// studio version (short intro) to a live version (long intro) restores the
+// right offset instead of sharing one misaligned value.
+func (m ViewerModel) currentSourceID() string {
+	src := m.selectedSource()
+	if src.Kind == player.SourceMIDI {
+		return ""
+	}
+	return src.ID
+}
+
+// audioOffsetKey returns the metadata key holding the calibrated intro
+// offset for the current source, falling back to the legacy global key.
+func (m ViewerModel) audioOffsetKey() string {
+	if id := m.currentSourceID(); id != "" {
+		return model.MetaKeyAudioOffset + ":" + id
+	}
+	return model.MetaKeyAudioOffset
+}
+
+// syncPointsKey returns the metadata key holding sync anchors for the current
+// source, falling back to the legacy global key.
+func (m ViewerModel) syncPointsKey() string {
+	if id := m.currentSourceID(); id != "" {
+		return model.MetaKeySyncPoints + ":" + id
+	}
+	return model.MetaKeySyncPoints
+}
+
+// restoreCalibrationForSource loads the intro offset and sync anchors for the
+// currently selected source (falling back to the legacy per-tab values), so a
+// source switch never carries another recording's calibration.
+func (m *ViewerModel) restoreCalibrationForSource() {
+	m.audioOffset = 0
+	m.syncPoints = nil
+	if m.tab == nil || m.tab.Metadata == nil {
+		return
+	}
+	offset := ""
+	for _, key := range []string{m.audioOffsetKey(), model.MetaKeyAudioOffset} {
+		if offset = strings.TrimSpace(m.tab.Metadata[key]); offset != "" {
+			break
+		}
+	}
+	if offset != "" {
+		if v, err := strconv.ParseFloat(offset, 64); err == nil {
+			m.audioOffset = v
+		}
+	}
+	for _, key := range []string{m.syncPointsKey(), model.MetaKeySyncPoints} {
+		if points := parseSyncPoints(m.tab.Metadata[key]); len(points) > 0 {
+			m.syncPoints = points
+			break
+		}
+	}
+}
+
+// saveCalibrationForSource persists the current offset and anchors under the
+// current source's keys, mirroring the legacy keys so tabs without source
+// metadata keep working (and older builds stay compatible).
+func (m *ViewerModel) saveCalibrationForSource() {
+	if m.tab == nil {
+		return
+	}
+	if m.tab.Metadata == nil {
+		m.tab.Metadata = map[string]string{}
+	}
+	offset := strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+	m.tab.Metadata[m.audioOffsetKey()] = offset
+	m.tab.Metadata[model.MetaKeyAudioOffset] = offset
+	m.saveSyncPoints()
 }
 
 func (m *ViewerModel) refresh() {
@@ -116,10 +187,14 @@ func (m *ViewerModel) refresh() {
 		return
 	}
 	cur := &kit.TabCursor{Bar: m.cursorBar, Col: m.cursorCol, Playing: m.playing}
+	if m.loopStartBar > 0 && m.loopEndBar > m.loopStartBar {
+		cur.LoopStartBar = m.loopStartBar - 1
+		cur.LoopEndBar = m.loopEndBar
+	}
 	if m.linear {
-		m.viewport.SetContent(kit.RenderTabLinear(m.tab, m.panOffset, cur))
+		m.viewport.SetContent(kit.RenderTabLinearBody(m.tab, m.panOffset, cur))
 	} else {
-		m.viewport.SetContent(kit.RenderTabGrid(m.tab, m.viewport.Width, m.panOffset, cur))
+		m.viewport.SetContent(kit.RenderTabGridBody(m.tab, m.viewport.Width, m.panOffset, cur))
 	}
 	if m.follow {
 		m.ensureCursorVisible()
@@ -160,11 +235,15 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 					}
 					m.tab.Metadata["audio_source"] = src.ID
 				}
+				m.restoreCalibrationForSource()
 				var cmds []tea.Cmd
 				if wantPlay {
 					cmds = append(cmds, startPlaybackCmd(m.engine, m.tab, m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex()))
 				}
 				if cmd := m.saveTabPrefsCmd(); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				if cmd := m.maybeDetectIntroCmd(); cmd != nil {
 					cmds = append(cmds, cmd)
 				}
 				m.refresh()
@@ -179,7 +258,12 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 	case msgs.AudioCatalogMsg:
 		if m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
 			m.fetchingCatalog = false
-			if msg.Err == nil && len(msg.Catalog.Sources) > 0 {
+			// A failed online search must not hide the sources that did
+			// resolve (local files, MIDI): keep them and surface the error.
+			if msg.Err != nil {
+				m.errMsg = msg.Err.Error()
+			}
+			if len(msg.Catalog.Sources) > 0 {
 				prevPick := m.selectedSourceIdx
 				prevCursor := m.audioCursor
 				m.audioCatalog = msg.Catalog
@@ -190,26 +274,56 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 						m.audioCursor = len(m.audioCatalog.Sources) - 1
 					}
 				} else if !m.playing {
-					m.selectedSourceIdx = pickAudioSourceIndex(m.tab, msg.Catalog)
+					m.selectedSourceIdx = m.autoPickIndex(msg.Catalog)
 					if m.selectedSourceIdx >= len(m.audioCatalog.Sources) {
 						m.selectedSourceIdx = 0
 					}
 					m.audioCursor = m.selectedSourceIdx
+					// Restore the source's calibration before deriving BPM so
+					// the intro offset is excluded from the tempo math.
+					m.restoreCalibrationForSource()
 					m.applySelectedSource(true)
 				} else if prevPick < len(m.audioCatalog.Sources) {
 					m.selectedSourceIdx = prevPick
 				}
-			} else if msg.Err != nil && m.showAudioPicker {
-				m.errMsg = msg.Err.Error()
 			}
 			m.refresh()
+			return m, m.maybeDetectIntroCmd()
 		}
+	case msgs.IntroDetectedMsg:
+		if !m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
+			return m, nil
+		}
+		if msg.SourceID != "" && msg.SourceID != m.currentSourceID() {
+			return m, nil // the user switched sources while the probe ran
+		}
+		if msg.Err == nil && msg.Offset > 0 && m.audioOffset == 0 && len(m.syncPoints) == 0 {
+			m.audioOffset = msg.Offset.Seconds()
+			if m.tab.Metadata == nil {
+				m.tab.Metadata = map[string]string{}
+			}
+			if id := m.currentSourceID(); id != "" {
+				m.tab.Metadata["audio_offset_auto:"+id] = "1"
+			}
+			m.tab.Metadata["audio_offset_auto"] = "1"
+			offset := strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+			m.tab.Metadata[m.audioOffsetKey()] = offset
+			m.tab.Metadata[model.MetaKeyAudioOffset] = offset
+			m.infoMsg = fmt.Sprintf("auto-detected intro ↔ %+.1fs — fine-tune with [ ] , .", m.audioOffset)
+			m.refresh()
+			return m, m.saveTabPrefsCmd()
+		}
+		return m, nil
 	case msgs.PlaybackStartedMsg:
 		m.playing = true
 		m.schedule = msg.Schedule
 		m.stepIdx = msg.StepIdx
 		m.tickDur = msg.Duration
 		m.audioSync = msg.AudioSync
+		// Re-arm the A-B loop region from the stored bars: loop points set
+		// while paused never reached the engine before, so audio-synced
+		// playback silently never looped.
+		m.applyLoopRegion()
 		if len(m.schedule) > 0 && m.stepIdx >= 0 && m.stepIdx < len(m.schedule) {
 			step := m.schedule[m.stepIdx]
 			m.cursorBar = step.Bar
@@ -234,7 +348,12 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			elapsed := m.engine.Elapsed()
 			if m.loopEndBar > 0 {
 				if end, _, ok := m.engine.LoopRegion(); ok && elapsed >= end {
-					_ = m.engine.RestartAt(m.loopStartTime())
+					if err := m.engine.RestartAt(m.loopStartTime()); err != nil {
+						m.errMsg = "Loop restart failed: " + err.Error()
+						m.stopPlayback()
+						m.refresh()
+						return m, nil
+					}
 					elapsed = m.engine.Elapsed()
 				}
 			}
@@ -416,12 +535,19 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		}
 	case "s":
 		if m.audioSync && m.playing && m.tab != nil {
+			m.errMsg = ""
 			return m.setSyncPoint()
 		}
+		m.errMsg = "Sync bar needs a real recording: play with an audio source (a + Space), then press s here"
+		m.refresh()
 	case "S":
 		if len(m.syncPoints) > 0 {
 			m.syncPoints = nil
 			m.saveSyncPoints()
+			m.errMsg = ""
+			m.refresh()
+		} else {
+			m.errMsg = "No sync points to clear"
 			m.refresh()
 		}
 	case "i":
@@ -457,15 +583,16 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.panOffset++
 			m.refresh()
 		}
-	case "[", "{", "]", "}", "o":
+	case "[", "{", "]", "}", ",", ".", "o":
 		return m.adjustAudioOffset(msg.String())
 	case "esc":
 		if m.jumpBuffer != "" {
 			m.jumpBuffer = ""
 			return m, nil
 		}
-		if m.errMsg != "" {
+		if m.errMsg != "" || m.infoMsg != "" {
 			m.errMsg = ""
+			m.infoMsg = ""
 			m.refresh()
 			return m, nil
 		}
@@ -504,15 +631,19 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 }
 
 // adjustAudioOffset nudges the audio start offset used to sync the tab cursor
-// with a real recording, and persists it on the tab.
+// with a real recording, and persists it under the current source's key.
 func (m ViewerModel) adjustAudioOffset(key string) (ViewerModel, tea.Cmd) {
 	switch key {
 	case "[":
 		m.audioOffset -= 0.5
+	case ",":
+		m.audioOffset -= 0.1
 	case "{":
 		m.audioOffset -= 5
 	case "]":
 		m.audioOffset += 0.5
+	case ".":
+		m.audioOffset += 0.1
 	case "}":
 		m.audioOffset += 5
 	case "o":
@@ -531,7 +662,9 @@ func (m ViewerModel) adjustAudioOffset(key string) (ViewerModel, tea.Cmd) {
 	if m.tab.Metadata == nil {
 		m.tab.Metadata = map[string]string{}
 	}
-	m.tab.Metadata[model.MetaKeyAudioOffset] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+	offset := strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+	m.tab.Metadata[m.audioOffsetKey()] = offset
+	m.tab.Metadata[model.MetaKeyAudioOffset] = offset
 	return m, m.saveTabPrefsCmd()
 }
 
@@ -568,18 +701,21 @@ func (m ViewerModel) setSyncPoint() (ViewerModel, tea.Cmd) {
 	bar := m.cursorBar + 1
 	if bar == 1 {
 		m.audioOffset = elapsed.Seconds()
-		m.tab.Metadata[model.MetaKeyAudioOffset] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
 	}
 	m.syncPoints = append(m.syncPoints, player.SyncPoint{Bar: bar, Seconds: elapsed.Seconds()})
 	m.saveSyncPoints()
+	if m.tab != nil && m.tab.Metadata != nil {
+		m.tab.Metadata[m.audioOffsetKey()] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+		m.tab.Metadata[model.MetaKeyAudioOffset] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+	}
 	m.refresh()
 	return m, m.saveTabPrefsCmd()
 }
 
 // saveSyncPoints persists the anchors (plus the bar-1 offset anchor) to the
-// tab metadata as JSON.
+// current source's metadata key (mirroring the legacy key) as JSON.
 func (m *ViewerModel) saveSyncPoints() {
-	if m.tab == nil {
+	if m.tab == nil || m.tab.Metadata == nil {
 		return
 	}
 	points := append([]player.SyncPoint{{Bar: 1, Seconds: m.audioOffset}}, m.syncPoints...)
@@ -593,6 +729,7 @@ func (m *ViewerModel) saveSyncPoints() {
 		out = append(out, p)
 	}
 	if len(out) == 1 {
+		m.tab.Metadata[m.syncPointsKey()] = ""
 		m.tab.Metadata[model.MetaKeySyncPoints] = ""
 		return
 	}
@@ -600,6 +737,7 @@ func (m *ViewerModel) saveSyncPoints() {
 	if err != nil {
 		return
 	}
+	m.tab.Metadata[m.syncPointsKey()] = string(data)
 	m.tab.Metadata[model.MetaKeySyncPoints] = string(data)
 }
 
@@ -631,9 +769,64 @@ func (m ViewerModel) audioOffsetDur() time.Duration {
 	return time.Duration(m.audioOffset * float64(time.Second))
 }
 
+// tempoMap returns the low→high BPM range spanned by the per-segment tempi
+// derived from the sync anchors, when at least two anchors exist and the
+// tempo actually varies between them.
+func (m ViewerModel) tempoMap() ([2]int, bool) {
+	if len(m.syncPoints) < 2 || len(m.schedule) == 0 {
+		return [2]int{}, false
+	}
+	points := syncPointsZeroBased(m.syncPoints)
+	low, high := 0, 0
+	for i := 0; i+1 < len(points); i++ {
+		b := player.SegmentBPM(m.schedule, points[i], points[i+1])
+		if b <= 0 {
+			return [2]int{}, false
+		}
+		if low == 0 || b < low {
+			low = b
+		}
+		if b > high {
+			high = b
+		}
+	}
+	if low <= 0 || high <= low {
+		return [2]int{}, false
+	}
+	return [2]int{low, high}, true
+}
+
+// syncQuality returns the RMS drift (seconds) between the sync anchors and
+// the tempo implied by the first segment, when at least two anchors exist.
+// Each later anchor is predicted from the first segment's tempo; the error
+// between prediction and reality is the drift the anchor mapping corrects.
+func (m ViewerModel) syncQuality() (float64, bool) {
+	if len(m.syncPoints) < 2 || len(m.schedule) == 0 {
+		return 0, false
+	}
+	points := syncPointsZeroBased(m.syncPoints)
+	baseBPM := player.SegmentBPM(m.schedule, points[0], points[1])
+	if baseBPM <= 0 {
+		return 0, false
+	}
+	var sum float64
+	n := 0
+	for i := 2; i < len(points); i++ {
+		ticks := player.TicksBetweenBars(m.schedule, points[0].Bar, points[i].Bar)
+		predicted := points[0].Seconds + player.TicksToSeconds(ticks, baseBPM)
+		err := predicted - points[i].Seconds
+		sum += err * err
+		n++
+	}
+	if n == 0 {
+		return 0, false
+	}
+	return math.Sqrt(sum / float64(n)), true
+}
+
 // setLoopPoint registers the A (start) or B (end) loop boundary at the current
-// bar, mapped to audio file time (schedule time + intro offset), and arms the
-// engine loop region.
+// bar and re-arms the engine region. The engine region is also re-armed at
+// playback start so loops set while paused work from the first pass.
 func (m ViewerModel) setLoopPoint(isStart bool) (ViewerModel, tea.Cmd) {
 	bar := m.cursorBar + 1
 	if isStart {
@@ -644,15 +837,28 @@ func (m ViewerModel) setLoopPoint(isStart bool) (ViewerModel, tea.Cmd) {
 	if m.loopStartBar > 0 && m.loopEndBar > 0 && m.loopEndBar <= m.loopStartBar {
 		m.loopEndBar = m.loopStartBar + 1
 	}
-	if len(m.schedule) > 0 {
-		start := player.ScheduleTimeAtBar(m.schedule, m.loopStartBar-1, m.bpm) + m.audioOffsetDur()
-		end := player.ScheduleTimeAtBar(m.schedule, m.loopEndBar, m.bpm) + m.audioOffsetDur()
-		if end > start {
-			m.engine.SetLoop(start, end)
-		}
-	}
+	m.applyLoopRegion()
 	m.refresh()
 	return m, nil
+}
+
+// applyLoopRegion maps the stored A-B bars (1-based, inclusive) to engine
+// loop times: schedule time at the half-open 0-based range plus the calibrated
+// intro offset. With no schedule yet (paused before first play) the region is
+// left to PlaybackStartedMsg to arm.
+func (m *ViewerModel) applyLoopRegion() {
+	if m.loopStartBar <= 0 || m.loopEndBar <= 0 {
+		m.engine.SetLoop(0, 0)
+		return
+	}
+	if len(m.schedule) == 0 {
+		return
+	}
+	start := player.ScheduleTimeAtBar(m.schedule, m.loopStartBar-1, m.bpm) + m.audioOffsetDur()
+	end := player.ScheduleTimeAtBar(m.schedule, m.loopEndBar, m.bpm) + m.audioOffsetDur()
+	if end > start {
+		m.engine.SetLoop(start, end)
+	}
 }
 
 func (m ViewerModel) matchesAudioTab(tabID int64, tabPath, artist, title string) bool {
@@ -728,6 +934,7 @@ func (m *ViewerModel) togglePlayback() tea.Cmd {
 		return nil
 	}
 	m.errMsg = ""
+	m.infoMsg = ""
 	src := m.selectedSource()
 	if src.Kind == player.SourceOnline && (src.Path == "" || !player.FileExists(src.Path)) {
 		if m.resolvedAudio != "" && player.FileExists(m.resolvedAudio) {
@@ -790,77 +997,104 @@ func (m *ViewerModel) cursorBarLineOffset() int {
 }
 
 
-// View is part of the tea.Model interface.
+// View is part of the tea.Model interface. The tab viewer separates the title
+// (primary), the status row (secondary), and the tab body (content): the
+// status indicators no longer pile onto a single title line.
 func (m ViewerModel) View() string {
 	crumb := kit.FormatBreadcrumb("home", "library", "viewer")
-	panelTitle := "Tab"
+	var title, status string
 	if m.tab != nil {
 		crumb = kit.FormatBreadcrumb("home", "library", m.tab.Title)
-		panelTitle = fmt.Sprintf("%s · %s · bar %d/%d · %d BPM", m.tab.Title, m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm)
+		title = kit.PanelTitleStyle.Render(m.tab.Title)
+		if m.tab.Artist != "" {
+			title += kit.MutedStyle.Render("  — " + m.tab.Artist)
+		}
+		status = kit.MutedStyle.Render(fmt.Sprintf("%s · bar %d/%d · %d BPM",
+			m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm))
 		if m.playing {
 			label := m.engine.ActiveDriver
 			if m.engine.Mode() == "audio" {
 				if label == "" {
 					label = "audio"
 				}
-				panelTitle += kit.SuccessStyle.Render("  ▶ " + label)
+				status += "  " + kit.SuccessStyle.Render("▶ " + label)
 			} else if label != "" {
-				panelTitle += kit.SuccessStyle.Render("  ▶ midi:" + label)
+				status += "  " + kit.SuccessStyle.Render("▶ midi:" + label)
 			} else {
-				panelTitle += kit.SuccessStyle.Render("  ▶ midi")
+				status += "  " + kit.SuccessStyle.Render("▶ midi")
 			}
 		}
 		if src := m.selectedSource(); !m.playing {
 			if m.fetchingCatalog || m.fetchingAudio {
-				panelTitle += kit.MutedStyle.Render("  … finding audio")
+				status += kit.MutedStyle.Render("  … finding audio")
 			} else if src.Kind == player.SourceMIDI {
-				panelTitle += kit.MutedStyle.Render("  ♪ midi")
+				status += kit.MutedStyle.Render("  ♪ midi")
 			} else if m.resolvedAudio != "" {
-				panelTitle += kit.MutedStyle.Render("  ♪ " + filepath.Base(m.resolvedAudio))
+				status += kit.MutedStyle.Render("  ♪ " + filepath.Base(m.resolvedAudio))
 			}
 		}
 		if m.audioOffset != 0 {
-			panelTitle += kit.MutedStyle.Render(fmt.Sprintf("  ↔ %+.1fs", m.audioOffset))
+			status += kit.MutedStyle.Render(fmt.Sprintf("  ↔ %+.1fs", m.audioOffset))
 		}
 		if len(m.syncPoints) > 0 {
-			panelTitle += kit.MutedStyle.Render(fmt.Sprintf("  ⚓%d", len(m.syncPoints)))
+			status += kit.MutedStyle.Render(fmt.Sprintf("  ⚓%d", len(m.syncPoints)))
+		}
+		if q, ok := m.syncQuality(); ok {
+			status += kit.InfoStyle.Render(fmt.Sprintf("  ±%.2fs", q))
+		}
+		if map_, ok := m.tempoMap(); ok {
+			status += kit.InfoStyle.Render(fmt.Sprintf("  %d→%d bpm", map_[0], map_[1]))
 		}
 		if m.loopStartBar > 0 && m.loopEndBar > 0 {
-			panelTitle += kit.MutedStyle.Render(fmt.Sprintf("  ↻ %d-%d", m.loopStartBar, m.loopEndBar))
+			status += kit.MutedStyle.Render(fmt.Sprintf("  ↻ %d-%d", m.loopStartBar, m.loopEndBar))
 		}
 		if rate := m.engine.Rate(); rate != 1 {
-			panelTitle += kit.MutedStyle.Render(fmt.Sprintf("  ⏩ ×%.2f", rate))
-		}
-		if !m.showAudioPicker {
-			panelTitle += kit.MutedStyle.Render("  [a] source")
+			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏩ ×%.2f", rate))
 		}
 	}
 	if m.jumpBuffer != "" {
-		panelTitle += kit.MutedStyle.Render("  [jump " + m.jumpBuffer + "]")
+		status += kit.MutedStyle.Render("  [jump " + m.jumpBuffer + "]")
+	}
+	if m.infoMsg != "" {
+		status += "  " + kit.InfoStyle.Render(kit.Truncate(m.infoMsg, 48))
 	}
 	if m.errMsg != "" {
-		panelTitle += "  " + kit.ErrorStyle.Render("⚠ "+kit.Truncate(m.errMsg, 48))
+		status += "  " + kit.ErrorStyle.Render("⚠ " + kit.Truncate(m.errMsg, 48))
 	}
+	status = kit.Truncate(status, m.width-8)
 
-	body := "\n" + kit.RenderPanel(m.width-2, panelTitle, m.viewport.View())
+	body := "\n"
+	if m.tab != nil {
+		body += title + "\n"
+		if status != "" {
+			body += status + "\n"
+		}
+		body += kit.RenderDivider(m.width-4) + "\n\n"
+		body += kit.RenderPanel(m.width-2, "", m.viewport.View())
+	} else {
+		body += kit.RenderPanel(m.width-2, "Tab", m.viewport.View())
+	}
 	if m.showAudioPicker {
-		body += RenderAudioPicker(m.width, m.audioCatalog, m.audioCursor, m.fetchingCatalog)
+		body += RenderAudioPicker(m.width, m.audioCatalog, m.audioCursor, m.fetchingCatalog, m.strictAudio, m.recommendedSourceIdx())
 	}
 
 	playLabel := "play"
 	if m.playing {
 		playLabel = "pause"
 	}
-	footer := kit.RenderFooter(m.width, []kit.KeyHint{
+	statusLine := ""
+	if m.tab != nil && m.tab.Title != "" {
+		statusLine = fmt.Sprintf("♪ %s", kit.Truncate(m.tab.Title, 24))
+	}
+	footer := kit.RenderFooterWithStatus(m.width, statusLine, []kit.KeyHint{
 		{Key: "a", Label: "audio"},
 		{Key: "Space/p", Label: playLabel},
 		{Key: "+/-", Label: "BPM"},
 		{Key: "> <", Label: "speed"},
-		{Key: "[ ]", Label: "sync ±0.5s"},
-		{Key: "o", Label: "reset sync"},
+		{Key: "[ ] , .", Label: "sync"},
+		{Key: "o", Label: "reset"},
 		{Key: "s", Label: "sync bar"},
-		{Key: "i/u", Label: "loop A-B"},
-		{Key: "x", Label: "clear loop"},
+		{Key: "i/u", Label: "loop"},
 		{Key: "v", Label: "layout"},
 		{Key: "f", Label: "follow"},
 		{Key: "j/k", Label: "scroll"},
@@ -890,6 +1124,64 @@ func pickAudioSourceIndex(tab *model.Tab, cat player.AudioCatalog) int {
 		}
 	}
 	return 0
+}
+
+// pickStrictAudioSourceIndex is the studio-lock variant: local files first,
+// then the best-scoring candidate that passes strict selection (official or
+// backing), then MIDI. Live shows, covers, and lessons are never auto-picked
+// because they fight the tab's tempo and arrangement.
+func pickStrictAudioSourceIndex(tab *model.Tab, cat player.AudioCatalog) int {
+	if tab != nil && tab.Metadata != nil {
+		if srcID := strings.TrimSpace(tab.Metadata["audio_source"]); srcID != "" {
+			if found := cat.FindByID(srcID); found >= 0 {
+				return found
+			}
+		}
+	}
+	best := -1
+	for i, src := range cat.Sources {
+		if src.Kind == player.SourceLocal && src.Path != "" && player.FileExists(src.Path) {
+			return i
+		}
+		if !src.StrictOK {
+			continue
+		}
+		if best < 0 || src.Score > cat.Sources[best].Score {
+			best = i
+		}
+	}
+	if best >= 0 {
+		return best
+	}
+	return 0 // MIDI: safer than auto-downloading a mismatched recording
+}
+
+// autoPickIndex chooses the auto-play source for the current strict mode and
+// notes when strict selection rejected every online candidate.
+func (m *ViewerModel) autoPickIndex(cat player.AudioCatalog) int {
+	if m.strictAudio {
+		idx := pickStrictAudioSourceIndex(m.tab, cat)
+		if idx == 0 && cat.HasStrictRejected() {
+			m.infoMsg = "No studio/official match — open [a] to pick audio manually"
+		}
+		return idx
+	}
+	return pickAudioSourceIndex(m.tab, cat)
+}
+
+// SetStrictAudio toggles studio-lock audio selection (auto-pick and
+// recommendation prefer official/backing recordings over live/cover/lesson).
+func (m *ViewerModel) SetStrictAudio(v bool) {
+	m.strictAudio = v
+}
+
+// recommendedSourceIdx returns the catalog index the picker should mark as
+// the recommended pick for the current strict mode.
+func (m ViewerModel) recommendedSourceIdx() int {
+	if m.strictAudio {
+		return pickStrictAudioSourceIndex(m.tab, m.audioCatalog)
+	}
+	return pickAudioSourceIndex(m.tab, m.audioCatalog)
 }
 
 func (m ViewerModel) selectedSource() player.AudioSource {
@@ -969,6 +1261,9 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 		m.selectedSourceIdx = m.audioCursor
 		m.showAudioPicker = false
 		src := m.selectedSource()
+		// Switching recordings means switching calibration: restore the new
+		// source's intro offset and sync anchors.
+		m.restoreCalibrationForSource()
 		if src.Kind == player.SourceOnline && (src.Path == "" || !player.FileExists(src.Path)) {
 			m.fetchingAudio = true
 			m.pendingPlay = true
@@ -981,9 +1276,40 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 			}
 			m.tab.Metadata["audio_source"] = src.ID
 		}
-		return m, m.saveTabPrefsCmd()
+		return m, tea.Batch(m.saveTabPrefsCmd(), m.maybeDetectIntroCmd())
 	}
 	return m, nil
+}
+
+// maybeDetectIntroCmd returns a command that probes the selected audio file's
+// leading silence for an auto intro offset — but only when the file exists,
+// no manual calibration exists yet, and the probe hasn't run for this source.
+func (m *ViewerModel) maybeDetectIntroCmd() tea.Cmd {
+	if m.tab == nil || m.audioOffset != 0 || len(m.syncPoints) > 0 {
+		return nil
+	}
+	src := m.selectedSource()
+	if src.Kind == player.SourceMIDI {
+		return nil
+	}
+	path := src.Path
+	if path == "" || !player.FileExists(path) {
+		return nil
+	}
+	if m.tab.Metadata != nil {
+		if m.tab.Metadata["audio_offset_auto:"+src.ID] == "1" || m.tab.Metadata["audio_offset_auto"] == "1" {
+			return nil
+		}
+	}
+	srcID := src.ID
+	tab, tabID, tabPath := m.tab, m.tabID, m.tabPath
+	return func() tea.Msg {
+		offset, err := player.LeadingSilence(path)
+		if err != nil {
+			return msgs.IntroDetectedMsg{SourceID: srcID, Err: err, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
+		}
+		return msgs.IntroDetectedMsg{SourceID: srcID, Offset: offset, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
+	}
 }
 
 func (m ViewerModel) downloadSelectedSourceCmd() tea.Cmd {
@@ -1007,18 +1333,19 @@ func (m *ViewerModel) BeginAudioFetch(allowOnline bool) tea.Cmd {
 	cat, err := player.BuildAudioCatalog(m.tab, m.tabPath, m.audioDirs, false)
 	if err == nil && len(cat.Sources) > 0 {
 		m.audioCatalog = cat
-		m.selectedSourceIdx = pickAudioSourceIndex(m.tab, cat)
+		m.selectedSourceIdx = m.autoPickIndex(cat)
 		if m.selectedSourceIdx >= len(m.audioCatalog.Sources) {
 			m.selectedSourceIdx = 0
 		}
 		m.audioCursor = m.selectedSourceIdx
+		m.restoreCalibrationForSource()
 		m.applySelectedSource(true)
 	}
 	if !allowOnline || !player.OnlineAudioAvailable() || player.AudioSearchQuery(m.tab) == "" {
-		return nil
+		return m.maybeDetectIntroCmd()
 	}
 	m.fetchingCatalog = true
-	return fetchAudioCatalogCmd(m.tab, m.tabPath, m.tabID, m.audioDirs, allowOnline)
+	return tea.Batch(fetchAudioCatalogCmd(m.tab, m.tabPath, m.tabID, m.audioDirs, allowOnline), m.maybeDetectIntroCmd())
 }
 
 // StopPlayback halts any running audio.

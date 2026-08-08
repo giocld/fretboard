@@ -431,6 +431,11 @@ func (m *AppModel) SetVolume(v int) {
 	m.viewer.SetVolume(v)
 }
 
+// SetStrictAudio toggles studio-lock audio selection.
+func (m *AppModel) SetStrictAudio(v bool) {
+	m.viewer.SetStrictAudio(v)
+}
+
 // SetSoundfont sets the path to the soundfont used by the synthesizer.
 func (m *AppModel) SetSoundfont(path string) {
 	m.viewer.SetSoundfont(path)
