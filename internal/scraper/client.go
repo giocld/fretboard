@@ -2,6 +2,8 @@ package scraper
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"fretboard/internal/model"
@@ -102,28 +104,73 @@ func (c *Client) Fetch(result SearchResult) (*model.Tab, error) {
 	}
 }
 
-func mergeSearchResults(primary, extra []SearchResult) []SearchResult {
-	seen := make(map[string]bool)
-	var out []SearchResult
-	for _, r := range primary {
-		key := resultKey(r)
-		if seen[key] {
-			continue
+// resultScore ranks a search result for display: tabs beat chord sheets,
+// high ratings and vote counts beat anonymous uploads, and well-known
+// sources beat obscure archives. Higher is better. The score drives the
+// merged list order so the official, top-rated tab of a song surfaces
+// above low-rated covers and chord sheets.
+func resultScore(r SearchResult) int {
+	score := 0
+	switch {
+	case IsTabType(r):
+		score += 1000
+	case strings.EqualFold(r.Type, "chords") || strings.EqualFold(r.Type, "chord"):
+		score += 200
+	}
+	if r.Rating > 0 {
+		score += int(r.Rating * 100)
+	}
+	if r.Votes > 0 {
+		v := r.Votes
+		if v > 2000 {
+			v = 2000
 		}
-		seen[key] = true
+		score += int(v / 20)
+	}
+	switch r.Source {
+	case SourceUG:
+		score += 50
+	case SourceSongsterr:
+		score += 30
+	case SourceGuitarTabs:
+		score += 20
+	case SourceGuitareTab:
+		score += 10
+	}
+	return score
+}
+
+func mergeSearchResults(primary, extra []SearchResult) []SearchResult {
+	best := make(map[string]int) // result key -> index into out
+	var out []SearchResult
+	keep := func(r SearchResult) {
+		key := resultKey(r)
+		if idx, ok := best[key]; ok {
+			// Same song from the same source twice (e.g. UG API + HTML):
+			// keep the higher-rated copy.
+			if resultScore(r) > resultScore(out[idx]) {
+				out[idx] = r
+			}
+			return
+		}
+		best[key] = len(out)
 		out = append(out, r)
+	}
+	for _, r := range primary {
+		keep(r)
 	}
 	for _, r := range extra {
-		key := resultKey(r)
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		out = append(out, r)
+		keep(r)
 	}
+	// Best match first: tabs with the strongest ratings from the most
+	// trusted sources float to the top; ties keep source order.
+	sort.SliceStable(out, func(i, j int) bool { return resultScore(out[i]) > resultScore(out[j]) })
 	return out
 }
 
 func resultKey(r SearchResult) string {
-	return string(r.Source) + "|" + r.ArtistName + "|" + r.SongName
+	// Type is part of the key so a tab and a chord sheet of the same song
+	// stay distinct rows; cross-source duplicates of the same performance
+	// type still collapse onto one row.
+	return string(r.Source) + "|" + r.ArtistName + "|" + r.SongName + "|" + r.Type
 }

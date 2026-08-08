@@ -2,8 +2,10 @@ package search
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
+	"fretboard/internal/model"
 	"fretboard/internal/scraper"
 	"fretboard/internal/ui/kit"
 	"fretboard/internal/ui/msgs"
@@ -304,6 +306,18 @@ func (m *SearchModel) importCmd(result scraper.SearchResult, gen int) tea.Cmd {
 		if err != nil {
 			return msgs.TabImportErrorMsg{Err: err, Gen: gen}
 		}
+		// Carry provenance into the library: where the tab came from and how
+		// well it is rated, so the browser and viewer can show it later.
+		if tab.Metadata == nil {
+			tab.Metadata = map[string]string{}
+		}
+		tab.Metadata[model.MetaKeySourceBadge] = scraper.SourceBadge(result)
+		if result.Rating > 0 {
+			tab.Metadata["source_rating"] = fmt.Sprintf("%.1f", result.Rating)
+		}
+		if result.Votes > 0 {
+			tab.Metadata["source_votes"] = strconv.FormatInt(result.Votes, 10)
+		}
 		return msgs.TabFetchedMsg{Tab: tab, Source: result, Gen: gen}
 	}
 }
@@ -361,8 +375,47 @@ func formatResult(r scraper.SearchResult) string {
 	case scraper.SourceGuitareTab:
 		badge = kit.HighlightStyle.Render("[GR]")
 	}
-	meta := kit.MutedStyle.Render(r.Type)
-	return badge + " " + r.SongName + " — " + r.ArtistName + "  " + meta
+	// Performance type: tabs are what most queries want; chord sheets and
+	// bass parts are labeled so they are recognizable before fetching.
+	typeBadge := ""
+	switch strings.ToLower(r.Type) {
+	case "tabs", "tab", "tab pro", "pro", "bass", "bass tabs":
+		typeBadge = kit.MutedStyle.Render("TAB")
+	case "chords", "chord":
+		typeBadge = kit.WarningStyle.Render("CHD")
+	}
+	// Rating + vote count from the source (UG), plus a top-rated marker for
+	// strongly-voted tabs — the official version is recognizable at a glance.
+	rating := ""
+	if r.Rating > 0 {
+		rating = kit.SuccessStyle.Render(fmt.Sprintf("★%.1f", r.Rating))
+		if r.Votes > 0 {
+			rating = kit.SuccessStyle.Render(fmt.Sprintf("★%.1f · %s", r.Rating, shortVotes(r.Votes)))
+		}
+	}
+	top := ""
+	if scraper.IsTopRated(r) {
+		top = kit.SuccessStyle.Render("★top")
+	}
+	parts := []string{badge + " " + r.SongName + " — " + r.ArtistName}
+	if typeBadge != "" {
+		parts = append(parts, typeBadge)
+	}
+	if rating != "" {
+		parts = append(parts, rating)
+	}
+	if top != "" {
+		parts = append(parts, top)
+	}
+	return strings.Join(parts, "  ")
+}
+
+// shortVotes renders a vote count compactly: 2100 → "2.1k", 500 → "500".
+func shortVotes(v int64) string {
+	if v >= 1000 {
+		return fmt.Sprintf("%.1fk", float64(v)/1000.0)
+	}
+	return fmt.Sprintf("%d", v)
 }
 
 // View renders the search screen as a single panel: query line, divider,

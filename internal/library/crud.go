@@ -17,7 +17,9 @@ import (
 var ErrNotFound = errors.New("library: tab not found")
 
 // Import parses a tab and inserts it into the library. If the filepath already
-// exists, it updates the existing record and returns the same ID.
+// exists, it updates the existing record and returns the same ID. The
+// source_badge column mirrors tab.Metadata[model.MetaKeySourceBadge] so rows
+// can show provenance without loading full content.
 func (s *Store) Import(filepath string, tab *model.Tab) (int64, error) {
 	if tab == nil {
 		return 0, fmt.Errorf("library: import %s: nil tab", filepath)
@@ -30,6 +32,7 @@ func (s *Store) Import(filepath string, tab *model.Tab) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("library: import %s: marshal tuning: %w", filepath, err)
 	}
+	badge := strings.TrimSpace(tab.Metadata[model.MetaKeySourceBadge])
 
 	var id int64
 	err = s.db.QueryRow(`
@@ -42,9 +45,9 @@ func (s *Store) Import(filepath string, tab *model.Tab) (int64, error) {
 	if id > 0 {
 		_, err := s.db.Exec(`
 			UPDATE tabs
-			SET title=?, artist=?, tuning=?, content=?
+			SET title=?, artist=?, tuning=?, content=?, source_badge=?
 			WHERE id=?
-		`, tab.Title, tab.Artist, string(tuningJSON), string(content), id)
+		`, tab.Title, tab.Artist, string(tuningJSON), string(content), badge, id)
 		if err != nil {
 			return 0, fmt.Errorf("library: import %s: update tab: %w", filepath, err)
 		}
@@ -52,9 +55,9 @@ func (s *Store) Import(filepath string, tab *model.Tab) (int64, error) {
 	}
 
 	res, err := s.db.Exec(`
-		INSERT INTO tabs (filepath, title, artist, tuning, content)
-		VALUES (?, ?, ?, ?, ?)
-	`, filepath, tab.Title, tab.Artist, string(tuningJSON), string(content))
+		INSERT INTO tabs (filepath, title, artist, tuning, content, source_badge)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, filepath, tab.Title, tab.Artist, string(tuningJSON), string(content), badge)
 	if err != nil {
 		return 0, fmt.Errorf("library: import %s: insert tab: %w", filepath, err)
 	}
@@ -80,9 +83,9 @@ func (s *Store) GetRow(id int64) (*TabRow, error) {
 	var fav int
 	var lastPlayed sql.NullString
 	err := s.db.QueryRow(`
-		SELECT id, filepath, title, artist, tuning, favorite, play_count, last_played
+		SELECT id, filepath, title, artist, tuning, favorite, play_count, last_played, source_badge
 		FROM tabs WHERE id = ?
-	`, id).Scan(&row.ID, &row.Filepath, &row.Title, &row.Artist, &row.Tuning, &fav, &row.PlayCount, &lastPlayed)
+	`, id).Scan(&row.ID, &row.Filepath, &row.Title, &row.Artist, &row.Tuning, &fav, &row.PlayCount, &lastPlayed, &row.SourceBadge)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
@@ -118,7 +121,7 @@ func (s *Store) Get(id int64) (*model.Tab, error) {
 // List returns a summary of all tabs ordered by title.
 func (s *Store) List() ([]TabRow, error) {
 	rows, err := s.db.Query(`
-		SELECT id, filepath, title, artist, tuning, favorite, play_count, last_played
+		SELECT id, filepath, title, artist, tuning, favorite, play_count, last_played, source_badge
 		FROM tabs ORDER BY title, id
 	`)
 	if err != nil {
@@ -131,7 +134,7 @@ func (s *Store) List() ([]TabRow, error) {
 		var r TabRow
 		var fav int
 		var lastPlayed sql.NullString
-		if err := rows.Scan(&r.ID, &r.Filepath, &r.Title, &r.Artist, &r.Tuning, &fav, &r.PlayCount, &lastPlayed); err != nil {
+		if err := rows.Scan(&r.ID, &r.Filepath, &r.Title, &r.Artist, &r.Tuning, &fav, &r.PlayCount, &lastPlayed, &r.SourceBadge); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
 		r.Favorite = fav != 0
@@ -156,7 +159,7 @@ func (s *Store) Search(query string) ([]TabRow, error) {
 	}
 	q := like(query)
 	rows, err := s.db.Query(`
-		SELECT id, filepath, title, artist, tuning, favorite, play_count, last_played
+		SELECT id, filepath, title, artist, tuning, favorite, play_count, last_played, source_badge
 		FROM tabs
 		WHERE title LIKE ? ESCAPE '\' OR artist LIKE ? ESCAPE '\'
 		ORDER BY title, id
@@ -171,7 +174,7 @@ func (s *Store) Search(query string) ([]TabRow, error) {
 		var r TabRow
 		var fav int
 		var lastPlayed sql.NullString
-		if err := rows.Scan(&r.ID, &r.Filepath, &r.Title, &r.Artist, &r.Tuning, &fav, &r.PlayCount, &lastPlayed); err != nil {
+		if err := rows.Scan(&r.ID, &r.Filepath, &r.Title, &r.Artist, &r.Tuning, &fav, &r.PlayCount, &lastPlayed, &r.SourceBadge); err != nil {
 			return nil, fmt.Errorf("scan row: %w", err)
 		}
 		r.Favorite = fav != 0

@@ -47,3 +47,36 @@ func TestLiveUGSearchAndFetch(t *testing.T) {
 	}
 	t.Logf("fetched %q by %q, %d bars via %s", tab.Title, tab.Artist, len(tab.Bars), results[0].TabURL)
 }
+
+// TestLiveSearchRankedOfficialFirst is the acceptance check for S1: a real
+// multi-source search for a famous song must surface the official, top-rated
+// tab above covers and chord sheets. Run with:
+// go test -tags live -run LiveSearchRanked ./internal/scraper/ -v
+func TestLiveSearchRankedOfficialFirst(t *testing.T) {
+	c := NewClient(1100 * time.Millisecond)
+	results, err := c.Search("sultans of swing dire straits")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("search returned no results")
+	}
+	t.Logf("top 8 of %d results:", len(results))
+	for i, r := range results {
+		if i >= 8 {
+			break
+		}
+		t.Logf("  %d. %s %s — %s [%s] %.1f★ %dv", i+1, SourceBadge(r), r.SongName, r.ArtistName, r.Type, r.Rating, r.Votes)
+	}
+	top := results[0]
+	if !IsTabType(top) {
+		t.Fatalf("top result should be a tab, got type %q: %+v", top.Type, top)
+	}
+	if strings.ToLower(top.ArtistName) != "dire straits" {
+		t.Fatalf("top result should be by Dire Straits, got %q", top.ArtistName)
+	}
+	if top.Rating < 4.0 {
+		t.Fatalf("top result should be strongly rated, got %.1f (%+v)", top.Rating, top)
+	}
+	t.Logf("PASS: top result is the official tab: %s — %s (%.1f★, %d votes, %s)", top.SongName, top.ArtistName, top.Rating, top.Votes, top.Source)
+}

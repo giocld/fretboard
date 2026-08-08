@@ -47,30 +47,46 @@ func (s *Store) Close() error {
 func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS tabs (
-			id          INTEGER PRIMARY KEY AUTOINCREMENT,
-			filepath    TEXT NOT NULL UNIQUE,
-			title       TEXT NOT NULL DEFAULT '',
-			artist      TEXT NOT NULL DEFAULT '',
-			tuning      TEXT NOT NULL DEFAULT '',
-			content     TEXT NOT NULL DEFAULT '',
-			added_at    TEXT DEFAULT (datetime('now')),
-			last_played TEXT,
-			play_count  INTEGER DEFAULT 0,
-			favorite    INTEGER DEFAULT 0
+			id           INTEGER PRIMARY KEY AUTOINCREMENT,
+			filepath     TEXT NOT NULL UNIQUE,
+			title        TEXT NOT NULL DEFAULT '',
+			artist       TEXT NOT NULL DEFAULT '',
+			tuning       TEXT NOT NULL DEFAULT '',
+			content      TEXT NOT NULL DEFAULT '',
+			added_at     TEXT DEFAULT (datetime('now')),
+			last_played  TEXT,
+			play_count   INTEGER DEFAULT 0,
+			favorite     INTEGER DEFAULT 0,
+			source_badge TEXT NOT NULL DEFAULT ''
 		);
 	`); err != nil {
+		return err
+	}
+	if err := s.addMissingColumns(); err != nil {
 		return err
 	}
 	return s.dropLegacyColumns()
 }
 
-// dropLegacyColumns removes columns from the tabs table that were part of
-// older schemas but are no longer used. It only drops a column when it
-// actually exists, so it is safe on fresh databases.
-func (s *Store) dropLegacyColumns() error {
-	rows, err := s.db.Query(`PRAGMA table_info(tabs)`)
+// addMissingColumns adds columns introduced after the original schema to
+// existing databases, mirroring how the schema evolves across versions.
+func (s *Store) addMissingColumns() error {
+	existing, err := s.tableColumns("tabs")
 	if err != nil {
-		return fmt.Errorf("read table info: %w", err)
+		return err
+	}
+	if !existing["source_badge"] {
+		if _, err := s.db.Exec(`ALTER TABLE tabs ADD COLUMN source_badge TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add column source_badge: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) tableColumns(table string) (map[string]bool, error) {
+	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return nil, fmt.Errorf("read table info: %w", err)
 	}
 	defer rows.Close()
 
@@ -81,12 +97,23 @@ func (s *Store) dropLegacyColumns() error {
 		var notnull, pk int
 		var dflt sql.NullString
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
-			return fmt.Errorf("scan table info: %w", err)
+			return nil, fmt.Errorf("scan table info: %w", err)
 		}
 		existing[name] = true
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("read table info: %w", err)
+		return nil, fmt.Errorf("read table info: %w", err)
+	}
+	return existing, nil
+}
+
+// dropLegacyColumns removes columns from the tabs table that were part of
+// older schemas but are no longer used. It only drops a column when it
+// actually exists, so it is safe on fresh databases.
+func (s *Store) dropLegacyColumns() error {
+	existing, err := s.tableColumns("tabs")
+	if err != nil {
+		return err
 	}
 
 	for _, name := range []string{"difficulty", "tags"} {

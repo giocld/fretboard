@@ -1009,6 +1009,9 @@ func (m ViewerModel) View() string {
 		if m.tab.Artist != "" {
 			title += kit.MutedStyle.Render("  — " + m.tab.Artist)
 		}
+		if b := strings.TrimSpace(m.tab.Metadata[model.MetaKeySourceBadge]); b != "" {
+			title += kit.MutedStyle.Render("  " + b)
+		}
 		status = kit.MutedStyle.Render(fmt.Sprintf("%s · bar %d/%d · %d BPM",
 			m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm))
 		if m.playing {

@@ -269,3 +269,45 @@ func TestFormatResultBadges(t *testing.T) {
 		t.Fatalf("UG result should be badged [UG], got %q", got)
 	}
 }
+
+// TestFormatResultShowsRatingAndTypeBadges verifies the row makes the
+// performance type, the rating, and the top-rated marker visible before
+// fetching — the official version is recognizable at a glance.
+func TestFormatResultShowsRatingAndTypeBadges(t *testing.T) {
+	official := formatResult(scraper.SearchResult{
+		Source:     scraper.SourceUG,
+		SongName:   "Sultans of Swing",
+		ArtistName: "Dire Straits",
+		Type:       "Tabs",
+		Rating:     4.9,
+		Votes:      2100,
+	})
+	for _, want := range []string{"[UG]", "TAB", "★4.9", "2.1k", "★top"} {
+		if !strings.Contains(official, want) {
+			t.Fatalf("official row missing %q: %s", want, official)
+		}
+	}
+
+	chords := formatResult(scraper.SearchResult{
+		Source:     scraper.SourceUG,
+		SongName:   "Wonderwall",
+		ArtistName: "Oasis",
+		Type:       "Chords",
+	})
+	if !strings.Contains(chords, "CHD") {
+		t.Fatalf("chord row should carry the CHD badge: %s", chords)
+	}
+	if strings.Contains(chords, "★top") {
+		t.Fatalf("unrated chord row must not be marked top: %s", chords)
+	}
+
+	plain := formatResult(scraper.SearchResult{
+		Source:     scraper.SourceGuitarTabs,
+		SongName:   "Sultans",
+		ArtistName: "Dire Straits",
+		Type:       "Tabs",
+	})
+	if strings.Contains(plain, "★") {
+		t.Fatalf("unrated result must not show a star rating: %s", plain)
+	}
+}

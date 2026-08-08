@@ -460,6 +460,11 @@ func (m BrowserModel) renderList() string {
 			star = "★"
 		}
 		tuning := formatRowTuning(row.Tuning)
+		if row.SourceBadge != "" {
+			// Provenance beats a standard tuning label for online tabs: it
+			// tells the user which source and how well rated the tab is.
+			tuning = kit.MutedStyle.Render(row.SourceBadge)
+		}
 		line := fmt.Sprintf("%-3s %-34s %-24s %s", star, kit.Truncate(row.Title, 34), kit.Truncate(row.Artist, 24), tuning)
 		if m.sortMode == SortPlays {
 			line = fmt.Sprintf("%-3s %-34s %-24s %d", star, kit.Truncate(row.Title, 34), kit.Truncate(row.Artist, 24), row.PlayCount)

@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"fretboard/internal/library"
+	"fretboard/internal/model"
 	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -348,3 +349,48 @@ func TestBrowserPreviewCollapsesOnNarrowTerminal(t *testing.T) {
 	}
 }
 
+
+// TestBrowserRowShowsSourceBadge guards S1: online-imported tabs carry their
+// provenance badge into the library list so the user can see where a tab
+// came from and how well it is rated before opening it.
+func TestBrowserRowShowsSourceBadge(t *testing.T) {
+	st, err := library.NewStore(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Import("online://ug/123", &model.Tab{
+		Title:    "Sultans of Swing",
+		Artist:   "Dire Straits",
+		Tuning:   model.Standard,
+		Metadata: map[string]string{model.MetaKeySourceBadge: "[UG ★4.9]"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Import("local.txt", &model.Tab{
+		Title:  "Local Song",
+		Artist: "Local Artist",
+		Tuning: model.Standard,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	m := NewBrowserModel(st)
+	rows, err := st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.tabs = rows
+	m.loaded = true
+	m.width = 140
+	m.height = 30
+	m.apply()
+
+	view := m.View()
+	if !strings.Contains(view, "[UG ★4.9]") {
+		t.Fatalf("browser should show the source badge, got:\n%s", view)
+	}
+	if !strings.Contains(view, "Local Song") {
+		t.Fatalf("local row should still render, got:\n%s", view)
+	}
+}
