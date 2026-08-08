@@ -146,6 +146,8 @@ func (m HomeModel) activate() tea.Cmd {
 			return func() tea.Msg { return msgs.HomeSearchMsg{} }
 		case 2:
 			return nil // import help toggled via showImportHelp in Update
+		case 3:
+			return func() tea.Msg { return msgs.HomeSettingsMsg{} }
 		}
 	}
 	recent := m.recentTabs()

@@ -72,6 +72,7 @@ Home
   Enter      select action or recent tab
   l          open library
   o          online search
+  S          settings (volume / strict audio / theme)
   t          cycle theme
   q / Ctrl+c quit
 
@@ -83,6 +84,7 @@ Library browser
   F          toggle favorites-only view
   s          cycle sort order
   o          online search
+  S          settings (volume / strict audio / theme)
   f          toggle favorite
   e          edit title/artist (re-import overwrites)
   x          export tab to file + clipboard

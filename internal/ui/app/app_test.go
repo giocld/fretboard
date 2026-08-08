@@ -151,3 +151,56 @@ func TestShutdownSavesSession(t *testing.T) {
 		t.Fatalf("session not saved on shutdown: %+v", s)
 	}
 }
+
+// TestSettingsScreenRoundTrip guards G6: opening settings from home, changing
+// values, and going back applies them live and persists the config.
+func TestSettingsScreenRoundTrip(t *testing.T) {
+	t.Setenv("APPDATA", t.TempDir())
+	a := NewApp()
+	a.view = viewHome
+
+	model, _ := a.Update(msgs.HomeSettingsMsg{})
+	a = model.(AppModel)
+	if a.view != viewSettings {
+		t.Fatalf("HomeSettingsMsg should open settings, view=%d", a.view)
+	}
+
+	// Strict toggle, volume down twice, strict on again, theme cycle.
+	for _, k := range []string{"j", "enter", "k", "left", "left", "j", "enter", "j", "right"} {
+		model, _ := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)})
+		a = model.(AppModel)
+	}
+	cfg := a.settings.Config()
+	if cfg.VolumePercent != 60 {
+		t.Fatalf("volume should be 60 after two lefts, got %d", cfg.VolumePercent)
+	}
+	if !cfg.StrictAudioSelection {
+		t.Fatal("strict audio should have toggled back on")
+	}
+
+	// Back applies and persists.
+	model, cmd := a.Update(msgs.SettingsBackMsg{})
+	a = model.(AppModel)
+	_ = cmd
+	if a.view != viewHome {
+		t.Fatalf("back should return home, view=%d", a.view)
+	}
+	loaded, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.VolumePercent != 60 || !loaded.StrictAudioSelection {
+		t.Fatalf("config not persisted: %+v", loaded)
+	}
+}
+
+// TestSettingsFromLibraryKey guards the S key in the browser.
+func TestSettingsFromLibraryKey(t *testing.T) {
+	a := NewApp()
+	a.view = viewLibrary
+	model, _ := a.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("S")})
+	a = model.(AppModel)
+	if a.view != viewSettings {
+		t.Fatalf("S in the library should open settings, view=%d", a.view)
+	}
+}

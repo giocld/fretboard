@@ -19,6 +19,7 @@ import (
 	"fretboard/internal/ui/kit"
 	"fretboard/internal/ui/msgs"
 	"fretboard/internal/ui/search"
+	"fretboard/internal/ui/settings"
 	"fretboard/internal/ui/viewer"
 	"fretboard/internal/watcher"
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,6 +33,7 @@ const (
 	viewViewer
 	viewSearch
 	viewHelp
+	viewSettings
 )
 
 // AppModel is the top-level Bubble Tea model that routes between the landing
@@ -45,6 +47,7 @@ type AppModel struct {
 	viewer           viewer.ViewerModel
 	search           search.SearchModel
 	help             help.HelpModel
+	settings         settings.SettingsModel
 	watcher          *watcher.Watcher
 	autoImportPath   string
 	audioSearchPaths []string
@@ -63,6 +66,7 @@ func NewApp() AppModel {
 		viewer:  viewer.NewViewerModel(),
 		search:  search.NewSearchModel(nil),
 		help:    help.NewHelpModel(),
+		settings: settings.NewSettingsModel(),
 		width:   80,
 		height:  24,
 	}
@@ -81,6 +85,7 @@ func NewAppWithOptions(store *library.Store, client *scraper.Client, autoImportP
 		viewer:           v,
 		search:           search.NewSearchModel(client),
 		help:             help.NewHelpModel(),
+		settings:         settings.NewSettingsModel(),
 		autoImportPath:   autoImportPath,
 		audioSearchPaths: append([]string(nil), audioSearchPaths...),
 		width:            80,
@@ -125,6 +130,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewer, _ = m.viewer.Update(msg)
 		m.search, _ = m.search.Update(msg)
 		m.help, _ = m.help.Update(msg)
+		m.settings, _ = m.settings.Update(msg)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -171,6 +177,12 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.search.Reset()
 		m.view = viewSearch
 		return m, m.search.Init()
+
+	case msgs.HomeSettingsMsg:
+		m.prev = m.view
+		m.settings = settings.NewSettingsModel()
+		m.view = viewSettings
+		return m, nil
 
 	case msgs.GoHomeMsg:
 		m.stopPlayback()
@@ -265,6 +277,29 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case msgs.OpenSettingsMsg:
+		m.stopPlayback()
+		m.prev = m.view
+		m.settings = settings.NewSettingsModel()
+		m.view = viewSettings
+		return m, nil
+
+	case msgs.SettingsBackMsg:
+		// Apply the changed settings live and persist them.
+		cfg := m.settings.Config()
+		_ = config.Save(cfg)
+		kit.SetTheme(cfg.ThemeName)
+		m.viewer.SetVolume(cfg.VolumePercent)
+		m.viewer.SetStrictAudio(cfg.StrictAudioSelection)
+		m.view = m.prev
+		if m.view == viewHome {
+			return m, m.home.Init()
+		}
+		if m.view == viewLibrary {
+			return m, m.library.Init()
+		}
+		return m, nil
+
 	case msgs.CloseHelpMsg:
 		m.view = m.prev
 		return m, nil
@@ -308,16 +343,28 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case viewLibrary:
 		newLib, cmd := m.library.Update(msg)
 		m.library = newLib
-		if key, ok := msg.(tea.KeyMsg); ok && key.String() == "o" {
-			m.prev = m.view
-			m.search.Reset()
-			m.view = viewSearch
-			return m, tea.Batch(cmd, m.search.Init())
+		if key, ok := msg.(tea.KeyMsg); ok {
+			switch key.String() {
+			case "o":
+				m.prev = m.view
+				m.search.Reset()
+				m.view = viewSearch
+				return m, tea.Batch(cmd, m.search.Init())
+			case "S":
+				m.prev = m.view
+				m.settings = settings.NewSettingsModel()
+				m.view = viewSettings
+				return m, nil
+			}
 		}
 		return m, cmd
 	case viewSearch:
 		newSearch, cmd := m.search.Update(msg)
 		m.search = newSearch
+		return m, cmd
+	case viewSettings:
+		newSettings, cmd := m.settings.Update(msg)
+		m.settings = newSettings
 		return m, cmd
 	case viewViewer:
 		newV, cmd := m.viewer.Update(msg)
@@ -454,6 +501,8 @@ func (m AppModel) View() string {
 		return m.library.View()
 	case viewSearch:
 		return m.search.View()
+	case viewSettings:
+		return m.settings.View()
 	case viewViewer:
 		return m.viewer.View()
 	case viewHelp:

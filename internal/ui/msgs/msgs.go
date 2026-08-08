@@ -155,3 +155,13 @@ type IntroDetectedMsg struct {
 	TabID    int64
 	TabPath  string
 }
+
+// SettingsBackMsg closes the settings screen and returns to the previous
+// view.
+type SettingsBackMsg struct{}
+
+// OpenSettingsMsg opens the settings screen.
+type OpenSettingsMsg struct{}
+
+// HomeSettingsMsg opens the settings screen from the home page.
+type HomeSettingsMsg struct{}
