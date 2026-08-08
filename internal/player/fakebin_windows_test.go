@@ -5,6 +5,7 @@ package player
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -19,4 +20,55 @@ func writeFakeYtDlp(t *testing.T, _ string) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// writeFailingYtDlp writes a fake yt-dlp.cmd that exits with status 1 (search
+// failure) and prepends its directory to PATH.
+func writeFailingYtDlp(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "yt-dlp.cmd")
+	script := "@echo off\r\nexit /b 1\r\n"
+	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// writeEmptyYtDlp writes a fake yt-dlp.cmd that prints an empty playlist JSON
+// (a successful search with zero hits) and prepends its directory to PATH.
+func writeEmptyYtDlp(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "yt-dlp.cmd")
+	script := "@echo off\r\necho {\"entries\":[]}\r\n"
+	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// writeFakeFFmpeg writes a fake ffmpeg.cmd that echoes the given
+// silencedetect log (or nothing for a no-silence run) and prepends its
+// directory to PATH.
+func writeFakeFFmpeg(t *testing.T, log string) {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "ffmpeg.cmd")
+	var sb strings.Builder
+	sb.WriteString("@echo off\r\n")
+	for _, line := range splitLines(log) {
+		sb.WriteString("echo " + strings.ReplaceAll(line, "|", "^|") + "\r\n")
+	}
+	if err := os.WriteFile(path, []byte(sb.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func splitLines(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 }

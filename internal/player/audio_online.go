@@ -106,10 +106,12 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 
 	seen := map[string]struct{}{}
 	var ranked []AudioSource
+	var lastErr error
 
 	for _, query := range AudioSearchQueries(tab) {
 		entries, err := ytSearch(query, limit)
 		if err != nil {
+			lastErr = err
 			continue
 		}
 		for _, e := range entries {
@@ -123,6 +125,12 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 			channel := e.Channel
 			if channel == "" {
 				channel = e.Uploader
+			}
+			cat := ClassifyAudioCandidate(tab.Artist, tab.Title, e.Title, channel, e.Description)
+			strictOK := StrictCompatible(cat)
+			if cat == CatOther && strings.Contains(strings.ToLower(e.Title), strings.ToLower(strings.TrimSpace(tab.Title))) &&
+				(strings.TrimSpace(tab.Artist) == "" || strings.Contains(strings.ToLower(e.Title), strings.ToLower(strings.TrimSpace(tab.Artist)))) {
+				strictOK = true // unambiguous "Artist - Song" style title without an official marker
 			}
 			score := ScoreYouTubeResult(tab, e.Title, channel, e.Description, e.Duration)
 			dur := time.Duration(e.Duration) * time.Second
@@ -141,6 +149,8 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 				Duration: dur,
 				Score:    score,
 				Detail:   formatDuration(dur) + " · " + channel + " · online",
+				Category: cat,
+				StrictOK: strictOK,
 			}
 			ranked = append(ranked, src)
 		}
@@ -149,6 +159,11 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 	sortAudioSources(ranked)
 	if len(ranked) > limit*2 {
 		ranked = ranked[:limit*2]
+	}
+	// A total failure must not be reported as "no matches": the real cause
+	// (yt-dlp missing, timed out, network error) is what the user needs.
+	if len(ranked) == 0 && lastErr != nil {
+		return nil, lastErr
 	}
 	return ranked, nil
 }
