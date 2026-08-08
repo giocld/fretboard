@@ -11,6 +11,7 @@ var (
 	TechniqueStyle lipgloss.Style
 	CursorStyle    lipgloss.Style
 	PlayheadStyle  lipgloss.Style
+	LoopBarStyle   lipgloss.Style
 	StatusBarStyle lipgloss.Style
 	ListNormal     lipgloss.Style
 	ListSelected   lipgloss.Style
@@ -23,10 +24,13 @@ var (
 	BreadcrumbStyle     lipgloss.Style
 	PanelStyle          lipgloss.Style
 	PanelTitleStyle     lipgloss.Style
+	PanelDividerStyle   lipgloss.Style
 	FooterKeyStyle      lipgloss.Style
 	FooterHintStyle     lipgloss.Style
+	FooterStatusStyle   lipgloss.Style
 	StatValueStyle      lipgloss.Style
 	StatLabelStyle      lipgloss.Style
+	TableHeaderStyle    lipgloss.Style
 	ActionTitleStyle    lipgloss.Style
 	ActionDescStyle     lipgloss.Style
 	ActionSelectedStyle lipgloss.Style
@@ -34,6 +38,7 @@ var (
 	SuccessStyle        lipgloss.Style
 	WarningStyle        lipgloss.Style
 	InfoStyle           lipgloss.Style
+	HighlightStyle      lipgloss.Style
 	TooSmallStyle       lipgloss.Style
 )
 
@@ -55,12 +60,14 @@ func applyTheme(t Theme) {
 	TechniqueStyle = lipgloss.NewStyle().Foreground(t.Accent).Italic(true)
 	CursorStyle = lipgloss.NewStyle().Reverse(true)
 	PlayheadStyle = lipgloss.NewStyle().Foreground(t.Accent).Bold(true)
+	LoopBarStyle = lipgloss.NewStyle().Foreground(t.Success).Bold(true)
 	StatusBarStyle = lipgloss.NewStyle().Background(t.StatusBG).Foreground(t.Primary).Padding(0, 1)
 	ListNormal = lipgloss.NewStyle().Padding(0, 1).Foreground(t.Primary)
 	ListSelected = ListNormal.Copy().Background(t.Overlay).Foreground(t.Emphasis).Bold(true)
 	StringLabel = lipgloss.NewStyle().Foreground(t.Secondary).Width(3).Align(lipgloss.Right)
 	ErrorStyle = lipgloss.NewStyle().Foreground(t.Error).Bold(true)
-	HeaderStyle = lipgloss.NewStyle().Foreground(t.Primary).Bold(true).Padding(0, 1)
+	// The header is plain text: weight and position carry it, no background.
+	HeaderStyle = lipgloss.NewStyle().Padding(0, 1)
 	LogoStyle = lipgloss.NewStyle().Foreground(t.Accent).Bold(true)
 	BreadcrumbStyle = lipgloss.NewStyle().Foreground(t.Dimmed)
 	PanelStyle = lipgloss.NewStyle().
@@ -68,10 +75,13 @@ func applyTheme(t Theme) {
 		BorderForeground(t.Accent).
 		Padding(0, 1)
 	PanelTitleStyle = lipgloss.NewStyle().Foreground(t.Emphasis).Bold(true)
+	PanelDividerStyle = lipgloss.NewStyle().Foreground(t.Dimmed)
 	FooterKeyStyle = lipgloss.NewStyle().Foreground(t.Accent).Bold(true)
 	FooterHintStyle = lipgloss.NewStyle().Foreground(t.Dimmed)
+	FooterStatusStyle = lipgloss.NewStyle().Foreground(t.Secondary)
 	StatValueStyle = lipgloss.NewStyle().Foreground(t.Emphasis).Bold(true)
-	StatLabelStyle = lipgloss.NewStyle().Foreground(t.Dimmed)
+	StatLabelStyle = lipgloss.NewStyle().Foreground(t.Dimmed).Bold(true)
+	TableHeaderStyle = lipgloss.NewStyle().Foreground(t.Dimmed).Bold(true)
 	ActionTitleStyle = lipgloss.NewStyle().Foreground(t.Emphasis).Bold(true)
 	ActionDescStyle = lipgloss.NewStyle().Foreground(t.Dimmed)
 	ActionSelectedStyle = lipgloss.NewStyle().
@@ -83,6 +93,7 @@ func applyTheme(t Theme) {
 	SuccessStyle = lipgloss.NewStyle().Foreground(t.Success)
 	WarningStyle = lipgloss.NewStyle().Foreground(t.Warning)
 	InfoStyle = lipgloss.NewStyle().Foreground(t.Info)
+	HighlightStyle = lipgloss.NewStyle().Foreground(t.Highlight)
 	TooSmallStyle = lipgloss.NewStyle().
 		Foreground(t.Warning).
 		Background(t.Surface).

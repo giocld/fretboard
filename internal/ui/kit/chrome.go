@@ -40,18 +40,25 @@ func FormatBreadcrumb(parts ...string) string {
 	return strings.Join(parts, " › ")
 }
 
-// RenderAppHeader renders the top chrome bar with logo and breadcrumb.
+// RenderAppHeader renders the top chrome line: logo + breadcrumb, plain text
+// (no background bar) so the content remains the loudest element.
 func RenderAppHeader(width int, breadcrumb string) string {
 	logo := LogoStyle.Render("♪ fretboard")
-	theme := MutedStyle.Render(CurrentTheme().Name)
 	crumb := BreadcrumbStyle.Render(breadcrumb)
-
-	gap := width - lipgloss.Width(logo) - lipgloss.Width(theme) - lipgloss.Width(crumb) - 4
+	gap := width - lipgloss.Width(logo) - lipgloss.Width(crumb) - 4
 	if gap < 1 {
 		gap = 1
 	}
-	line := logo + strings.Repeat(" ", gap) + crumb + "  " + theme
+	line := logo + strings.Repeat(" ", gap) + crumb
 	return HeaderStyle.Render(line)
+}
+
+// RenderDivider renders a full-width dim rule used to separate sections.
+func RenderDivider(width int) string {
+	if width < 1 {
+		return ""
+	}
+	return PanelDividerStyle.Render(strings.Repeat("─", width))
 }
 
 // RenderFooter renders a contextual shortcut bar, keeping it within the
@@ -59,7 +66,14 @@ func RenderAppHeader(width int, breadcrumb string) string {
 // hints (e.g. "q quit") and drops from the middle, so the bar never wraps
 // across several lines (which pushed the panel body out of view).
 func RenderFooter(width int, hints []KeyHint) string {
-	if len(hints) == 0 {
+	return RenderFooterWithStatus(width, "", hints)
+}
+
+// RenderFooterWithStatus renders the footer with an optional left-aligned
+// status segment (counts, mode, state) followed by the key hints.
+func RenderFooterWithStatus(width int, status string, hints []KeyHint) string {
+	status = strings.TrimSpace(status)
+	if len(hints) == 0 && status == "" {
 		return ""
 	}
 	render := func(hs []KeyHint) string {
@@ -70,19 +84,22 @@ func RenderFooter(width int, hints []KeyHint) string {
 		return strings.Join(parts, "  ")
 	}
 	content := render(hints)
+	if status != "" {
+		content = FooterStatusStyle.Render(status) + PanelDividerStyle.Render(" │ ") + content
+	}
 	fit := width - 2 // StatusBarStyle adds 1 cell of padding on each side
-	if lipgloss.Width(content) <= fit {
+	if lipgloss.Width(content) <= fit || len(hints) <= 1 {
 		return StatusBarStyle.Render(content)
 	}
 	first, last := hints[0], hints[len(hints)-1]
-	if len(hints) == 1 {
-		return StatusBarStyle.Render(content)
-	}
 	mid := append([]KeyHint(nil), hints[1:len(hints)-1]...)
 	for {
 		trimmed := append([]KeyHint{first}, mid...)
 		trimmed = append(trimmed, last)
 		content = render(trimmed)
+		if status != "" {
+			content = FooterStatusStyle.Render(status) + PanelDividerStyle.Render(" │ ") + content
+		}
 		if lipgloss.Width(content) <= fit || len(mid) == 0 {
 			return StatusBarStyle.Render(content)
 		}
@@ -90,15 +107,21 @@ func RenderFooter(width int, hints []KeyHint) string {
 	}
 }
 
-// RenderPanel wraps content in a titled bordered panel.
+// RenderPanel wraps content in a bordered panel. With a non-empty title the
+// header gets a dim rule underneath; an empty title renders just the border
+// and content (used when the caller supplies its own header/table structure).
 func RenderPanel(width int, title, content string) string {
 	innerW := width - 4
 	if innerW < 10 {
 		innerW = 10
 	}
-	titleLine := PanelTitleStyle.Render(title)
 	body := lipgloss.NewStyle().MaxWidth(innerW).Render(content)
-	return PanelStyle.Width(width).Render(titleLine + "\n" + body)
+	if title == "" {
+		return PanelStyle.Width(width).Render(body)
+	}
+	titleLine := PanelTitleStyle.Render(title)
+	divider := "\n" + PanelDividerStyle.Render(strings.Repeat("─", innerW))
+	return PanelStyle.Width(width).Render(titleLine + divider + "\n" + body)
 }
 
 // LayoutScreen stacks header, body, and footer into a full-screen view.
@@ -116,12 +139,6 @@ func LayoutScreen(width, height int, breadcrumb, body, footer string) string {
 	// with the background color, which turns tall terminals into solid stripes.
 	bodyPane := lipgloss.NewStyle().Padding(0, 1).Render(body)
 	return lipgloss.JoinVertical(lipgloss.Left, header, bodyPane, footerBar)
-}
-
-// RenderStatBox renders a compact dashboard stat cell.
-func RenderStatBox(width int, label, value string) string {
-	inner := StatLabelStyle.Render(label) + "\n" + StatValueStyle.Render(value)
-	return PanelStyle.Width(width).Render(inner)
 }
 
 func itoa(n int) string {

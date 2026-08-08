@@ -6,10 +6,10 @@ import (
 
 	"fretboard/internal/model"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
-func TestBarGridLayoutFitsWidth(t *testing.T) {
-	tab := &model.Tab{Tuning: model.ParseTuning("EADGBE")}
+func TestBarGridLayoutFitsWidth(t *testing.T) {	tab := &model.Tab{Tuning: model.ParseTuning("EADGBE")}
 	for i := 0; i < 8; i++ {
 		tab.Bars = append(tab.Bars, model.Bar{Number: i + 1, Strings: []model.StringLine{
 			{Segments: []model.Segment{{Position: 0, Width: 24}}},
@@ -138,4 +138,71 @@ func TestLinearBarLineOffsetsMatchRenderer(t *testing.T) {
 	if offsets[3] <= 20 {
 		t.Fatalf("bar 4 should start far down the linear layout, got %d", offsets[3])
 	}
+}
+
+// TestGridLoopHeadersHighlighted guards the US-6 loop-region indicator: bar
+// headers inside the A-B loop are rendered with LoopBarStyle (and the playhead
+// bar keeps CursorStyle precedence).
+func TestGridLoopHeadersHighlighted(t *testing.T) {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	tab := &model.Tab{Tuning: model.ParseTuning("EADGBE")}
+	for i := 0; i < 4; i++ {
+		tab.Bars = append(tab.Bars, model.Bar{Number: i + 1, Strings: []model.StringLine{{}}})
+	}
+	rendered := RenderTabGrid(tab, 120, 0, &TabCursor{LoopStartBar: 1, LoopEndBar: 3, Bar: 2})
+	m := BarGridLayout(tab, 120)
+	want := LoopBarStyle.Render(padToWidth("│ 2 "+strings.Repeat("─", 12), m.BarWidth))
+	if !strings.Contains(rendered, want) {
+		t.Fatalf("looped bar 2 header should use LoopBarStyle, got:\n%s", rendered)
+	}
+	if strings.Contains(rendered, LoopBarStyle.Render(padToWidth("│ 4 "+strings.Repeat("─", 12), m.BarWidth))) {
+		t.Fatalf("bar 4 is outside the loop and must not use LoopBarStyle:\n%s", rendered)
+	}
+	loop := TabCursor{LoopStartBar: 0, LoopEndBar: 2}
+	var none TabCursor
+	if !loop.InLoop(1) || none.InLoop(1) {
+		t.Fatal("InLoop boundary math wrong")
+	}
+}
+
+// TestLinearRulerAlignsWithStringPlayhead guards US-8: the ruler line above
+// the strings in the linear layout must place its ┊ at the same display column
+// as the string rows' own playhead markers. The ruler used a 3-space prefix
+// while string rows use a 5-column label prefix, so the ruler floated 2
+// columns left of the notes.
+func TestLinearRulerAlignsWithStringPlayhead(t *testing.T) {
+	tab := &model.Tab{Title: "T", Tuning: model.ParseTuning("EADGBE")}
+	tab.Bars = append(tab.Bars, model.Bar{Number: 1, Strings: []model.StringLine{
+		{Segments: []model.Segment{{Char: '-', Position: 0, Width: 1}, {Char: '3', Value: 3, Position: 3, Width: 1}}},
+		{Segments: []model.Segment{{Char: '-', Position: 0, Width: 1}}},
+	}})
+	lines := strings.Split(RenderTabLinear(tab, 0, &TabCursor{Bar: 0, Col: 3}), "\n")
+	headerIdx := headerLine(t, lines, 1)
+	rulerCol := displayColumnOf(lines[headerIdx+1], "┊")
+	if rulerCol < 0 {
+		t.Fatalf("ruler line has no playhead: %q", lines[headerIdx+1])
+	}
+	// Every string row of the highlighted bar must carry the playhead at the
+	// same column, even the row whose content ends before the cursor column.
+	for row := headerIdx + 2; row < headerIdx+2+len(tab.Bars[0].Strings); row++ {
+		stringCol := displayColumnOf(lines[row], "┊")
+		if stringCol < 0 {
+			t.Fatalf("string row %d has no playhead: %q", row, lines[row])
+		}
+		if stringCol != rulerCol {
+			t.Fatalf("ruler playhead at column %d, string row %d at %d — misaligned", rulerCol, row, stringCol)
+		}
+	}
+}
+
+// displayColumnOf returns the display column of the first occurrence of marker
+// in s, or -1. Column math must use display width (marker may sit after styled
+// multibyte runes).
+func displayColumnOf(s, marker string) int {
+	idx := strings.Index(s, marker)
+	if idx < 0 {
+		return -1
+	}
+	return lipgloss.Width(s[:idx])
 }

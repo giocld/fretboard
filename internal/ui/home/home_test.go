@@ -85,7 +85,7 @@ func TestHomeStatRowFitsAvailableWidth(t *testing.T) {
 
 		found := false
 		for _, line := range strings.Split(body, "\n") {
-			if !strings.Contains(line, "Favorites") && !strings.ContainsAny(line, "│┌└") {
+			if !strings.Contains(line, "TABS") && !strings.Contains(line, "FAVORITES") {
 				continue
 			}
 			found = true
@@ -96,5 +96,28 @@ func TestHomeStatRowFitsAvailableWidth(t *testing.T) {
 		if !found {
 			t.Fatalf("width %d: no stat lines found in rendered body", c.width)
 		}
+	}
+}
+
+// TestHomeStatRowSeparatorsAligned guards the stat columns render side by
+// side (not stacked): the labels and values must share lines.
+func TestHomeStatRowSeparatorsAligned(t *testing.T) {
+	m := HomeModel{store: nil, width: 80, height: 24, loaded: true, tabs: []library.TabRow{{ID: 1, Title: "Layla"}}}
+	body := m.renderBody()
+	lines := strings.Split(body, "\n")
+	var labels, values string
+	for _, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "TABS") {
+			labels = l
+		}
+		if strings.Contains(l, "0 ★") && strings.Contains(l, "Layla") {
+			values = l
+		}
+	}
+	if labels == "" || values == "" {
+		t.Fatalf("stat labels and values not both rendered:\n%s", body)
+	}
+	if strings.Count(labels, "│") != 2 || strings.Count(values, "│") != 2 {
+		t.Fatalf("stat row should have 2 separators on each line, labels=%q values=%q", labels, values)
 	}
 }

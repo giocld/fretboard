@@ -13,6 +13,15 @@ type TabCursor struct {
 	Bar     int
 	Col     int
 	Playing bool
+	// LoopStartBar/LoopEndBar mark the A-B loop region as a half-open
+	// 0-based bar range (end exclusive). 0/0 means no loop.
+	LoopStartBar int
+	LoopEndBar   int
+}
+
+// InLoop reports whether barIdx falls inside the cursor's A-B loop region.
+func (c *TabCursor) InLoop(barIdx int) bool {
+	return c != nil && c.LoopEndBar > c.LoopStartBar && barIdx >= c.LoopStartBar && barIdx < c.LoopEndBar
 }
 
 // RenderTab renders a parsed tab as a styled string for the terminal.
@@ -43,11 +52,20 @@ func RenderTabWithOffset(tab *model.Tab, offset int) string {
 // linear layout): each bar block holds the bar number, a playhead ruler for
 // the highlighted bar, the string lines, and a blank separator.
 func RenderTabLinear(tab *model.Tab, offset int, cur *TabCursor) string {
+	return renderTabLinear(tab, offset, cur, true)
+}
+
+// RenderTabLinearBody is RenderTabLinear without the tab's header block.
+func RenderTabLinearBody(tab *model.Tab, offset int, cur *TabCursor) string {
+	return renderTabLinear(tab, offset, cur, false)
+}
+
+func renderTabLinear(tab *model.Tab, offset int, cur *TabCursor, withHeader bool) string {
 	if tab == nil {
 		return ""
 	}
 	var sb strings.Builder
-	if tab.Title != "" {
+	if withHeader && tab.Title != "" {
 		sb.WriteString(PanelTitleStyle.Render(tab.Title))
 		sb.WriteString("\n")
 		if tab.Tuning != nil {
@@ -62,7 +80,10 @@ func RenderTabLinear(tab *model.Tab, offset int, cur *TabCursor) string {
 		highlight := cur != nil && cur.Bar == i
 		sb.WriteString(barHeader(bar.Number, barWidthInLinear(bar, tab)))
 		sb.WriteString("\n")
-		ruler := "   "
+		// String rows prefix their content with a 3-wide right-aligned label
+		// plus 2 spaces; the ruler must use the same 5-column prefix or the
+		// playhead floats left of the notes' own ┊ markers.
+		ruler := strings.Repeat(" ", 5)
 		column := 0
 		if highlight && cur != nil && cur.Col >= offset {
 			column = cur.Col - offset
@@ -224,13 +245,24 @@ func maxBarCols(bar model.Bar) int {
 
 // RenderTabGrid renders a tab in a page layout at the given width, starting at
 // the given horizontal column offset, optionally highlighting the playhead bar.
+// The tab's own header (title/artist/tuning) is included.
 func RenderTabGrid(tab *model.Tab, width int, offset int, cur *TabCursor) string {
+	return renderTabGrid(tab, width, offset, cur, true)
+}
+
+// RenderTabGridBody is RenderTabGrid without the tab's header block — used by
+// the viewer, which draws its own title/status chrome above the panel.
+func RenderTabGridBody(tab *model.Tab, width int, offset int, cur *TabCursor) string {
+	return renderTabGrid(tab, width, offset, cur, false)
+}
+
+func renderTabGrid(tab *model.Tab, width int, offset int, cur *TabCursor, withHeader bool) string {
 	if tab == nil || len(tab.Bars) == 0 {
 		return "No tab loaded."
 	}
 
 	var b strings.Builder
-	if tab.Title != "" {
+	if withHeader && tab.Title != "" {
 		b.WriteString(FretDigitStyle.Render(tab.Title))
 		if tab.Artist != "" {
 			b.WriteString("  " + RestStyle.Render(tab.Artist))
@@ -266,8 +298,11 @@ func renderBarRow(b *strings.Builder, tab *model.Tab, start, end, barWidth, offs
 		header := fmt.Sprintf("│ %d ", bar.Number)
 		header += strings.Repeat("─", 12)
 		headerStyle := MutedStyle
-		if highlight {
+		switch {
+		case highlight:
 			headerStyle = CursorStyle
+		case cur.InLoop(barIdx):
+			headerStyle = LoopBarStyle
 		}
 		// pad the header to the bar column width
 		b.WriteString(headerStyle.Render(padToWidth(header, barWidth)))
@@ -332,6 +367,12 @@ func renderStringContent(line model.StringLine, stringIdx, offset, cursorCol int
 		if end := seg.Position + seg.Width; end > maxCol {
 			maxCol = end
 		}
+	}
+	// The vertical playhead must appear on every string of the highlighted
+	// bar, even rows whose content ends before the cursor column — a line
+	// with a short rest still crosses the current beat.
+	if highlight && cursorCol+1 > maxCol {
+		maxCol = cursorCol + 1
 	}
 
 	var b strings.Builder

@@ -209,7 +209,7 @@ func (m HomeModel) favoriteCount() int {
 
 func (m HomeModel) renderBody() string {
 	if !m.loaded {
-		return kit.InfoStyle.Render("Loading library stats…")
+		return kit.InfoStyle.Render("⠋ Loading library stats…")
 	}
 
 	var b strings.Builder
@@ -217,57 +217,60 @@ func (m HomeModel) renderBody() string {
 	b.WriteString(kit.MutedStyle.Render("Guitar tabs in your terminal — browse, play, and search."))
 	b.WriteString("\n\n")
 
-	available := m.width - 8
-	statW := available / 3
-	if statW < 16 {
-		statW = 16
-	}
-	// Each box renders statW+2 cols (its border) and the row adds two
-	// 1-cell separators, so the joined row is 3*statW+8 wide; shrink statW
-	// so the row never spills past the screen edge.
-	if row := 3*statW + 8; row > m.width {
-		statW = (m.width - 8) / 3
-	}
-	const minStatW = 11 // widest label ("Favorites") plus border padding
-	stacked := statW < minStatW
-	boxW := statW
-	if stacked {
-		boxW = available
-	}
-	tabLabel := fmt.Sprintf("%d tabs", len(m.tabs))
-	favLabel := fmt.Sprintf("%d ★", m.favoriteCount())
+	// Stat row: label-above-value columns separated by dim rules. No borders —
+	// whitespace and alignment carry the grouping.
+	recent := m.recentTabs()
 	lastLabel := "—"
-	if recent := m.recentTabs(); len(recent) > 0 {
-		lastLabel = kit.Truncate(recent[0].Title, boxW-2)
+	if len(recent) > 0 {
+		lastLabel = kit.Truncate(recent[0].Title, 26)
 	}
-	var stats string
-	if stacked {
-		stats = lipgloss.JoinVertical(lipgloss.Top,
-			kit.RenderStatBox(boxW, "Library", tabLabel),
-			kit.RenderStatBox(boxW, "Favorites", favLabel),
-			kit.RenderStatBox(boxW, "Recent", lastLabel),
-		)
-	} else {
-		stats = lipgloss.JoinHorizontal(lipgloss.Top,
-			kit.RenderStatBox(boxW, "Library", tabLabel),
-			" ",
-			kit.RenderStatBox(boxW, "Favorites", favLabel),
-			" ",
-			kit.RenderStatBox(boxW, "Recent", lastLabel),
-		)
+	cols := []struct{ label, value string }{
+		{"TABS", fmt.Sprintf("%d", len(m.tabs))},
+		{"FAVORITES", fmt.Sprintf("%d ★", m.favoriteCount())},
+		{"RECENT", lastLabel},
 	}
-	b.WriteString(stats)
-	b.WriteString("\n\n")
+	var colWidths []int
+	for _, c := range cols {
+		w := lipgloss.Width(c.label)
+		if v := lipgloss.Width(c.value); v > w {
+			w = v
+		}
+		if w < 6 {
+			w = 6
+		}
+		colWidths = append(colWidths, w)
+	}
+	var cells []string
+	for i, c := range cols {
+		cell := kit.StatLabelStyle.Render(c.label) + "\n" + kit.StatValueStyle.Render(c.value)
+		cells = append(cells, lipgloss.NewStyle().Width(colWidths[i]).Render(cell))
+		if i < len(cols)-1 {
+			// Two-line separator so the value row keeps the column rule.
+			cells = append(cells, kit.PanelDividerStyle.Render(" │ \n │ "))
+		}
+	}
+	statLine := lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+	if lipgloss.Width(statLine) > m.width-4 {
+		// Narrow terminals: fall back to a single-line "label: value" row.
+		var flat []string
+		for _, c := range cols {
+			flat = append(flat, kit.StatLabelStyle.Render(c.label+":")+" "+kit.StatValueStyle.Render(c.value))
+		}
+		statLine = strings.Join(flat, "  ")
+	}
+	b.WriteString(statLine)
+	b.WriteString("\n")
 
 	if m.autoImportWarn != "" {
+		b.WriteString("\n")
 		b.WriteString(kit.WarningStyle.Render(m.autoImportWarn))
-		b.WriteString("\n\n")
 	}
 	if m.errMsg != "" {
+		b.WriteString("\n")
 		b.WriteString(kit.ErrorStyle.Render(m.errMsg))
-		b.WriteString("\n\n")
 	}
 
+	b.WriteString("\n\n")
 	actions := []struct {
 		title string
 		desc  string
@@ -277,20 +280,28 @@ func (m HomeModel) renderBody() string {
 		{"Online Search", "Search Ultimate Guitar + Songsterr", "o"},
 		{"Import", "Add tabs from your filesystem", "i"},
 	}
+	descW := 0
+	for _, a := range actions {
+		if w := lipgloss.Width(a.desc); w > descW {
+			descW = w
+		}
+	}
 	for i, a := range actions {
 		line := fmt.Sprintf("%s  %s", a.title, a.desc)
+		pad := descW - lipgloss.Width(a.desc)
 		if i == m.cursor {
-			b.WriteString(kit.ActionSelectedStyle.Render("▸ "+line) + kit.MutedStyle.Render("  ["+a.key+"]"))
+			b.WriteString(kit.ActionSelectedStyle.Render("▸ "+line) + strings.Repeat(" ", pad) + kit.MutedStyle.Render("  ["+a.key+"]"))
 		} else {
-			b.WriteString("  " + kit.ActionTitleStyle.Render(a.title) + "  " + kit.ActionDescStyle.Render(a.desc))
+			b.WriteString("  " + kit.ActionTitleStyle.Render(a.title) + "  " + kit.ActionDescStyle.Render(a.desc) + strings.Repeat(" ", pad))
 		}
 		b.WriteString("\n")
 	}
 
-	recent := m.recentTabs()
 	if len(recent) > 0 {
 		b.WriteString("\n")
-		b.WriteString(kit.PanelTitleStyle.Render("Recent tabs"))
+		b.WriteString(kit.StatLabelStyle.Render("RECENT TABS"))
+		b.WriteString("\n")
+		b.WriteString(kit.PanelDividerStyle.Render(strings.Repeat("─", min(m.width-4, 60))))
 		b.WriteString("\n")
 		for i, row := range recent {
 			idx := homeActionCount + i
@@ -307,9 +318,11 @@ func (m HomeModel) renderBody() string {
 		}
 	} else if len(m.tabs) == 0 {
 		b.WriteString("\n")
-		b.WriteString(kit.WarningStyle.Render("No tabs yet — import one:"))
+		b.WriteString(kit.WarningStyle.Render("No tabs yet"))
+		b.WriteString("\n\n")
+		b.WriteString(kit.MutedStyle.Render("Import one from your shell:"))
 		b.WriteString("\n")
-		b.WriteString(kit.MutedStyle.Render("  fretboard import samples/sultans.txt"))
+		b.WriteString(kit.SuccessStyle.Render("  fretboard import samples/sultans.txt"))
 		b.WriteString("\n")
 	}
 
