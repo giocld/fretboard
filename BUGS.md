@@ -302,6 +302,92 @@ marks) produce no bar structure.
 - **Fix:** `close(done)` after reaping (`internal/player/process_unix.go`).
 - **Tests:** `TestReaperReportsRunningProcessAlive`, `TestKillProcessTreeWithReaper`, `TestReaperMarksNaturallyExitedProcessAsDead` — all green on Linux (WSL2, Go 1.26.5); full repo suite + e2e re-run green there too.
 
+## BUG-044 — A–B loop set before playback never fires in audio mode (US-6)
+- **Status:** FIXED
+- **Symptom:** setting loop points (`i`/`u`) while paused showed `↻ A-B` but audio-synced playback never looped. MIDI mode looped (its tick wrap reads the stored bars), so the failure was mode-dependent and confusing.
+- **Root cause:** `setLoopPoint` armed `engine.SetLoop(...)` only when a schedule already existed; the schedule is populated at `PlaybackStartedMsg`, so a paused-session loop never reached the engine, and the audio monitor checks `engine.LoopRegion()`.
+- **Fix:** extracted `applyLoopRegion()` (maps 1-based inclusive bars → engine times + intro offset); it runs from `setLoopPoint` **and** from `PlaybackStartedMsg`. Loop-restart failures now surface as an error banner instead of `_ =` swallowing (`internal/ui/viewer/viewer.go`). Looped bar headers are highlighted on the grid via `kit.TabCursor.LoopStartBar/LoopEndBar` + `kit.LoopBarStyle`.
+- **Tests:** `TestLoopSetBeforePlayArmsEngineAtPlaybackStart`, `TestLoopClearWithoutScheduleClearsEngine` (viewer), `TestGridLoopHeadersHighlighted` (kit).
+
+## BUG-045 — `s` sync-bar key is a silent no-op outside audio-synced playback (US-7)
+- **Status:** FIXED
+- **Symptom:** pressing `s` while paused or during MIDI playback did nothing with zero feedback, while the footer advertises `[s] sync bar` unconditionally; `S` (clear sync) was undocumented.
+- **Fix:** `s` outside audio-synced playback shows an explanatory hint ("Sync bar needs a real recording…"); `S` reports when there is nothing to clear; `S` added to the footer hints and the help screen (which was also missing `[ ]`, `i/u`, `v`, `f`, `> <`) (`internal/ui/viewer/viewer.go`, `internal/ui/help/help.go`).
+- **Tests:** `TestSyncBarKeyGivesFeedbackWhenUnavailable`, `TestSyncBarKeyFeedbackClearsOnEsc`, `TestClearSyncPointsKeyReportsEmpty`.
+
+## BUG-046 — linear-layout playhead ruler floats left of the notes (US-8)
+- **Status:** FIXED
+- **Symptom:** in linear mode (`v`) the ruler line prefixed the `┊` with 3 spaces while string rows use a 5-column label prefix (3-wide right-aligned label + 2 spaces), so the ruler playhead always sat 2 columns left of the notes' playhead. Related: the vertical playhead vanished entirely on rows whose content ended before the cursor column.
+- **Fix:** ruler uses the same 5-column prefix; `renderStringContent` extends the highlighted bar's rows to `maxCol = max(maxCol, cursorCol+1)` so the playhead appears on every string at the cursor column (`internal/ui/kit/render.go`).
+- **Tests:** `TestLinearRulerAlignsWithStringPlayhead` (ruler and every string row align).
+
+## BUG-047 — online-audio search failures are reported as "no matches" (US-9)
+- **Status:** FIXED
+- **Symptom:** `SearchOnlineCandidates` discarded per-query errors and returned `(nil, nil)` when every query failed; the audio picker then showed no online sources with no explanation, and the viewer dropped the whole catalog (including local/MIDI sources) whenever the online search errored.
+- **Fix:** `SearchOnlineCandidates` returns the last underlying error when no results were found (yt-dlp missing/timed out/network); `BuildAudioCatalog` keeps local/MIDI sources and carries the error; the viewer applies the catalog even on error and surfaces the message (`internal/player/audio_online.go`, `internal/ui/viewer/viewer.go`).
+- **Tests:** `TestSearchOnlineCandidatesReportsFailureWhenAllQueriesFail`, `TestSearchOnlineCandidatesEmptyWithoutErrorStaysEmpty`, `TestBuildAudioCatalogSurfacesOnlineSearchError` (player, hermetic fake yt-dlp); `TestAudioCatalogMsgKeepsSourcesAndShowsError`, `TestAudioCatalogMsgErrorWithoutSourcesDoesNotCrash` (viewer).
+
+## BUG-048 — browser has no preview panel despite GUIDE.md documenting one (US-10)
+- **Status:** FIXED
+- **Symptom:** `GUIDE.md` described a "right-side tab preview" in the browser; the browser rendered a bare list (only the home screen had a preview).
+- **Fix:** the browser now loads the selected row's tab in the background (`BrowserPreviewMsg` with a generation guard) and renders a `Preview · <title>` panel beside the list on terminals ≥ 106 columns; narrower terminals keep the full-width list. The list viewport narrows when the preview is active (`internal/ui/browser/browser.go`, `internal/ui/msgs/msgs.go`).
+- **Tests:** `TestBrowserPreviewLoadsForSelectedRow`, `TestBrowserPreviewFollowsCursor`, `TestBrowserPreviewStaleGenerationIgnored`, `TestBrowserPreviewCollapsesOnNarrowTerminal`.
+
+## BUG-049 — audio selection is not strict: live/cover/lesson tracks win auto-pick (US-11)
+- **Status:** FIXED
+- **Symptom:** YouTube candidates were ranked by loose keyword scoring, so a live show or a cover (with "guitar" in the title) could outrank the official studio recording — the tab then never matched the audio.
+- **Fix:** new `ClassifyAudioCandidate` taxonomy (official/backing/live/cover/lesson/other) drives a strict scorer with hard penalties for live/cover/lesson and strong rewards for official markers, VEVO, and artist channels. `🔒strict` mode (config `strict_audio_selection`, default on) makes auto-pick skip non-studio candidates, the picker badges every source (`[official]`…) and marks rejects (`⛔ not studio`) and the recommended pick (`★`). When nothing passes, auto-pick falls back to MIDI with an explanatory note instead of downloading a mismatched track (`internal/player/audio_catalog.go`, `audio_online.go`, `internal/ui/viewer/{viewer,viewer_audio}.go`, `internal/config`).
+- **Tests:** `TestClassifyAudioCandidate`, `TestStrictCompatible`, `TestScoreYouTubeResultPrefersStudio`, `TestAudioCatalogHasStrictRejected` (player); `TestPickStrictAudioSourceIndexSkipsLiveCover`, `TestPickStrictPrefersLocal`, `TestPickStrictFallsBackToMidi`, `TestRenderAudioPickerShowsBadges` (viewer); `TestDefaultsStrictAudioSelection` (config).
+
+## BUG-050 — sync calibration is shared across audio sources (US-12)
+- **Status:** FIXED
+- **Symptom:** `audio_offset` and `sync_points` were stored per tab, so switching from a studio version (short intro) to a live version (long intro) reused the wrong offset and anchors — the playhead was consistently off.
+- **Fix:** calibration is stored per source under `audio_offset:<source-id>` / `sync_points:<source-id>` (legacy keys mirrored, read as fallback). Switching sources in the picker, completing a download, and opening a tab all restore the right calibration for the selected source; BPM derivation now runs after the restore so the intro offset is excluded (`internal/ui/viewer/viewer.go`).
+- **Tests:** `TestPerSourceCalibrationRestoredOnSourceSwitch`, `TestAdjustAudioOffsetWritesPerSourceKey`, `TestSyncPointsWrittenPerSource` (viewer).
+
+## BUG-051 — anchor mapping is step-count linear, not tick-aware; no tempo map (US-13)
+- **Status:** FIXED
+- **Symptom:** between sync anchors the playhead mapped audio time linearly over the step *count*, so a bar full of chords (many steps) and a sparse bar at the same real-time length advanced at the same rate, and tempo changes between anchors were ignored entirely.
+- **Fix:** segment mapping now accumulates MIDI ticks (`segmentStep`, `TicksBetweenBars`) so density is respected; `SegmentBPM` derives the effective tempo of each anchor segment; the panel shows the spanned tempo range (`60→120 bpm`) and the anchor drift RMS (`±2.0s`). `stepIndexAtBar` now returns `len(schedule)` for out-of-range bars so half-open end anchors clamp correctly (`internal/player/audio_sync.go`, `internal/ui/viewer/viewer.go`).
+- **Tests:** `TestSegmentStepUsesTickDensity`, `TestTicksBetweenBars`, `TestSegmentBPMDerivesTempo`, `TestTicksToSeconds`, `TestStepIndexAtSyncPointsFollowsAnchors` (player); `TestTempoMapAndQuality`, `TestTempoMapNeedsTwoAnchors` (viewer); existing `TestStepIndexAtSyncPoints` boundary updated.
+
+## BUG-052 — intros must be found, not guessed; fine nudges missing (US-14)
+- **Status:** FIXED
+- **Symptom:** recordings with long intros stayed misaligned until the user manually guessed an offset; the coarsest nudge was 0.5 s, and there was no assist for finding the intro at all.
+- **Fix:** `LeadingSilence` probes the selected file with ffmpeg `silencedetect` (0.4–30 s window, silent no-op without ffmpeg) and, when the source is uncalibrated, applies the detected offset marked `audio_offset_auto` (announced in the panel, never re-run). New `,`/`.` keys nudge ±0.1 s; help and footer document the full sync workflow (`internal/player/intro.go`, `internal/ui/viewer/viewer.go`, `internal/ui/help/help.go`).
+- **Tests:** `TestLeadingSilenceDetectsIntro`, `TestLeadingSilenceNoIntro`, `TestLeadingSilenceAbsentFFmpeg` (player, hermetic fake ffmpeg); `TestIntroDetectedMsgAppliesOffset`, `TestIntroDetectedMsgIgnoresCalibrated`, `TestIntroDetectedMsgIgnoresStaleSource`, `TestAdjustAudioOffsetFineNudge` (viewer).
+
+## BUG-053 — song search only covers UG + Songsterr; many songs can't be found (US-15)
+- **Status:** FIXED
+- **Symptom:** the search was a two-source dead end: UG (API + HTML) and Songsterr, whose "fetch" is itself a UG fallback — so when UG failed, nothing could be imported.
+- **Fix:** new `textTabClient` (`internal/scraper/texttab.go`) queries two plain-text tab archives — guitartabs.cc and guitaretab.com — parsing artist→tab anchor pairs from search pages and extracting the ASCII tab from `<pre>` blocks (span-row unwrapping for guitaretab). Degraded-query retries (drop first/last 2 words) handle song-only engines for "Artist Song" queries. Fetched content is cleaned (legacy usenet headers, `:`-prefixed repeat rows) before the standard ASCII parser; title/artist come from the search result; tuning is normalized when `:`-rows inflated the string count; chord-only and drum pages are rejected with clear errors. Results are merged + deduplicated with the existing sources and badged `[GT]`/`[GR]` in the search UI (`internal/scraper/client.go`, `source.go`, `internal/ui/search/search.go`). Also fixed the parser's `bpmRegex` to accept "112 BPM" (number-first) in addition to "BPM: 112".
+- **Tests:** `TestTextTabSearchParsesGuitarTabsPage`, `TestTextTabSearchParsesGuitareTabPage`, `TestTextTabSearchFiltersJunk`, `TestTextTabFetchExtractsPreAndParses`, `TestTextTabFetchGuitareTabSpans`, `TestTextTabFetchRejectsChordOnly`, `TestTextTabFetchRejectsBadStatus`, `TestTextTabFetchRejectsDrumTabs`, `TestTextTabSongOnlyRetries`, `TestDropWords`, `TestTextTabSearchMergesAcrossSites`, `TestCleanupFetchedTabStripsUsenetHeaders`, `TestNormalizeFetchedTuning`; live-verified against both sites (32 results for "sultans of swing dire straits", real tabs of 50–131 bars).
+
+## UI redesign (2026-08, tui-design skill)
+
+Not a bug — a chrome overhaul driven by the pageton/tui-design skill
+(installed at `~/.config/opencode/skills/tui-design/`). What changed and why:
+
+- **Header**: dropped the full-width background bar and the theme name — the
+  breadcrumb is now plain text next to the logo (weight + position carry it).
+- **Borders**: one border per screen instead of borders everywhere. Home stat
+  boxes → aligned label-above-value columns (`TABS │ FAVORITES │ RECENT`);
+  search's two stacked panels → a single panel with an inline query/results
+  divider; the library list → a table with a dim `TITLE/ARTIST/TUNING` header
+  and sort indicator, inside an untitled panel. `RenderPanel("")` renders a
+  border without a title/divider (`internal/ui/kit/chrome.go`).
+- **Viewer**: title (`Layla — Eric Clapton`) and a dim status row (tuning ·
+  bar · BPM · ▶/♪/↔/⚓/↻/⏩ indicators) sit above the panel; the tab body
+  renders without its internal header (`RenderTabGridBody` /
+  `RenderTabLinearBody`). The old single line cramming every indicator into
+  the panel title is gone.
+- **Footer**: gains a left status segment (`3 tabs · recent`, `♪ Layla`) via
+  `RenderFooterWithStatus`; hint lists trimmed to essentials.
+- **States**: proper empty states (no tabs / no filter matches) with a next
+  action; narrow-terminal stat fallback to a flat label:value row.
+- **Tests**: home stat tests updated to the new layout; new
+  `TestHomeStatRowSeparatorsAligned`; e2e green.
+
 ## CANDIDATES — under investigation by main agent (not yet assigned)
 
 <!-- REPRO NOTES (main agent):
