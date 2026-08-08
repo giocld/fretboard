@@ -87,15 +87,20 @@ must say when the recording ends.*
 *Fix what you can't rename, narrow what you can't search, share what you
 read, and pair the MP3s you already own.*
 
-- [ ] S4.1 Edit title/artist from the browser (`e` inline prompt, persists,
-      warns that re-import overwrites)
-- [ ] S4.2 Favorites-only filter (`F`), combined with existing search
-- [ ] S4.3 Export tab to file + copy to clipboard (`x` in viewer/browser)
-- [ ] S4.4 Relaxed backing-track filename pairing (contains artist+title
-      tokens, exact wins), shown as `[local]` in the picker
-- [ ] S4.5 Tests: edit round-trip, filter combos, export content, pairing
-      order (exact > contains > none)
-- [ ] S4.6 Drive browser via pty: edit a title, filter favorites, export
+- [x] S4.1 Edit title/artist from the browser (`e` two-step editor, empty
+      input with current value as placeholder; empty Enter keeps the old
+      value; warns that re-import overwrites) — rewrites row + content
+- [x] S4.2 Favorites-only filter (`F`), combined with existing search
+- [x] S4.3 Export tab to file + copy to clipboard (`x` browser / `X`
+      viewer, plain ASCII via `kit.RenderTabPlain`, round-trip re-parses)
+- [x] S4.4 Relaxed backing-track filename pairing (contains artist+title
+      tokens, exact wins, shortest stem wins among contains matches)
+- [x] S4.5 Tests: UpdateMeta round-trip, edit flow + empty-keep, favorites
+      filter, exports (browser + viewer), plain render round-trip, relaxed
+      pairing order
+- [x] S4.6 Drive via CLI code path: paired a `(Live 1984).mp3`, exported
+      `Sultans of Swing.txt` (clipboard copy confirmed on Windows) and
+      re-parsed it — no pty on this host
 
 ---
 

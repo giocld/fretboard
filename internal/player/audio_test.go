@@ -1,11 +1,12 @@
 package player
 
 import (
-	"time"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"fretboard/internal/model"
 )
@@ -84,4 +85,40 @@ func containsArg(args []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// TestFindAudioRelaxedPairing guards S4.4: files whose names merely contain
+// the song title pair with the tab, and an exact match always wins over a
+// contains match.
+func TestFindAudioRelaxedPairing(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("fake"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("Sultans of Swing (Live 1984).mp3")
+	tab := &model.Tab{Title: "Sultans of Swing", Artist: "Dire Straits"}
+
+	got := findAudioByNames(dir, audioNameCandidates(tab))
+	if got == "" || !strings.Contains(got, "Live 1984") {
+		t.Fatalf("relaxed pairing should match the live file, got %q", got)
+	}
+
+	// Exact match wins.
+	write("Sultans of Swing.mp3")
+	got = findAudioByNames(dir, audioNameCandidates(tab))
+	if !strings.HasSuffix(got, "Sultans of Swing.mp3") {
+		t.Fatalf("exact match should win over contains, got %q", got)
+	}
+
+	// Among contains matches the shortest stem wins (closest to the plain
+	// title): "Sultans of Swing 2" beats the longer live suffix.
+	write("Sultans of Swing 2.mp3")
+	os.Remove(filepath.Join(dir, "Sultans of Swing.mp3"))
+	got = findAudioByNames(dir, audioNameCandidates(tab))
+	if !strings.HasSuffix(got, "Sultans of Swing 2.mp3") {
+		t.Fatalf("shortest contains match should win, got %q", got)
+	}
 }

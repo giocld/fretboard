@@ -349,7 +349,6 @@ func TestBrowserPreviewCollapsesOnNarrowTerminal(t *testing.T) {
 	}
 }
 
-
 // TestBrowserRowShowsSourceBadge guards S1: online-imported tabs carry their
 // provenance badge into the library list so the user can see where a tab
 // came from and how well it is rated before opening it.
@@ -393,4 +392,176 @@ func TestBrowserRowShowsSourceBadge(t *testing.T) {
 	if !strings.Contains(view, "Local Song") {
 		t.Fatalf("local row should still render, got:\n%s", view)
 	}
+}
+
+// TestBrowserEditMetadataFlow guards S4.1: e starts a two-step editor
+// (title then artist); Enter saves each field and the store reflects it.
+func TestBrowserEditMetadataFlow(t *testing.T) {
+	st, err := library.NewStore(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Import("s.txt", &model.Tab{Title: "Old", Artist: "Old Artist", Tuning: model.Standard}); err != nil {
+		t.Fatal(err)
+	}
+	m := NewBrowserModel(st)
+	rows, err := st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.tabs = rows
+	m.loaded = true
+	m.width = 140
+	m.height = 30
+	m.apply()
+
+	// e → edit title: input starts empty (current value is the placeholder).
+	m, _ = m.Update(keyFor("e"))
+	if !m.editing || m.editField != 1 {
+		t.Fatalf("e should start title editing: editing=%v field=%d", m.editing, m.editField)
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("New Title")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.editing || m.editField != 2 {
+		t.Fatalf("after title Enter should edit artist: editing=%v field=%d", m.editing, m.editField)
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("Artist")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.editing {
+		t.Fatal("editing should end after artist Enter")
+	}
+	row, err := st.GetRow(rows[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Title != "New Title" || row.Artist != "Artist" {
+		t.Fatalf("store not updated: %+v", row)
+	}
+}
+
+// TestBrowserEditEmptyKeepsOldValue guards the empty-Enter path: typing
+// nothing into a field keeps the previous value.
+func TestBrowserEditEmptyKeepsOldValue(t *testing.T) {
+	st, err := library.NewStore(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if _, err := st.Import("s.txt", &model.Tab{Title: "Old", Artist: "Old Artist", Tuning: model.Standard}); err != nil {
+		t.Fatal(err)
+	}
+	m := NewBrowserModel(st)
+	rows, _ := st.List()
+	m.tabs = rows
+	m.loaded = true
+	m.width = 140
+	m.height = 30
+	m.apply()
+
+	m, _ = m.Update(keyFor("e"))
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // empty title: keep "Old"
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("New Artist")})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	row, err := st.GetRow(rows[0].ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Title != "Old" || row.Artist != "New Artist" {
+		t.Fatalf("empty Enter should keep the old title: %+v", row)
+	}
+}
+
+// TestBrowserFavoritesFilter guards S4.2: F narrows the list to favorites
+// and combines with the fuzzy filter.
+func TestBrowserFavoritesFilter(t *testing.T) {
+	st, err := library.NewStore(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for i, name := range []string{"Alpha", "Beta"} {
+		id, err := st.Import(fmt.Sprintf("%s.txt", name), &model.Tab{Title: name, Artist: "A", Tuning: model.Standard})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			if err := st.SetFavorite(id, true); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	m := NewBrowserModel(st)
+	rows, err := st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.tabs = rows
+	m.loaded = true
+	m.width = 140
+	m.height = 30
+	m.apply()
+
+	m, _ = m.Update(keyFor("F"))
+	if !m.favOnly || len(m.filtered) != 1 || m.filtered[0].Title != "Alpha" {
+		t.Fatalf("favorites filter wrong: favOnly=%v filtered=%+v", m.favOnly, m.filtered)
+	}
+	// Off again restores the full list.
+	m, _ = m.Update(keyFor("F"))
+	if m.favOnly || len(m.filtered) != 2 {
+		t.Fatalf("filter should toggle off: favOnly=%v n=%d", m.favOnly, len(m.filtered))
+	}
+}
+
+// TestBrowserExportRow guards S4.3: x writes the tab's plain ASCII to a file
+// in the working directory and reports it.
+func TestBrowserExportRow(t *testing.T) {
+	st, err := library.NewStore(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	tab := &model.Tab{Title: "Export Me", Artist: "Someone", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	id, err := st.Import("e.txt", tab)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := NewBrowserModel(st)
+	rows, err := st.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.tabs = rows
+	m.loaded = true
+	m.width = 140
+	m.height = 30
+	m.apply()
+
+	oldwd, _ := os.Getwd()
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldwd)
+
+	m, _ = m.Update(keyFor("x"))
+	data, err := os.ReadFile(filepath.Join(dir, "Export Me.txt"))
+	if err != nil {
+		t.Fatalf("export file missing: %v (msg=%q)", err, m.errMsg)
+	}
+	content := string(data)
+	for _, want := range []string{"Export Me", "Someone", "Tuning: EADGBE", "|0|"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("export content missing %q:\n%s", want, content)
+		}
+	}
+	if !strings.Contains(m.errMsg, "Exported Export Me.txt") {
+		t.Fatalf("status should report the export, got %q", m.errMsg)
+	}
+	_ = id
+}
+
+func keyFor(k string) tea.KeyMsg {
+	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)}
 }

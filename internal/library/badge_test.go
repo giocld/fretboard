@@ -138,3 +138,38 @@ func TestMigrationAddsSourceBadgeColumn(t *testing.T) {
 		t.Fatalf("badge = %q after migration, want [ST]", row.SourceBadge)
 	}
 }
+
+// TestUpdateMeta guards S4.1: editing title/artist rewrites both the row
+// columns and the stored content, so the viewer sees the change.
+func TestUpdateMeta(t *testing.T) {
+	st, err := NewStore(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	id, err := st.Import("s.txt", &model.Tab{Title: "Old Title", Artist: "Old Artist", Tuning: model.Standard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.UpdateMeta(id, "New Title", "New Artist"); err != nil {
+		t.Fatal(err)
+	}
+	row, err := st.GetRow(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Title != "New Title" || row.Artist != "New Artist" {
+		t.Fatalf("row not updated: %+v", row)
+	}
+	tab, err := st.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tab.Title != "New Title" || tab.Artist != "New Artist" {
+		t.Fatalf("content not updated: %+v", tab)
+	}
+	if err := st.UpdateMeta(999, "x", "y"); err == nil {
+		t.Fatal("updating a missing tab should error")
+	}
+}

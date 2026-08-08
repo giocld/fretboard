@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"fretboard/internal/model"
+	"fretboard/internal/parser"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 )
@@ -229,5 +230,34 @@ func TestBarHeaderShowsRepeatMarkers(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Fatalf("linear header missing repeat marker %q in:\n%s", want, out)
 		}
+	}
+}
+
+// TestRenderTabPlain guards S4.3: the plain renderer emits uncolored ASCII
+// with pipes, fret digits, tuning, and repeat markers that re-parse cleanly.
+func TestRenderTabPlain(t *testing.T) {
+	tab := &model.Tab{
+		Title:  "Plain",
+		Artist: "Artist",
+		Tuning: model.Standard,
+		Bars: []model.Bar{
+			{Number: 1, RepeatStart: true, Strings: []model.StringLine{
+				{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}, {Char: '-', Position: 1}, {Char: '-', Position: 2}, {Char: '3', Value: 3, Position: 3, Width: 1}}},
+			}},
+		},
+	}
+	out := RenderTabPlain(tab)
+	for _, want := range []string{"Plain", "Artist", "Tuning: EADGBE", "|:0--3|"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("plain render missing %q:\n%s", want, out)
+		}
+	}
+	// Re-parse: the export round-trips into the same bar content.
+	parsed, err := parser.Parse(strings.NewReader(out))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Bars) != 1 || !parsed.Bars[0].RepeatStart {
+		t.Fatalf("round-trip lost structure: %+v", parsed.Bars)
 	}
 }

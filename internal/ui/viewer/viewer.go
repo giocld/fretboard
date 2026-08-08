@@ -40,28 +40,28 @@ type ViewerModel struct {
 	strictAudio       bool
 	infoMsg           string
 	// Practice tools (realtime MIDI).
-	metronome bool
-	countIn   int // 0/1/2 bars of lead-in clicks
-	program   int // GM program for MIDI playback (0 = default steel)
+	metronome    bool
+	countIn      int // 0/1/2 bars of lead-in clicks
+	program      int // GM program for MIDI playback (0 = default steel)
 	loopStartBar int
 	loopEndBar   int
 	follow       bool
 	linear       bool
 
-	cursorBar         int
-	cursorCol         int
-	panOffset         int
-	playing           bool
-	schedule          []player.PlaybackStep
-	stepIdx           int
-	tickDur           time.Duration
-	bpm               int
-	jumpBuffer        string
-	lastKey           string
-	lastKeyAt         time.Time
-	width             int
-	height            int
-	errMsg            string
+	cursorBar  int
+	cursorCol  int
+	panOffset  int
+	playing    bool
+	schedule   []player.PlaybackStep
+	stepIdx    int
+	tickDur    time.Duration
+	bpm        int
+	jumpBuffer string
+	lastKey    string
+	lastKeyAt  time.Time
+	width      int
+	height     int
+	errMsg     string
 }
 
 // NewViewerModel creates a viewer with default size.
@@ -594,6 +594,13 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.panOffset++
 			m.refresh()
 		}
+	case "X":
+		m.jumpBuffer = ""
+		if m.tab != nil {
+			_, msg := kit.ExportTab(m.tab)
+			m.infoMsg = msg
+			m.refresh()
+		}
 	case "m":
 		m.metronome = !m.metronome
 		m.jumpBuffer = ""
@@ -1070,7 +1077,6 @@ func (m *ViewerModel) cursorBarLineOffset() int {
 	return offsets[m.cursorBar]
 }
 
-
 // View is part of the tea.Model interface. The tab viewer separates the title
 // (primary), the status row (secondary), and the tab body (content): the
 // status indicators no longer pile onto a single title line.
@@ -1094,9 +1100,9 @@ func (m ViewerModel) View() string {
 				if label == "" {
 					label = "audio"
 				}
-				status += "  " + kit.SuccessStyle.Render("▶ " + label)
+				status += "  " + kit.SuccessStyle.Render("▶ "+label)
 			} else if label != "" {
-				status += "  " + kit.SuccessStyle.Render("▶ midi:" + label)
+				status += "  " + kit.SuccessStyle.Render("▶ midi:"+label)
 			} else {
 				status += "  " + kit.SuccessStyle.Render("▶ midi")
 			}
@@ -1145,7 +1151,7 @@ func (m ViewerModel) View() string {
 		status += "  " + kit.InfoStyle.Render(kit.Truncate(m.infoMsg, 48))
 	}
 	if m.errMsg != "" {
-		status += "  " + kit.ErrorStyle.Render("⚠ " + kit.Truncate(m.errMsg, 48))
+		status += "  " + kit.ErrorStyle.Render("⚠ "+kit.Truncate(m.errMsg, 48))
 	}
 	status = kit.Truncate(status, m.width-8)
 
@@ -1186,6 +1192,7 @@ func (m ViewerModel) View() string {
 		{Key: "i/u", Label: "loop"},
 		{Key: "v", Label: "layout"},
 		{Key: "f", Label: "follow"},
+		{Key: "X", Label: "export"},
 		{Key: "j/k", Label: "scroll"},
 		{Key: "b", Label: "library"},
 		{Key: "q", Label: "quit"},

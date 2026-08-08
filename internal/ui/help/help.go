@@ -80,10 +80,13 @@ Library browser
   k / ↑      move up
   Enter      open selected tab
   /          fuzzy filter (type j/k; ↑/↓ move; Esc×2 home)
+  F          toggle favorites-only view
   s          cycle sort order
   o          online search
   f          toggle favorite
-  d          delete tab
+  e          edit title/artist (re-import overwrites)
+  x          export tab to file + clipboard
+  d          delete tab (with confirmation)
   r          reload library
   Esc / h    back to home
   ?          help
@@ -106,6 +109,7 @@ Tab viewer
   v          toggle grid / linear layout
   f          follow-mode auto-scroll
   i / u      set loop point A / B (x clears)
+  X          export tab to file + clipboard
   [ / ]      nudge audio sync ±0.5s ({ } = ±5s, , . = ±0.1s, o resets)
   s          sync current bar to audio position (during audio playback)
   S          clear all sync points

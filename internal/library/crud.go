@@ -189,6 +189,35 @@ func (s *Store) Search(query string) ([]TabRow, error) {
 	return out, nil
 }
 
+// UpdateMeta edits the display title/artist of a tab, rewriting both the
+// row columns and the stored content so the viewer sees the change. Note:
+// a later re-import of the same file overwrites the edit (the file remains
+// the source of truth) — callers should warn about that.
+func (s *Store) UpdateMeta(id int64, title, artist string) error {
+	tab, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	tab.Title = title
+	tab.Artist = artist
+	content, err := json.Marshal(tab)
+	if err != nil {
+		return fmt.Errorf("update meta: marshal tab: %w", err)
+	}
+	res, err := s.db.Exec(`UPDATE tabs SET title = ?, artist = ?, content = ? WHERE id = ?`, title, artist, string(content), id)
+	if err != nil {
+		return fmt.Errorf("update meta: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update meta: rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
+	}
+	return nil
+}
+
 // SetFavorite toggles the favorite flag.
 func (s *Store) SetFavorite(id int64, favorite bool) error {
 	var fav int

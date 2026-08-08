@@ -742,3 +742,28 @@ func TestPracticeKeyStateAndStatus(t *testing.T) {
 		t.Fatalf("countIn should cycle back to 0, got %d", m.countIn)
 	}
 }
+
+// TestExportKeyWritesFile guards S4.3 in the viewer: X exports the loaded
+// tab to a plain-ASCII file in the working directory.
+func TestExportKeyWritesFile(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "Viewer Export", Artist: "A", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "v.txt", 0)
+
+	oldwd, _ := os.Getwd()
+	dir := t.TempDir()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(oldwd)
+
+	m, _ = m.Update(key("X"))
+	data, err := os.ReadFile(filepath.Join(dir, "Viewer Export.txt"))
+	if err != nil {
+		t.Fatalf("export file missing: %v (info=%q)", err, m.infoMsg)
+	}
+	if !strings.Contains(string(data), "Viewer Export") {
+		t.Fatalf("export content wrong:\n%s", data)
+	}
+}

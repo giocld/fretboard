@@ -97,6 +97,7 @@ func findAudioByNames(dir string, names []string) string {
 	if err != nil {
 		return ""
 	}
+	// Pass 1: exact normalized match.
 	for _, name := range names {
 		want := normalizeAudioName(name)
 		for _, ent := range entries {
@@ -113,7 +114,33 @@ func findAudioByNames(dir string, names []string) string {
 			}
 		}
 	}
-	return ""
+	// Pass 2 (relaxed): a file whose normalized name *contains* a candidate
+	// — "Sultans of Swing (Live 1984).mp3" pairs with the tab even though
+	// the extra words break exact matching. The closest candidate (shortest
+	// stem) wins so "Sultans of Swing" beats "Sultans of Swing 2".
+	best := ""
+	bestLen := 0
+	for _, name := range names {
+		want := normalizeAudioName(name)
+		if len(want) < 4 {
+			continue
+		}
+		for _, ent := range entries {
+			if ent.IsDir() {
+				continue
+			}
+			ext := strings.ToLower(filepath.Ext(ent.Name()))
+			if !isAudioExt(ext) {
+				continue
+			}
+			stem := normalizeAudioName(strings.TrimSuffix(ent.Name(), ext))
+			if strings.Contains(stem, want) && (best == "" || len(stem) < bestLen) {
+				best = filepath.Join(dir, ent.Name())
+				bestLen = len(stem)
+			}
+		}
+	}
+	return best
 }
 
 func normalizeAudioName(s string) string {

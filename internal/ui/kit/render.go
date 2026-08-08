@@ -2,6 +2,7 @@ package kit
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"fretboard/internal/model"
@@ -41,6 +42,78 @@ func RenderTabPreview(tab *model.Tab, maxLines int) string {
 		return full
 	}
 	return strings.Join(lines[:maxLines], "\n") + "\n" + MutedStyle.Render("…")
+}
+
+// RenderTabPlain renders a tab as plain, uncolored ASCII — the classic
+// "|--0--3--|" text form — suitable for exporting to a file or copying to
+// the clipboard. Repeat markers and endings are preserved so the exported
+// text re-imports cleanly.
+func RenderTabPlain(tab *model.Tab) string {
+	if tab == nil {
+		return ""
+	}
+	var b strings.Builder
+	if tab.Title != "" {
+		b.WriteString(tab.Title)
+		b.WriteString("\n")
+	}
+	if tab.Artist != "" {
+		b.WriteString(tab.Artist)
+		b.WriteString("\n")
+	}
+	if tab.Tuning != nil && len(tab.Tuning) > 0 {
+		b.WriteString("Tuning: ")
+		b.WriteString(tab.Tuning.Label())
+		b.WriteString("\n\n")
+	}
+	for _, bar := range tab.Bars {
+		width := 0
+		for _, sl := range bar.Strings {
+			for _, seg := range sl.Segments {
+				if w := seg.Position + seg.Width; w > width {
+					width = w
+				}
+			}
+		}
+		if width == 0 {
+			continue
+		}
+		lines := make([]string, len(bar.Strings))
+		for s, sl := range bar.Strings {
+			row := []byte(strings.Repeat("-", width))
+			for _, seg := range sl.Segments {
+				var digits string
+				switch {
+				case seg.Value > 0:
+					digits = strconv.Itoa(seg.Value)
+				case seg.Char == '0':
+					digits = "0" // open string
+				default:
+					continue // rest or technique character
+				}
+				for i := 0; i < len(digits) && seg.Position+i < width; i++ {
+					row[seg.Position+i] = digits[i]
+				}
+			}
+			lines[s] = string(row)
+		}
+		open := "|"
+		if bar.RepeatStart {
+			open = "|:"
+		}
+		closeP := "|"
+		if bar.RepeatEnd {
+			closeP = ":|"
+		}
+		for s, line := range lines {
+			ending := ""
+			if s == 0 && (bar.Ending == 1 || bar.Ending == 2) {
+				ending = fmt.Sprintf("%d.", bar.Ending)
+			}
+			b.WriteString(open + ending + line + closeP + "\n")
+		}
+	}
+	return b.String()
 }
 
 // RenderTabWithOffset renders a tab starting at the given horizontal column offset.

@@ -10,6 +10,7 @@ import (
 	"fretboard/internal/model"
 	"fretboard/internal/ui/kit"
 	"fretboard/internal/ui/msgs"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -34,6 +35,7 @@ type BrowserModel struct {
 	cursor         int
 	searchActive   bool
 	searchInput    string
+	favOnly        bool
 	sortMode       SortMode
 	viewport       viewport.Model
 	width          int
@@ -43,6 +45,10 @@ type BrowserModel struct {
 	errMsg         string
 	autoImportWarn string
 	confirmDelete  *library.TabRow
+	editing        bool
+	editField      int // 1 = title, 2 = artist
+	editInput      textinput.Model
+	editRow        *library.TabRow
 	preview        string
 	previewTitle   string
 	previewTabID   int64
@@ -59,11 +65,14 @@ const (
 // NewBrowserModel creates a browser bound to a library store.
 func NewBrowserModel(store *library.Store) BrowserModel {
 	vp := viewport.New(80, 20)
+	ti := textinput.New()
+	ti.CharLimit = 120
 	return BrowserModel{
-		store:    store,
-		viewport: vp,
-		width:    80,
-		height:   24,
+		store:     store,
+		viewport:  vp,
+		editInput: ti,
+		width:     80,
+		height:    24,
 	}
 }
 
@@ -127,11 +136,88 @@ func (m BrowserModel) Update(msg tea.Msg) (BrowserModel, tea.Cmd) {
 		m.viewport.Height = bodyH
 		m.refresh()
 	case tea.KeyMsg:
+		if m.editing {
+			return m.handleEditKey(msg)
+		}
 		if m.searchActive {
 			return m.handleSearchKey(msg)
 		}
 		return m.handleNormalKey(msg)
 	}
+	return m, nil
+}
+
+// handleEditKey drives the two-step title/artist editor (`e`). The input
+// starts empty with the current value as placeholder — type to replace,
+// Enter saves and moves to the next field, empty Enter keeps the old value,
+// Esc cancels. The note warns that a later file re-import overwrites edits.
+func (m BrowserModel) handleEditKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
+	if m.editRow == nil {
+		m.editing = false
+		return m, nil
+	}
+	switch msg.String() {
+	case "esc":
+		m.editing = false
+		m.editRow = nil
+		m.editInput.Blur()
+		m.errMsg = ""
+		m.refresh()
+		return m, nil
+	case "enter":
+		val := strings.TrimSpace(m.editInput.Value())
+		if m.editField == 1 {
+			if val != "" {
+				if err := m.store.UpdateMeta(m.editRow.ID, val, m.editRow.Artist); err != nil {
+					m.errMsg = "Save failed: " + err.Error()
+					m.editing = false
+					m.editRow = nil
+					m.refresh()
+					return m, nil
+				}
+				m.editRow.Title = val
+			}
+			m.editField = 2
+			m.editInput.SetValue("")
+			m.editInput.Placeholder = m.editRow.Artist
+			m.editInput.Focus()
+			m.refresh()
+			return m, nil
+		}
+		if val != "" {
+			if err := m.store.UpdateMeta(m.editRow.ID, m.editRow.Title, val); err != nil {
+				m.errMsg = "Save failed: " + err.Error()
+			} else {
+				m.editRow.Artist = val
+				m.errMsg = "Saved — re-importing the file will overwrite this edit"
+			}
+		}
+		rowID := m.editRow.ID
+		title, artist := m.editRow.Title, m.editRow.Artist
+		m.editing = false
+		m.editRow = nil
+		m.editInput.Blur()
+		m.updateTabRow(rowID, func(r *library.TabRow) { r.Title = title; r.Artist = artist })
+		return m, m.apply()
+	}
+	var cmd tea.Cmd
+	m.editInput, cmd = m.editInput.Update(msg)
+	m.refresh()
+	return m, cmd
+}
+
+// exportRow writes the selected tab to "<Title>.txt" in the working
+// directory and copies it to the clipboard when a tool is available.
+func (m BrowserModel) exportRow(row library.TabRow) (BrowserModel, tea.Cmd) {
+	tab, err := m.store.Get(row.ID)
+	if err != nil || tab == nil {
+		m.errMsg = "Export failed: could not load tab"
+		m.refresh()
+		return m, nil
+	}
+	_, msg := kit.ExportTab(tab)
+	m.errMsg = msg
+	m.refresh()
 	return m, nil
 }
 
@@ -229,6 +315,27 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 				m.errMsg = "Favorite failed: " + err.Error()
 				m.refresh()
 			}
+		}
+	case "F":
+		m.favOnly = !m.favOnly
+		m.cursor = 0
+		return m, m.apply()
+	case "e":
+		if m.store != nil && m.cursor >= 0 && m.cursor < len(m.filtered) {
+			row := m.filtered[m.cursor]
+			copy := row
+			m.editRow = &copy
+			m.editField = 1
+			m.editing = true
+			m.editInput.SetValue("")
+			m.editInput.Placeholder = row.Title
+			m.editInput.Focus()
+			m.errMsg = ""
+			m.refresh()
+		}
+	case "x":
+		if m.store != nil && m.cursor >= 0 && m.cursor < len(m.filtered) {
+			return m.exportRow(m.filtered[m.cursor])
 		}
 	case "d":
 		if m.store != nil && m.cursor >= 0 && m.cursor < len(m.filtered) {
@@ -357,6 +464,16 @@ func (m BrowserModel) filterAndSort(rows []library.TabRow) []library.TabRow {
 	out := make([]library.TabRow, len(rows))
 	copy(out, rows)
 
+	if m.favOnly {
+		var favs []library.TabRow
+		for _, r := range out {
+			if r.Favorite {
+				favs = append(favs, r)
+			}
+		}
+		out = favs
+	}
+
 	if m.searchInput != "" {
 		var targets []string
 		for _, r := range rows {
@@ -470,7 +587,7 @@ func (m BrowserModel) renderList() string {
 			line = fmt.Sprintf("%-3s %-34s %-24s %d", star, kit.Truncate(row.Title, 34), kit.Truncate(row.Artist, 24), row.PlayCount)
 		}
 		if i == m.cursor {
-			b.WriteString(kit.ListSelected.Render("▸ "+line[2:]))
+			b.WriteString(kit.ListSelected.Render("▸ " + line[2:]))
 		} else {
 			b.WriteString(kit.ListNormal.Render(line))
 		}
@@ -482,7 +599,17 @@ func (m BrowserModel) renderList() string {
 // View renders the browser.
 func (m BrowserModel) View() string {
 	status := fmt.Sprintf("%d tabs · %s", len(m.filtered), sortLabel(m.sortMode))
+	if m.favOnly {
+		status = fmt.Sprintf("%d favs · %s", len(m.filtered), sortLabel(m.sortMode))
+	}
 	var body string
+	if m.editing && m.editRow != nil {
+		label := "Title"
+		if m.editField == 2 {
+			label = "Artist"
+		}
+		body += "\n" + kit.RenderPanel(m.width-2, "Edit "+label, m.editInput.View()) + "\n"
+	}
 	if m.splitActive() {
 		listW := m.width - 2 - previewPanelWidth - 2
 		panel := kit.RenderPanel(listW, "", m.viewport.View())
@@ -515,7 +642,10 @@ func (m BrowserModel) View() string {
 		{Key: "Enter", Label: "open"},
 		{Key: "/", Label: "filter"},
 		{Key: "s", Label: "sort"},
-		{Key: "f", Label: "favorite"},
+		{Key: "f", Label: "fav"},
+		{Key: "F", Label: "favs"},
+		{Key: "e", Label: "edit"},
+		{Key: "x", Label: "export"},
 		{Key: "d", Label: "delete"},
 		{Key: "o", Label: "online"},
 		{Key: "Esc", Label: "home"},
@@ -525,6 +655,12 @@ func (m BrowserModel) View() string {
 		hints = []kit.KeyHint{
 			{Key: "y", Label: "delete"},
 			{Key: "n/Esc", Label: "cancel"},
+		}
+	} else if m.editing {
+		hints = []kit.KeyHint{
+			{Key: "type", Label: "value"},
+			{Key: "Enter", Label: "save/next"},
+			{Key: "Esc", Label: "cancel"},
 		}
 	} else if m.searchActive {
 		hints = []kit.KeyHint{
