@@ -31,7 +31,7 @@ type SearchModel struct {
 // NewSearchModel creates an online search view.
 func NewSearchModel(client *scraper.Client) SearchModel {
 	ti := textinput.New()
-	ti.Placeholder = "Search Ultimate Guitar + Songsterr…"
+	ti.Placeholder = "Search Ultimate Guitar, Songsterr, GuitarTabs.cc…"
 	ti.Prompt = "› "
 	ti.CharLimit = 120
 	ti.Focus()
@@ -353,26 +353,29 @@ func (m SearchModel) renderResults() string {
 
 func formatResult(r scraper.SearchResult) string {
 	badge := kit.InfoStyle.Render("[UG]")
-	if r.Source == scraper.SourceSongsterr {
+	switch r.Source {
+	case scraper.SourceSongsterr:
 		badge = kit.SuccessStyle.Render("[ST]")
+	case scraper.SourceGuitarTabs:
+		badge = kit.WarningStyle.Render("[GT]")
+	case scraper.SourceGuitareTab:
+		badge = kit.HighlightStyle.Render("[GR]")
 	}
 	meta := kit.MutedStyle.Render(r.Type)
 	return badge + " " + r.SongName + " — " + r.ArtistName + "  " + meta
 }
 
-// View renders the search screen.
+// View renders the search screen as a single panel: query line, divider,
+// results — one surface instead of two stacked boxes. Focus is shown on the
+// query line itself (prompt + ●), never by a second border.
 func (m SearchModel) View() string {
-	queryTitle := "Query"
+	queryLine := m.input.View()
 	if m.inputActive {
-		queryTitle += kit.SuccessStyle.Render("  ●")
+		queryLine += kit.SuccessStyle.Render("  ●")
 	}
-	searchBox := kit.RenderPanel(m.width-2, queryTitle, m.input.View())
-	resultsTitle := "Results"
-	if !m.inputActive && len(m.results) > 0 {
-		resultsTitle += kit.SuccessStyle.Render("  ●")
-	}
-	results := kit.RenderPanel(m.width-2, resultsTitle, m.viewport.View())
-	body := "\n" + searchBox + "\n" + results
+	innerW := m.width - 6
+	content := queryLine + "\n" + kit.RenderDivider(innerW) + "\n" + m.viewport.View()
+	panel := kit.RenderPanel(m.width-2, "", content)
 	footer := kit.RenderFooter(m.width, []kit.KeyHint{
 		{Key: "Enter", Label: "search/open"},
 		{Key: "Tab", Label: "results"},
@@ -381,7 +384,7 @@ func (m SearchModel) View() string {
 		{Key: "Esc", Label: "back"},
 		{Key: "q", Label: "quit"},
 	})
-	return kit.LayoutScreen(m.width, m.height, kit.FormatBreadcrumb("home", "search"), body, footer)
+	return kit.LayoutScreen(m.width, m.height, kit.FormatBreadcrumb("home", "search"), "\n"+panel, footer)
 }
 
 // HasClient reports whether an online search client is configured.

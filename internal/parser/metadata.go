@@ -13,7 +13,9 @@ var (
 	artistRegex = regexp.MustCompile(`(?i)^\s*(?:artist|by)\s*[:\-]\s*(.+)$`)
 	tuningRegex = regexp.MustCompile(`(?i)^\s*tuning\s*[:\-]?\s*(.+)$`)
 	capoRegex   = regexp.MustCompile(`(?i)capo\s*[:\-]?\s*(\d+)`)
-	bpmRegex    = regexp.MustCompile(`(?i)bpm\s*[:\-]?\s*(\d+)`)
+	// Both "112 BPM" (guitartabs.cc style) and "BPM: 112" (UG style) are
+	// common; either capture group may hold the number.
+	bpmRegex = regexp.MustCompile(`(?i)\b(?:bpm\s*[:\-]?\s*(\d+)|\b(\d+)\s*bpm)\b`)
 )
 
 // extractMetadata scans the first non-blank lines for title, artist, tuning,
@@ -55,7 +57,12 @@ func extractMetadata(lines []string, tab *model.Tab) int {
 			continue
 		}
 		if m := bpmRegex.FindStringSubmatch(l); m != nil {
-			tab.Metadata[model.MetaKeyBPM] = m[1]
+			for _, g := range m[1:] {
+				if g != "" {
+					tab.Metadata[model.MetaKeyBPM] = g
+					break
+				}
+			}
 			continue
 		}
 		// Heuristic: if this is the first non-blank line, treat as artist.

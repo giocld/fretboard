@@ -88,9 +88,13 @@ func TestOnlineTabPath(t *testing.T) {
 
 func TestSearchRenderShowsFocusIndicator(t *testing.T) {
 	m := NewSearchModel(nil)
+	m.Reset()
 	view := m.View()
-	if !strings.Contains(view, "Query") {
-		t.Fatal("view should include query panel")
+	if !strings.Contains(view, "●") {
+		t.Fatal("view should show the query focus indicator")
+	}
+	if !strings.Contains(view, "Type a query") {
+		t.Fatal("view should show the empty-state hint")
 	}
 }
 
@@ -248,5 +252,20 @@ func TestSearchFocusSwitchRerenders(t *testing.T) {
 	}
 	if got := m.viewport.View(); !strings.Contains(got, "edit query") {
 		t.Fatalf("results mode should show the edit hint again, got %q", got)
+	}
+}
+
+func TestFormatResultBadges(t *testing.T) {
+	if got := formatResult(scraper.SearchResult{Source: scraper.SourceGuitarTabs, SongName: "Sultans", ArtistName: "Dire Straits"}); !strings.Contains(got, "[GT]") {
+		t.Fatalf("guitartabs result should be badged [GT], got %q", got)
+	}
+	if got := formatResult(scraper.SearchResult{Source: scraper.SourceGuitareTab, SongName: "Sultans", ArtistName: "Dire Straits"}); !strings.Contains(got, "[GR]") {
+		t.Fatalf("guitaretab result should be badged [GR], got %q", got)
+	}
+	if got := formatResult(scraper.SearchResult{Source: scraper.SourceSongsterr, SongName: "Sultans", ArtistName: "Dire Straits"}); !strings.Contains(got, "[ST]") {
+		t.Fatalf("songsterr result should be badged [ST], got %q", got)
+	}
+	if got := formatResult(scraper.SearchResult{Source: scraper.SourceUG, SongName: "Sultans", ArtistName: "Dire Straits"}); !strings.Contains(got, "[UG]") {
+		t.Fatalf("UG result should be badged [UG], got %q", got)
 	}
 }

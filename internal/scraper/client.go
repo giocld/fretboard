@@ -12,6 +12,7 @@ type Client struct {
 	ug        *ugAPIClient
 	ugHTML    *ugHTMLClient
 	songsterr *songsterrClient
+	textTabs  *textTabClient
 	delay     time.Duration
 }
 
@@ -24,12 +25,14 @@ func NewClient(delay time.Duration) *Client {
 		ug:        newUGAPIClient(rl),
 		ugHTML:    newUGHTMLClient(rl),
 		songsterr: newSongsterrClient(rl),
+		textTabs:  newTextTabClient(rl),
 		delay:     delay,
 	}
 }
 
-// Search queries online sources. UG API is tried first, then UG HTML; Songsterr
-// results are merged when available.
+// Search queries online sources: UG API, then UG HTML (fallback), Songsterr,
+// and the plain-text tab sites (guitartabs.cc, guitaretab.com), merged and
+// deduplicated.
 func (c *Client) Search(query string) ([]SearchResult, error) {
 	var results []SearchResult
 	var lastErr error
@@ -58,6 +61,14 @@ func (c *Client) Search(query string) ([]SearchResult, error) {
 			lastErr = err
 		}
 	}
+	if c.textTabs != nil {
+		tt, err := c.textTabs.Search(query)
+		if err == nil {
+			results = mergeSearchResults(results, tt)
+		} else if len(results) == 0 && lastErr == nil {
+			lastErr = err
+		}
+	}
 	if len(results) == 0 && lastErr != nil {
 		return nil, lastErr
 	}
@@ -72,6 +83,11 @@ func (c *Client) Fetch(result SearchResult) (*model.Tab, error) {
 			return nil, fmt.Errorf("songsterr client not configured")
 		}
 		return c.songsterr.Fetch(result.ID, result.ArtistName, result.SongName, c)
+	case SourceGuitarTabs, SourceGuitareTab:
+		if c.textTabs == nil {
+			return nil, fmt.Errorf("text-tab client not configured")
+		}
+		return c.textTabs.Fetch(result)
 	default:
 		if c.ug != nil {
 			tab, err := c.ug.Fetch(result.ID)

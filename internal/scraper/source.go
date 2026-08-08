@@ -4,8 +4,10 @@ package scraper
 type Source string
 
 const (
-	SourceUG        Source = "ug"
-	SourceSongsterr Source = "songsterr"
+	SourceUG         Source = "ug"
+	SourceSongsterr  Source = "songsterr"
+	SourceGuitarTabs Source = "guitartabs" // guitartabs.cc
+	SourceGuitareTab Source = "guitaretab" // guitaretab.com
 )
 
 // SearchResult is a single tab found online.
