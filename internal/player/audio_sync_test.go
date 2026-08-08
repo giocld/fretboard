@@ -78,8 +78,11 @@ func TestStepIndexAtSyncPoints(t *testing.T) {
 	if got := StepIndexAtSyncPoints(schedule, points, 10, 120); got != 0 {
 		t.Fatalf("at the first anchor should sit at step 0, got %d", got)
 	}
-	if got := StepIndexAtSyncPoints(schedule, points, 15, 120); got != 1 {
-		t.Fatalf("mid bar1..bar2 segment should be step 1, got %d", got)
+	if got := StepIndexAtSyncPoints(schedule, points, 15, 120); got != 0 {
+		t.Fatalf("mid bar1..bar2 segment: 15s is exactly the first step's span end (tick-aware), got %d", got)
+	}
+	if got := StepIndexAtSyncPoints(schedule, points, 15.1, 120); got != 1 {
+		t.Fatalf("just past the midpoint the cursor should be step 1, got %d", got)
 	}
 	if got := StepIndexAtSyncPoints(schedule, points, 25, 120); got != 4 {
 		t.Fatalf("at the bar3 anchor should be step 4, got %d", got)
