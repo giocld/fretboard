@@ -64,6 +64,11 @@ type ViewerModel struct {
 	driftMs   int64 // measured lateness of the last tick (ms, 0 = on time)
 	// Auto-alignment: which sources have been aligned this session.
 	alignedSources map[string]bool
+	// Auto tempo map + drift meter (measured bar anchors and onsets).
+	autoAnchors []player.SyncPoint
+	autoOnsets  []time.Duration
+	autoActive  bool
+	syncDrift   float64 // seconds the playhead is off the nearest onset (0 = on)
 	// Undo support.
 	prevOffset float64 // offset value before the last `o` reset
 	manualPick bool    // user chose the source manually; keep it across refreshes
@@ -132,6 +137,10 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.practiceStart = time.Time{}
 	m.practiceSecs = 0
 	m.alignedSources = map[string]bool{}
+	m.autoAnchors = nil
+	m.autoOnsets = nil
+	m.autoActive = false
+	m.syncDrift = 0
 	m.restoreCalibrationForSource()
 	_ = m.engine.Stop()
 	m.engine.SetLoop(0, 0)
@@ -467,6 +476,12 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			}
 			m.infoMsg = fmt.Sprintf("Auto-aligned %d BPM, offset +%.1fs (confidence %.0f%%)", msg.BPM, m.audioOffset, msg.Confidence*100)
 		}
+		// The measured bar anchors become the auto tempo map; the onsets
+		// feed the live drift meter.
+		m.autoAnchors = msg.Anchors
+		m.autoOnsets = msg.Onsets
+		m.autoActive = len(msg.Anchors) >= 2
+		m.syncDrift = 0
 		m.refresh()
 		return m, m.saveTabPrefsCmd()
 	case msgs.PlaybackStartedMsg:
@@ -531,12 +546,26 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 				}
 			}
 			// Sync points persist user-facing 1-based bars; the schedule uses
-			// 0-based bar indices, so convert before mapping.
-			points := syncPointsZeroBased(m.syncPoints)
+			// 0-based bar indices, so convert before mapping. The auto tempo
+			// map merges under user anchors (user wins per bar).
+			combined := player.MergeAnchors(m.syncPoints, m.autoAnchors)
+			points := syncPointsZeroBased(combined)
 			if len(points) == 0 {
 				points = []player.SyncPoint{{Bar: 0, Seconds: m.audioOffset}}
 			}
 			idx := player.StepIndexAtSyncPoints(m.schedule, points, elapsed.Seconds(), m.bpm)
+			if m.autoActive {
+				// Live drift meter + bounded self-correction: when the
+				// playhead has drifted off the recording's detected onsets,
+				// snap it to the onset-aligned position.
+				if snapIdx, ok := player.CorrectStepSnap(m.schedule, points, elapsed, m.autoOnsets, m.bpm); ok {
+					idx = snapIdx
+				}
+				m.syncDrift = 0
+				if n, ok := player.NearestOnset(m.autoOnsets, elapsed, 500*time.Millisecond); ok {
+					m.syncDrift = (elapsed - n).Seconds()
+				}
+			}
 			if idx != m.stepIdx {
 				m.stepIdx = idx
 				step := m.schedule[idx]
@@ -1599,6 +1628,12 @@ func (m ViewerModel) View() string {
 		if m.driftMs != 0 && !m.audioSync {
 			status += kit.WarningStyle.Render(fmt.Sprintf("  drift %dms", m.driftMs))
 		}
+		if m.audioSync && m.autoActive {
+			status += kit.InfoStyle.Render("  auto-sync")
+			if m.syncDrift > 0.04 || m.syncDrift < -0.04 {
+				status += kit.WarningStyle.Render(fmt.Sprintf("  drift %+.2fs", m.syncDrift))
+			}
+		}
 		if total := m.practiceTotal(); total > 0 {
 			status += kit.MutedStyle.Render(fmt.Sprintf("  practice %d:%02d", total/60, total%60))
 		}
@@ -1933,13 +1968,25 @@ func (m *ViewerModel) maybeAlignCmd() tea.Cmd {
 	}
 	m.alignedSources[src.ID] = true
 	tab, tabID, tabPath, srcID := m.tab, m.tabID, m.tabPath, src.ID
+	baseBPM := player.TabBPM(tab)
+	if baseBPM <= 0 {
+		baseBPM = 120
+	}
 	return func() tea.Msg {
 		hint, _ := player.LeadingSilence(path)
 		a := player.AlignAudio(tab, path, hint)
-		return msgs.AlignmentMsg{
+		msg := msgs.AlignmentMsg{
 			SourceID: srcID, BPM: a.BPM, Offset: a.Offset, Confidence: a.Confidence,
 			Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath,
+			Onsets: a.Onsets,
 		}
+		if a.Confidence >= 0.6 && a.BPM > 0 {
+			// Measure bar anchors from the aligned onsets: the auto tempo map.
+			expected := player.ExpectedOnsets(tab, baseBPM)
+			scale := float64(baseBPM) / float64(a.BPM)
+			msg.Anchors = player.TempoAnchors(expected, a.Onsets, scale, a.Offset, a.BPM, 4)
+		}
+		return msg
 	}
 }
 

@@ -21,17 +21,19 @@ import (
 
 // Alignment is the result of aligning a recording to a tab.
 type Alignment struct {
-	BPM        int           // detected tempo
-	Offset     time.Duration // where the tab's first note lands in the audio
-	Score      float64       // raw match score (higher is better)
-	Confidence float64       // 0..1 — fraction of expected onsets matched (strict)
-	Detected   int           // how many onsets the analysis found
+	BPM        int             // detected tempo
+	Offset     time.Duration   // where the tab's first note lands in the audio
+	Score      float64         // raw match score (higher is better)
+	Confidence float64         // 0..1 — fraction of expected onsets matched (strict)
+	Detected   int             // how many onsets the analysis found
+	Onsets     []time.Duration // the detected onset times (for the drift meter)
 }
 
-// ExpectedOnset is one expected note time with its bar-start flag.
+// ExpectedOnset is one expected note time with its bar-start flag and bar.
 type ExpectedOnset struct {
 	Time     time.Duration
 	BarStart bool // the first note of a bar (downbeat in the tab)
+	Bar      int  // 0-based bar index of the step
 }
 
 // alignWindow bounds how much of the song's opening we use for scoring:
@@ -57,6 +59,7 @@ func ExpectedOnsets(tab *model.Tab, bpm int) []ExpectedOnset {
 		out = append(out, ExpectedOnset{
 			Time:     time.Duration(acc * float64(time.Second)),
 			BarStart: s.Bar != prevBar,
+			Bar:      s.Bar,
 		})
 		prevBar = s.Bar
 		acc += secs
@@ -114,6 +117,10 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 			if score > best.Score {
 				best = Alignment{BPM: bpm, Offset: time.Duration(offsetMs) * time.Millisecond,
 					Score: score, Confidence: matched, Detected: len(onsets)}
+			}
+			best.Onsets = make([]time.Duration, len(onsets))
+			for i, o := range onsets {
+				best.Onsets[i] = o.Time
 			}
 		}
 	}

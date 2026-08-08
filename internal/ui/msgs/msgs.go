@@ -176,4 +176,8 @@ type AlignmentMsg struct {
 	Title      string
 	TabID      int64
 	TabPath    string
+	Onsets     []time.Duration    // detected onsets, for the live drift meter
+	Anchors    []player.SyncPoint // measured bar anchors (auto tempo map)
 }
+
+// AlignmentMsg delivers an automatic audio-alignment result for a source.
