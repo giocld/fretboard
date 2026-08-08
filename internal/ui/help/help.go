@@ -111,6 +111,7 @@ Tab viewer
   e          toggle note names instead of fret numbers
   v          toggle grid / linear layout
   f          follow-mode auto-scroll
+  P          performance mode (hide tab, show section + progress)
   i / u      set loop point A / B (x clears)
   X          export tab to file + clipboard
   [ / ]      nudge audio sync ±0.5s ({ } = ±5s, , . = ±0.1s, o resets)

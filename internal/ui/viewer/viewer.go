@@ -54,6 +54,10 @@ type ViewerModel struct {
 	searchInput   string
 	searchMatches []searchMatch
 	searchIdx     int
+	// Practice tools.
+	perfMode      bool      // performance mode: hide the tab, show the section + progress
+	practiceStart time.Time // when the current playback session started
+	practiceSecs  int64     // practice seconds accumulated this session
 	// Undo support.
 	prevOffset float64 // offset value before the last `o` reset
 	manualPick bool    // user chose the source manually; keep it across refreshes
@@ -118,6 +122,9 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.infoMsg = ""
 	m.prevOffset = 0
 	m.manualPick = false
+	m.perfMode = false
+	m.practiceStart = time.Time{}
+	m.practiceSecs = 0
 	m.restoreCalibrationForSource()
 	_ = m.engine.Stop()
 	m.engine.SetLoop(0, 0)
@@ -279,7 +286,9 @@ func (m *ViewerModel) refresh() {
 		cur.LoopEndBar = m.loopEndBar
 	}
 	display := m.displayTab()
-	if m.linear {
+	if m.perfMode {
+		m.viewport.SetContent(m.renderPerformance())
+	} else if m.linear {
 		m.viewport.SetContent(kit.RenderTabLinearBody(display, m.panOffset, cur))
 	} else {
 		m.viewport.SetContent(kit.RenderTabGridBody(display, m.viewport.Width, m.panOffset, cur))
@@ -419,6 +428,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		m.stepIdx = msg.StepIdx
 		m.tickDur = msg.Duration
 		m.audioSync = msg.AudioSync
+		m.practiceStart = time.Now()
 		// Re-arm the A-B loop region from the stored bars: loop points set
 		// while paused never reached the engine before, so audio-synced
 		// playback silently never looped.
@@ -596,6 +606,10 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.refresh()
 			return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
 		}
+		m.refresh()
+	case "P":
+		m.perfMode = !m.perfMode
+		m.jumpBuffer = ""
 		m.refresh()
 	case "/":
 		m.jumpBuffer = ""
@@ -1183,10 +1197,96 @@ func (m *ViewerModel) stopPlaybackForNav() {
 	}
 }
 
-// stopPlayback halts audio and clears UI playback state.
+// stopPlayback halts audio, clears UI playback state, and banks the
+// practice time of the session that just ended.
 func (m *ViewerModel) stopPlayback() {
+	if m.playing && !m.practiceStart.IsZero() {
+		m.practiceSecs += int64(time.Since(m.practiceStart) / time.Second)
+	}
+	m.practiceStart = time.Time{}
 	m.resetPlayback()
 	_ = m.engine.Stop()
+	m.persistPracticeTime()
+}
+
+// persistPracticeTime folds the session's practice seconds into the tab's
+// practice_seconds metadata so the total survives restarts.
+func (m *ViewerModel) persistPracticeTime() {
+	if m.tab == nil || m.practiceSecs <= 0 {
+		return
+	}
+	if m.tab.Metadata == nil {
+		m.tab.Metadata = map[string]string{}
+	}
+	total := 0
+	if raw := strings.TrimSpace(m.tab.Metadata["practice_seconds"]); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil {
+			total = n
+		}
+	}
+	m.tab.Metadata["practice_seconds"] = strconv.Itoa(total + int(m.practiceSecs))
+	m.practiceSecs = 0
+}
+
+// practiceTotal returns the accumulated practice seconds (persisted total
+// plus the running session).
+func (m ViewerModel) practiceTotal() int {
+	total := 0
+	if m.tab != nil && m.tab.Metadata != nil {
+		if raw := strings.TrimSpace(m.tab.Metadata["practice_seconds"]); raw != "" {
+			if n, err := strconv.Atoi(raw); err == nil {
+				total = n
+			}
+		}
+	}
+	total += int(m.practiceSecs)
+	if m.playing && !m.practiceStart.IsZero() {
+		total += int(time.Since(m.practiceStart) / time.Second)
+	}
+	return total
+}
+
+// renderPerformance renders the performance-mode view: the current section
+// large, the progress through the song, and the playback state — no tab
+// body, so the musician plays from memory.
+func (m ViewerModel) renderPerformance() string {
+	if m.tab == nil {
+		return ""
+	}
+	sec := m.currentSection()
+	if sec == "" {
+		sec = fmt.Sprintf("Section %d", m.cursorBar+1)
+	}
+	total := len(m.tab.Bars)
+	n := m.cursorBar + 1
+	pct := 0
+	if total > 0 {
+		pct = n * 100 / total
+	}
+	state := "paused"
+	if m.playing {
+		state = "▶ playing"
+	}
+	src := "♪ midi"
+	if m.engine.Mode() == "audio" {
+		src = "♪ audio"
+	}
+	const scale = 40
+	filled := 0
+	if total > 0 {
+		filled = n * scale / total
+	}
+	return strings.Join([]string{
+		"",
+		kit.PanelTitleStyle.Render("   " + sec),
+		"",
+		kit.InfoStyle.Render(fmt.Sprintf("   bar %d / %d  (%d%%)", n, total, pct)),
+		"",
+		kit.MutedStyle.Render(fmt.Sprintf("   BPM %d   %s   %s", m.bpm, state, src)),
+		"",
+		kit.SuccessStyle.Render("   " + strings.Repeat("▓", filled) + strings.Repeat("░", scale-filled)),
+		"",
+	}, "\n")
 }
 
 func (m ViewerModel) playbackStartIndex() int {
@@ -1363,6 +1463,12 @@ func (m ViewerModel) View() string {
 		if len(m.searchMatches) > 0 {
 			status += kit.WarningStyle.Render(fmt.Sprintf("  [%s] %d/%d", m.searchInput, m.searchIdx+1, len(m.searchMatches)))
 		}
+		if m.perfMode {
+			status += kit.InfoStyle.Render("  ◉ perf")
+		}
+		if total := m.practiceTotal(); total > 0 {
+			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏱ %d:%02d", total/60, total%60))
+		}
 		if rate := m.engine.Rate(); rate != 1 {
 			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏩ ×%.2f", rate))
 		}
@@ -1418,6 +1524,7 @@ func (m ViewerModel) View() string {
 		{Key: "i/u", Label: "loop"},
 		{Key: "v", Label: "layout"},
 		{Key: "f", Label: "follow"},
+		{Key: "P", Label: "perf"},
 		{Key: "X", Label: "export"},
 		{Key: "j/k", Label: "scroll"},
 		{Key: "/", Label: "search"},

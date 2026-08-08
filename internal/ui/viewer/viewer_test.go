@@ -988,3 +988,66 @@ func TestSearchMatchesSectionNames(t *testing.T) {
 		t.Fatalf("status should name the current section:\n%s", m.View())
 	}
 }
+
+// TestPerformanceModeToggles guards G3.1: P swaps the tab body for the
+// performance view (section + progress) and toggles back.
+func TestPerformanceModeToggles(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard, Bars: []model.Bar{
+		{Number: 1, Section: "Intro", Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}},
+		{Number: 2, Section: "Chorus", Strings: []model.StringLine{{Segments: []model.Segment{{Char: '5', Value: 5, Position: 0, Width: 1}}}}},
+	}}
+	m.LoadTab(tab, "x.txt", 0)
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 100, Height: 24})
+
+	m, _ = m.Update(key("P"))
+	if !m.perfMode {
+		t.Fatal("P should enable performance mode")
+	}
+	view := m.View()
+	for _, want := range []string{"Intro", "bar 1 / 2", "50%", "perf"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("performance view missing %q:\n%s", want, view)
+		}
+	}
+	m, _ = m.Update(key("P"))
+	if m.perfMode {
+		t.Fatal("P should toggle performance mode off")
+	}
+}
+
+// TestPracticeTimerAccumulatesAndPersists guards G3.2: playback time banks
+// into practice_seconds metadata when playback stops, and survives a tab
+// reload (it comes back from the metadata).
+func TestPracticeTimerAccumulatesAndPersists(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+
+	// Simulate a 3-second playback session.
+	m.playing = true
+	m.practiceStart = time.Now().Add(-3 * time.Second)
+	m.StopPlayback()
+
+	raw := strings.TrimSpace(m.tab.Metadata["practice_seconds"])
+	if raw == "" {
+		t.Fatal("practice_seconds should be persisted after playback stops")
+	}
+	total := m.practiceTotal()
+	if total < 3 {
+		t.Fatalf("practice total should include the session, got %d", total)
+	}
+
+	// A second session banks on top of the first.
+	m.LoadTab(m.tab, "x.txt", 0)
+	if m.practiceTotal() < 3 {
+		t.Fatalf("practice total should survive reload, got %d", m.practiceTotal())
+	}
+	m.playing = true
+	m.practiceStart = time.Now().Add(-2 * time.Second)
+	m.StopPlayback()
+	if m.practiceTotal() < 5 {
+		t.Fatalf("second session should accumulate, got %d", m.practiceTotal())
+	}
+}

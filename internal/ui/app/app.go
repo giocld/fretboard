@@ -331,10 +331,22 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// Shutdown stops audio and releases background resources.
+// Shutdown stops audio and releases background resources. The live tab's
+// metadata (calibration, practice time) is persisted on the way out.
 func (m *AppModel) Shutdown() {
 	m.viewer.StopPlayback()
 	m.viewer.ShutdownAudio()
+	if m.store != nil && m.viewer.Tab() != nil {
+		path := strings.TrimSpace(m.viewer.TabPath())
+		if path == "" && m.viewer.TabID() > 0 {
+			if row, err := m.store.GetRow(m.viewer.TabID()); err == nil && row != nil {
+				path = row.Filepath
+			}
+		}
+		if path != "" {
+			_, _ = m.store.Import(path, m.viewer.Tab())
+		}
+	}
 	if m.watcher != nil {
 		m.watcher.Close()
 	}
