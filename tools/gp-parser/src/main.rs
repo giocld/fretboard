@@ -80,7 +80,6 @@ fn pick_guitar_track(song: &Song) -> usize {
     }
     0
 }
-
 fn track_to_tab(song: &Song, track: &Track) -> TabOut {
     let mut tuning: Vec<i32> = track
         .strings
