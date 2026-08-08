@@ -283,7 +283,7 @@ func TestFormatResultShowsRatingAndTypeBadges(t *testing.T) {
 		Rating:     4.9,
 		Votes:      2100,
 	})
-	for _, want := range []string{"[UG]", "TAB", "★4.9", "2.1k", "★top"} {
+	for _, want := range []string{"[UG]", "TAB", "*4.9", "2.1k", "top"} {
 		if !strings.Contains(official, want) {
 			t.Fatalf("official row missing %q: %s", want, official)
 		}
@@ -298,7 +298,7 @@ func TestFormatResultShowsRatingAndTypeBadges(t *testing.T) {
 	if !strings.Contains(chords, "CHD") {
 		t.Fatalf("chord row should carry the CHD badge: %s", chords)
 	}
-	if strings.Contains(chords, "★top") {
+	if strings.Contains(chords, "top") {
 		t.Fatalf("unrated chord row must not be marked top: %s", chords)
 	}
 
@@ -308,7 +308,7 @@ func TestFormatResultShowsRatingAndTypeBadges(t *testing.T) {
 		ArtistName: "Dire Straits",
 		Type:       "Tabs",
 	})
-	if strings.Contains(plain, "★") {
+	if strings.Contains(plain, "*") {
 		t.Fatalf("unrated result must not show a star rating: %s", plain)
 	}
 }

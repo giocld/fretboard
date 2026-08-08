@@ -215,7 +215,7 @@ func TestRenderAudioPickerShowsBadges(t *testing.T) {
 	if !strings.Contains(rendered, "[live]") {
 		t.Fatalf("picker should badge live sources, got:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "⛔") {
+	if !strings.Contains(rendered, "not studio") {
 		t.Fatalf("strict mode should mark rejected sources, got:\n%s", rendered)
 	}
 }
@@ -236,8 +236,8 @@ func tempoMapSchedule() []player.PlaybackStep {
 func TestTempoMapAndQuality(t *testing.T) {
 	m := NewViewerModel()
 	m.schedule = tempoMapSchedule()
-	// Bars 1-3 at 120 BPM (4 quarters = 2s per bar): 0s→4s. Bars 3-4 at
-	// 60 BPM (4 quarters = 4s): 4s→8s.
+	// Bars 1-3 at 120 BPM (4 quarters = 2s per bar): 0s->4s. Bars 3-4 at
+	// 60 BPM (4 quarters = 4s): 4s->8s.
 	m.syncPoints = []player.SyncPoint{{Bar: 1, Seconds: 0}, {Bar: 3, Seconds: 4}, {Bar: 4, Seconds: 8}}
 	rng, ok := m.tempoMap()
 	if !ok {
@@ -251,7 +251,7 @@ func TestTempoMapAndQuality(t *testing.T) {
 		t.Fatal("syncQuality should be derivable from 3 anchors")
 	}
 	// The base segment implies 120 BPM; bar 4's anchor is 4s late vs the
-	// 2s the 120 BPM schedule predicts → drift of 2s.
+	// 2s the 120 BPM schedule predicts -> drift of 2s.
 	if q < 1.9 || q > 2.1 {
 		t.Fatalf("syncQuality = %.2f, want ~2.0", q)
 	}

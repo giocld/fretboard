@@ -15,13 +15,13 @@ import (
 
 // SettingsModel is the settings list.
 type SettingsModel struct {
-	cursor    int
-	width     int
-	height    int
-	errMsg    string
-	cfg       config.Config
-	themes    []string
-	themeIdx  int
+	cursor   int
+	width    int
+	height   int
+	errMsg   string
+	cfg      config.Config
+	themes   []string
+	themeIdx int
 }
 
 // NewSettingsModel loads the current config and theme list.
@@ -132,7 +132,7 @@ func (m SettingsModel) View() string {
 	body := "\n" + kit.RenderPanel(m.width-2, "Settings", strings.TrimSuffix(b.String(), "\n"))
 	footer := kit.RenderFooter(m.width, []kit.KeyHint{
 		{Key: "j/k", Label: "move"},
-		{Key: "←/→", Label: "change"},
+		{Key: "←/->", Label: "change"},
 		{Key: "Enter", Label: "toggle"},
 		{Key: "Esc", Label: "back"},
 	})
@@ -141,7 +141,7 @@ func (m SettingsModel) View() string {
 
 func onOff(v bool) string {
 	if v {
-		return kit.SuccessStyle.Render("on  🔒")
+		return kit.SuccessStyle.Render("on")
 	}
 	return kit.MutedStyle.Render("off")
 }

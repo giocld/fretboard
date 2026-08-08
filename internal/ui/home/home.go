@@ -211,7 +211,7 @@ func (m HomeModel) favoriteCount() int {
 
 func (m HomeModel) renderBody() string {
 	if !m.loaded {
-		return kit.InfoStyle.Render("⠋ Loading library stats…")
+		return kit.InfoStyle.Render("⠋ Loading library stats...")
 	}
 
 	var b strings.Builder
@@ -228,7 +228,7 @@ func (m HomeModel) renderBody() string {
 	}
 	cols := []struct{ label, value string }{
 		{"TABS", fmt.Sprintf("%d", len(m.tabs))},
-		{"FAVORITES", fmt.Sprintf("%d ★", m.favoriteCount())},
+		{"FAVORITES", fmt.Sprintf("%d *", m.favoriteCount())},
 		{"RECENT", lastLabel},
 	}
 	var colWidths []int
@@ -309,7 +309,7 @@ func (m HomeModel) renderBody() string {
 			idx := homeActionCount + i
 			star := " "
 			if row.Favorite {
-				star = "★"
+				star = "*"
 			}
 			line := fmt.Sprintf("  %s %s — %s", star, row.Title, row.Artist)
 			if m.cursor == idx {

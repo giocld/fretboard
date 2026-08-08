@@ -188,7 +188,7 @@ func lowestGuitarMIDI(semi int) int {
 }
 
 // NoteLetters pulls just the note sequence from a tuning label like
-// "EADGBE" → "EADGBE", "Eb Standard" → "Eb".
+// "EADGBE" -> "EADGBE", "Eb Standard" -> "Eb".
 func NoteLetters(s string) string {
 	var out strings.Builder
 	for _, r := range s {

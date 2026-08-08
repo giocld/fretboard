@@ -110,7 +110,7 @@ func TestHomeStatRowSeparatorsAligned(t *testing.T) {
 		if strings.HasPrefix(strings.TrimSpace(l), "TABS") {
 			labels = l
 		}
-		if strings.Contains(l, "0 ★") && strings.Contains(l, "Layla") {
+		if strings.Contains(l, "0 *") && strings.Contains(l, "Layla") {
 			values = l
 		}
 	}

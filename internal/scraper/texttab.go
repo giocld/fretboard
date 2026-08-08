@@ -16,7 +16,7 @@ import (
 )
 
 // textTabSite describes a tab site whose pages carry plain ASCII tabs inside
-// <pre> blocks and whose search pages list artist → tab anchor pairs. Two
+// <pre> blocks and whose search pages list artist -> tab anchor pairs. Two
 // sites are wired up (guitartabs.cc and guitaretab.com); adding another is a
 // few lines.
 type textTabSite struct {
@@ -233,7 +233,7 @@ var textTabNavWords = map[string]bool{
 	"lyricsmars": true,
 }
 
-// parseTextTabSearch extracts artist → tab anchor pairs from a search page.
+// parseTextTabSearch extracts artist -> tab anchor pairs from a search page.
 // Both wired sites emit the artist link (a directory) immediately before its
 // tab links (a .html page), so a single pass over the anchors works.
 func parseTextTabSearch(body []byte, query string, site *textTabSite, origin string) ([]SearchResult, error) {

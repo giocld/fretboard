@@ -19,7 +19,7 @@ type Config struct {
 	Soundfont            string   `json:"soundfont,omitempty"`
 	AudioSearchPaths     []string `json:"audio_search_paths,omitempty"`
 	AutoFetchAudio       bool     `json:"auto_fetch_audio"`
-	StrictAudioSelection bool     `json:"strict_audio_selection"` 
+	StrictAudioSelection bool     `json:"strict_audio_selection"`
 }
 
 // Defaults returns the default configuration.

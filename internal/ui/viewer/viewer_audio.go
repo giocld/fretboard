@@ -32,7 +32,7 @@ func fetchAudioCatalogCmd(tab *model.Tab, tabPath string, tabID int64, audioDirs
 func RenderAudioPicker(width int, catalog player.AudioCatalog, cursor int, fetching bool, strict bool, recommended int, rejected map[string]bool) string {
 	title := "Audio source"
 	if fetching {
-		title += "  … searching"
+		title += "  ... searching"
 	}
 	body := renderAudioPickerBody(catalog, cursor, fetching, strict, recommended, rejected)
 	return "\n" + kit.RenderPanel(width-2, title, body)
@@ -60,7 +60,7 @@ func categoryBadge(c player.AudioCategory) string {
 
 func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching bool, strict bool, recommended int, rejected map[string]bool) string {
 	if fetching && len(catalog.Sources) <= 1 {
-		return kit.MutedStyle.Render("Searching for matching recordings…")
+		return kit.MutedStyle.Render("Searching for matching recordings...")
 	}
 	if len(catalog.Sources) == 0 {
 		return kit.MutedStyle.Render("No audio sources found. Press Esc to use MIDI.")
@@ -77,12 +77,12 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 		dim := notStudio || userRejected
 		line := fmt.Sprintf("%s%s %s%s", prefix, kind, categoryBadge(src.Category), src.Label)
 		if i == recommended && !dim {
-			line += kit.SuccessStyle.Render("  ★")
+			line += kit.SuccessStyle.Render("  *")
 		}
 		if userRejected {
-			line += kit.MutedStyle.Render("  ⛔ rejected")
+			line += kit.MutedStyle.Render("  rejected")
 		} else if notStudio {
-			line += kit.MutedStyle.Render("  ⛔ not studio")
+			line += kit.MutedStyle.Render("  not studio")
 		}
 		if src.Detail != "" {
 			line += kit.MutedStyle.Render("  · " + src.Detail)
@@ -102,7 +102,7 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 	lines = append(lines, "")
 	lines = append(lines, kit.MutedStyle.Render("j/k move  Enter select  r refresh  Esc cancel"))
 	if strict {
-		lines = append(lines, kit.MutedStyle.Render("strict on: live/cover/lesson recordings are excluded from auto-pick (★ = recommended)"))
+		lines = append(lines, kit.MutedStyle.Render("strict on: live/cover/lesson recordings are excluded from auto-pick (* = recommended)"))
 	}
 	return strings.Join(lines, "\n")
 }

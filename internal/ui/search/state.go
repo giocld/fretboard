@@ -81,9 +81,9 @@ func addHistory(history []string, query string) []string {
 
 // cacheEntry is the persisted form of a cached result set.
 type cacheEntry struct {
-	Query     string                `json:"query"`
-	SavedAt   time.Time             `json:"saved_at"`
-	Results   []scraper.SearchResult `json:"results"`
+	Query   string                 `json:"query"`
+	SavedAt time.Time              `json:"saved_at"`
+	Results []scraper.SearchResult `json:"results"`
 }
 
 // cachePath returns the search-cache file path.

@@ -145,7 +145,7 @@ func TestPlayStepNoClickOffBeat(t *testing.T) {
 			},
 		}},
 	}
-	// col 2 is a half-beat; accumulated ticks 240 % 480 != 0 → no click.
+	// col 2 is a half-beat; accumulated ticks 240 % 480 != 0 -> no click.
 	if err := s.PlayStep(tab, PlaybackStep{Bar: 0, Col: 2, Ticks: 240}, 120); err != nil {
 		t.Fatal(err)
 	}

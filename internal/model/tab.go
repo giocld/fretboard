@@ -33,7 +33,7 @@ type Bar struct {
 	Ending      int // 1 or 2 for first/second endings; 0 = no ending
 
 	// Section names the song part this bar belongs to ("Verse 1",
-	// "Chorus", …), from headers like "[Verse]" or "Chorus:" in the tab.
+	// "Chorus", ...), from headers like "[Verse]" or "Chorus:" in the tab.
 	Section string
 }
 

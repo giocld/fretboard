@@ -29,7 +29,7 @@ type SearchResult struct {
 	TabURL string
 }
 
-// SourceBadge renders a compact provenance label for a result, e.g. "[UG ★4.9]".
+// SourceBadge renders a compact provenance label for a result, e.g. "[UG *4.9]".
 // The rating is included when the source reports one (Ultimate Guitar).
 func SourceBadge(r SearchResult) string {
 	label := ""
@@ -46,13 +46,13 @@ func SourceBadge(r SearchResult) string {
 		label = string(r.Source)
 	}
 	if r.Rating > 0 {
-		label += fmt.Sprintf(" ★%.1f", r.Rating)
+		label += fmt.Sprintf(" *%.1f", r.Rating)
 	}
 	return "[" + label + "]"
 }
 
 // IsTopRated reports whether a result is a strongly-rated tab (used for the
-// "★top" badge and for ranking): a high rating backed by a meaningful number
+// "top" badge and for ranking): a high rating backed by a meaningful number
 // of votes.
 func IsTopRated(r SearchResult) bool {
 	return r.Rating >= 4.0 && r.Votes >= 25

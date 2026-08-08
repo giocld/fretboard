@@ -1188,7 +1188,7 @@ func TestRejectWrongSource(t *testing.T) {
 	}
 	// Picker badges rejected sources.
 	body := renderAudioPickerBody(m.audioCatalog, 0, false, true, 0, rej)
-	if !strings.Contains(body, "⛔ rejected") {
+	if !strings.Contains(body, "rejected") {
 		t.Fatalf("picker should badge the rejected source:\n%s", body)
 	}
 }

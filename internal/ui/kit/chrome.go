@@ -26,8 +26,8 @@ func TermTooSmall(width, height int) bool {
 func RenderTooSmall(width, height int) string {
 	msg := TooSmallStyle.Render(
 		"Terminal too small\n\n" +
-			"Resize to at least " + itoa(minTermWidth) + "×" + itoa(minTermHeight) +
-			" (currently " + itoa(width) + "×" + itoa(height) + ")",
+			"Resize to at least " + itoa(minTermWidth) + "x" + itoa(minTermHeight) +
+			" (currently " + itoa(width) + "x" + itoa(height) + ")",
 	)
 	return "\n" + lipgloss.Place(width, 8, lipgloss.Center, lipgloss.Center, msg)
 }
@@ -43,7 +43,7 @@ func FormatBreadcrumb(parts ...string) string {
 // RenderAppHeader renders the top chrome line: logo + breadcrumb, plain text
 // (no background bar) so the content remains the loudest element.
 func RenderAppHeader(width int, breadcrumb string) string {
-	logo := LogoStyle.Render("♪ fretboard")
+	logo := LogoStyle.Render("fretboard")
 	crumb := BreadcrumbStyle.Render(breadcrumb)
 	gap := width - lipgloss.Width(logo) - lipgloss.Width(crumb) - 4
 	if gap < 1 {

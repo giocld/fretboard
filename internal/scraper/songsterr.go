@@ -30,7 +30,7 @@ func (c *songsterrClient) Search(query string) ([]SearchResult, error) {
 }
 
 // SearchPage queries Songsterr with a per-page result size (page 1 = 15,
-// page 2 = 30, …). Songsterr has no real pagination, so later pages simply
+// page 2 = 30, ...). Songsterr has no real pagination, so later pages simply
 // ask for more matches.
 func (c *songsterrClient) SearchPage(query string, page int) ([]SearchResult, error) {
 	if page < 1 {

@@ -52,7 +52,7 @@ func RenderTabPreview(tab *model.Tab, maxLines int) string {
 	if len(lines) <= maxLines {
 		return full
 	}
-	return strings.Join(lines[:maxLines], "\n") + "\n" + MutedStyle.Render("…")
+	return strings.Join(lines[:maxLines], "\n") + "\n" + MutedStyle.Render("...")
 }
 
 // RenderTabPlain renders a tab as plain, uncolored ASCII — the classic
@@ -626,7 +626,7 @@ func RenderStatusBar(width int, info StatusInfo) string {
 	}
 	left := fmt.Sprintf("%s  │  %s  │  BPM: %d", info.Filename, info.Tuning, info.BPM)
 	if info.Playing {
-		left += "  │  ▶"
+		left += "  │  "
 	}
 	playStr := "Space:play"
 	if info.Playing {
@@ -656,5 +656,5 @@ func Truncate(s string, max int) string {
 		b.WriteRune(r)
 		limit -= w
 	}
-	return b.String() + "…"
+	return b.String() + "..."
 }

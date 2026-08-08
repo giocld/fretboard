@@ -32,11 +32,11 @@ func TestSegmentStepUsesTickDensity(t *testing.T) {
 	if got := segmentStep(schedule, a, b, 0); got != 0 {
 		t.Fatalf("at anchor A cursor should be step 0, got %d", got)
 	}
-	// 50% of 2040 ticks = 1020 → step 4 (step-count mapping would say 5).
+	// 50% of 2040 ticks = 1020 -> step 4 (step-count mapping would say 5).
 	if got := segmentStep(schedule, a, b, 5.0); got != 4 {
 		t.Fatalf("50%% segment time should land at step 4, got %d", got)
 	}
-	// 90% of 2040 ticks = 1836 → still bar 0 (step 7); the sparse bar only
+	// 90% of 2040 ticks = 1836 -> still bar 0 (step 7); the sparse bar only
 	// starts at 94% of the audio time.
 	if got := segmentStep(schedule, a, b, 9.0); got != 7 {
 		t.Fatalf("90%% segment time should stay in the dense bar (step 7), got %d", got)
@@ -90,7 +90,7 @@ func TestTicksToSeconds(t *testing.T) {
 func TestStepIndexAtSyncPointsFollowsAnchors(t *testing.T) {
 	schedule := denseSparseSchedule()
 	points := []SyncPoint{{Bar: 0, Seconds: 0}, {Bar: 2, Seconds: 10}}
-	// 30% of 2040 ticks = 612 → step 2 (tick-proportional, not step-count 3).
+	// 30% of 2040 ticks = 612 -> step 2 (tick-proportional, not step-count 3).
 	if got := StepIndexAtSyncPoints(schedule, points, 3, 120); got != 2 {
 		t.Fatalf("30%% in should land at step 2, got %d", got)
 	}

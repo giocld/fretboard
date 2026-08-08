@@ -70,7 +70,7 @@ func TestSourceBadgeFormats(t *testing.T) {
 		r    SearchResult
 		want string
 	}{
-		{SearchResult{Source: SourceUG, Rating: 4.9}, "[UG ★4.9]"},
+		{SearchResult{Source: SourceUG, Rating: 4.9}, "[UG *4.9]"},
 		{SearchResult{Source: SourceUG}, "[UG]"},
 		{SearchResult{Source: SourceSongsterr}, "[ST]"},
 		{SearchResult{Source: SourceGuitarTabs}, "[GT]"},

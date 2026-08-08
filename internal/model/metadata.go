@@ -12,5 +12,5 @@ const (
 	MetaKeySongsterrID = "songsterr_id"
 	MetaKeyAudioOffset = "audio_offset"
 	MetaKeySyncPoints  = "sync_points"
-	MetaKeySourceBadge = "source_badge" // provenance label, e.g. "[UG ★4.9]"
+	MetaKeySourceBadge = "source_badge" // provenance label, e.g. "[UG *4.9]"
 )

@@ -52,8 +52,8 @@ func TestLeadingSilenceAbsentFFmpeg(t *testing.T) {
 	}
 }
 
-// TestLeadingSilenceCountIn guards the count-in-aware detection: silence →
-// click bursts → music anchors at the music, not at the first silence end.
+// TestLeadingSilenceCountIn guards the count-in-aware detection: silence ->
+// click bursts -> music anchors at the music, not at the first silence end.
 func TestLeadingSilenceCountIn(t *testing.T) {
 	log := "[silence_start: 0\n" +
 		"[silence_end: 2.0\n" + // end of true intro silence

@@ -140,7 +140,7 @@ func applyUGMetadata(tab *model.Tab, res ugTabMeta) {
 }
 
 // isAlbumTab reports whether a UG result is an album/multi-track page, whose
-// content is a track listing ("Track 01 - X … Included") rather than a single
+// content is a track listing ("Track 01 - X ... Included") rather than a single
 // tab. Importing those produces garbage tabs.
 func isAlbumTab(res ultimateguitar.TabResult) bool {
 	if res.Part == "album" {

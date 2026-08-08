@@ -538,10 +538,10 @@ func (m *BrowserModel) refresh() {
 
 func (m BrowserModel) renderList() string {
 	if m.loading {
-		return kit.InfoStyle.Render("⠋ Reloading library…")
+		return kit.InfoStyle.Render("⠋ Reloading library...")
 	}
 	if !m.loaded {
-		return kit.InfoStyle.Render("Loading library…")
+		return kit.InfoStyle.Render("Loading library...")
 	}
 	if len(m.tabs) == 0 {
 		return "\n\n  " + kit.WarningStyle.Render("No tabs in your library") + "\n\n  " +
@@ -583,7 +583,7 @@ func (m BrowserModel) renderList() string {
 	for i, row := range m.filtered {
 		star := " "
 		if row.Favorite {
-			star = "★"
+			star = "*"
 		}
 		tuning := formatRowTuning(row.Tuning)
 		if row.SourceBadge != "" {

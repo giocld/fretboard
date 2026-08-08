@@ -47,10 +47,12 @@ func TestTruncateNoBrokenUTF8(t *testing.T) {
 	if strings.Contains(got, "\uFFFD") {
 		t.Fatalf("truncate split a rune: %q", got)
 	}
-	if lipgloss.Width(got) > 7 {
+	// "café " is 5 cols + the 3-col ASCII ellipsis = 8 cols; the old
+	// 1-col ellipsis was 6. Both fit under the 9-col allowance.
+	if lipgloss.Width(got) > 9 {
 		t.Fatalf("truncate overflow: %q is %d cols", got, lipgloss.Width(got))
 	}
-	if !strings.HasSuffix(got, "…") {
+	if !strings.HasSuffix(got, "...") {
 		t.Fatalf("truncate should append ellipsis: %q", got)
 	}
 }

@@ -22,7 +22,7 @@ func TestImportPersistsSourceBadge(t *testing.T) {
 		Title:    "Sultans of Swing",
 		Artist:   "Dire Straits",
 		Tuning:   model.Standard,
-		Metadata: map[string]string{model.MetaKeySourceBadge: "[UG ★4.9]"},
+		Metadata: map[string]string{model.MetaKeySourceBadge: "[UG *4.9]"},
 	}
 	id, err := st.Import("sultans.txt", tab)
 	if err != nil {
@@ -33,17 +33,17 @@ func TestImportPersistsSourceBadge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if row.SourceBadge != "[UG ★4.9]" {
-		t.Fatalf("GetRow badge = %q, want [UG ★4.9]", row.SourceBadge)
+	if row.SourceBadge != "[UG *4.9]" {
+		t.Fatalf("GetRow badge = %q, want [UG *4.9]", row.SourceBadge)
 	}
 
 	list, err := st.List()
-	if err != nil || len(list) != 1 || list[0].SourceBadge != "[UG ★4.9]" {
+	if err != nil || len(list) != 1 || list[0].SourceBadge != "[UG *4.9]" {
 		t.Fatalf("List badge wrong: %+v, err %v", list, err)
 	}
 
 	found, err := st.Search("sultans")
-	if err != nil || len(found) != 1 || found[0].SourceBadge != "[UG ★4.9]" {
+	if err != nil || len(found) != 1 || found[0].SourceBadge != "[UG *4.9]" {
 		t.Fatalf("Search badge wrong: %+v, err %v", found, err)
 	}
 

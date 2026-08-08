@@ -60,15 +60,15 @@ type AppModel struct {
 // need a real library store or online search.
 func NewApp() AppModel {
 	return AppModel{
-		view:    viewHome,
-		home:    home.NewHomeModel(nil),
-		library: browser.NewBrowserModel(nil),
-		viewer:  viewer.NewViewerModel(),
-		search:  search.NewSearchModel(nil),
-		help:    help.NewHelpModel(),
+		view:     viewHome,
+		home:     home.NewHomeModel(nil),
+		library:  browser.NewBrowserModel(nil),
+		viewer:   viewer.NewViewerModel(),
+		search:   search.NewSearchModel(nil),
+		help:     help.NewHelpModel(),
 		settings: settings.NewSettingsModel(),
-		width:   80,
-		height:  24,
+		width:    80,
+		height:   24,
 	}
 }
 

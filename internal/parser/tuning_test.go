@@ -8,7 +8,7 @@ import (
 )
 
 // TestInferTuningNamedVariants guards against common tuning labels collapsing
-// into truncated or empty tunings via NoteLetters ("Dropped D" → "DD" used to
+// into truncated or empty tunings via NoteLetters ("Dropped D" -> "DD" used to
 // produce a 2-string tuning, silently dropping notes on every other string).
 func TestInferTuningNamedVariants(t *testing.T) {
 	tests := []struct {

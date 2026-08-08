@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime/debug"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -231,7 +231,7 @@ func runTestAudio(cfg config.Config, stdout, stderr io.Writer) error {
 	if err := s.Play(tab, 120); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "playing via %s …\n", s.ActiveDriver)
+	fmt.Fprintf(stdout, "playing via %s ...\n", s.ActiveDriver)
 	time.Sleep(2 * time.Second)
 	if !s.Running() {
 		if s.LastError != "" {

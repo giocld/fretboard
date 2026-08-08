@@ -9,7 +9,7 @@ from a keyboard-driven Bubble Tea TUI.
 - **ASCII tab viewer** with syntax highlighting, string colors, and vim-style navigation.
 - **Rhythm-aware playback** — infers note durations from column spacing; honors rhythm rows (`| q e e q |`) when present; plays repeats (`|:` `:|`) and 1./2. endings in human reading order.
 - **Audio playback** — tries a real backing track first (`ffplay`/`mpv`), then MIDI via `fluidsynth`/`timidity`, with a moving cursor.
-- **Online tab search** across four sources — Ultimate Guitar (API + HTML fallback), Songsterr, GuitarTabs.cc, and GuitareTab.com (`o` in library), merged **best-first**: tabs outrank chord sheets, and UG rating/votes (`★ 4.9 · 2.1k`) decide the order, so the official version surfaces above covers.
+- **Online tab search** across four sources — Ultimate Guitar (API + HTML fallback), Songsterr, GuitarTabs.cc, and GuitareTab.com (`o` in library), merged **best-first**: tabs outrank chord sheets, and UG rating/votes (`* 4.9 · 2.1k`) decide the order, so the official version surfaces above covers.
 - **Guitar Pro import** for `.gp3`, `.gp4`, `.gp5`, `.gpx` via the bundled `gp-parser` helper (Rust + `guitarpro`).
 - **Local library** backed by SQLite (fuzzy search, sort, favorites, delete).
 - **Themes** — built-in default, One Dark, and Dracula palettes (`t` anywhere).
@@ -85,20 +85,20 @@ fretboard import path/to/tabs/
 | `X` | Export tab to file + clipboard |
 | `[`/`]` | Nudge audio sync ±0.5s (`{`/`}` = ±5s, `,`/`.` = ±0.1s, `o` resets) |
 | `s`/`S` | Sync current bar to audio / remove last sync anchor |
-| `a` | Audio picker with strict badges (`[official]`/`[live]`/…, `★` recommended) |
+| `a` | Audio picker with strict badges (`[official]`/`[live]`/..., `*` recommended) |
 | `b` | Back to library |
 | `t` | Cycle theme |
 | `q`/`Ctrl+c` | Quit |
 
 ### Syncing with a recording
 
-1. Pick the studio/official source in the picker (`a`) — in strict mode (`🔒strict`)
+1. Pick the studio/official source in the picker (`a`) — in strict mode (`strict`)
    live/cover/lesson recordings are excluded from auto-pick.
-2. Intros are auto-detected from leading silence (`↔ +Xs`, ffmpeg optional);
+2. Intros are auto-detected from leading silence (`offset +Xs`, ffmpeg optional);
    fine-tune with `[ ]` (±0.5s) or `, .` (±0.1s), reset with `o`.
 3. During playback, jump to a bar you recognize (number + `Enter`), then press
    `s` exactly when you hear it; repeat at 2–3 bars. Anchors build a tempo map
-   (`60→120 bpm`) and a drift estimate (`±2.0s`) that keep the playhead synced
+   (`60->120 bpm`) and a drift estimate (`±2.0s`) that keep the playhead synced
    even when the tempo changes.
 4. Calibration is stored **per audio source** — switching to another recording
    restores that source's own offset and anchors.
@@ -175,7 +175,7 @@ internal/
   library/              # SQLite library CRUD
   scraper/              # UG API/HTML + Songsterr + plain-text tab sites
   tui/                  # Bubble Tea frontend
-tools/gp-parser/        # Rust GP → JSON converter
+tools/gp-parser/        # Rust GP -> JSON converter
 ```
 
 ## License

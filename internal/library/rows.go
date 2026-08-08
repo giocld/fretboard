@@ -10,7 +10,7 @@ type TabRow struct {
 	Favorite    bool
 	PlayCount   int64
 	LastPlayed  string // SQLite datetime from last_played, empty if never opened
-	SourceBadge string // provenance label for online tabs, e.g. "[UG ★4.9]"
+	SourceBadge string // provenance label for online tabs, e.g. "[UG *4.9]"
 }
 
 // MoreRecentlyUsed reports whether a should sort before b in recent-tab lists.

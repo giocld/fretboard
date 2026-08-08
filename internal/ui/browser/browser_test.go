@@ -362,7 +362,7 @@ func TestBrowserRowShowsSourceBadge(t *testing.T) {
 		Title:    "Sultans of Swing",
 		Artist:   "Dire Straits",
 		Tuning:   model.Standard,
-		Metadata: map[string]string{model.MetaKeySourceBadge: "[UG ★4.9]"},
+		Metadata: map[string]string{model.MetaKeySourceBadge: "[UG *4.9]"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,7 @@ func TestBrowserRowShowsSourceBadge(t *testing.T) {
 	m.apply()
 
 	view := m.View()
-	if !strings.Contains(view, "[UG ★4.9]") {
+	if !strings.Contains(view, "[UG *4.9]") {
 		t.Fatalf("browser should show the source badge, got:\n%s", view)
 	}
 	if !strings.Contains(view, "Local Song") {
@@ -416,7 +416,7 @@ func TestBrowserEditMetadataFlow(t *testing.T) {
 	m.height = 30
 	m.apply()
 
-	// e → edit title: input starts empty (current value is the placeholder).
+	// e -> edit title: input starts empty (current value is the placeholder).
 	m, _ = m.Update(keyFor("e"))
 	if !m.editing || m.editField != 1 {
 		t.Fatalf("e should start title editing: editing=%v field=%d", m.editing, m.editField)

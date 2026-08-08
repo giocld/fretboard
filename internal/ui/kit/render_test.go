@@ -10,7 +10,8 @@ import (
 	"github.com/muesli/termenv"
 )
 
-func TestBarGridLayoutFitsWidth(t *testing.T) {	tab := &model.Tab{Tuning: model.ParseTuning("EADGBE")}
+func TestBarGridLayoutFitsWidth(t *testing.T) {
+	tab := &model.Tab{Tuning: model.ParseTuning("EADGBE")}
 	for i := 0; i < 8; i++ {
 		tab.Bars = append(tab.Bars, model.Bar{Number: i + 1, Strings: []model.StringLine{
 			{Segments: []model.Segment{{Position: 0, Width: 24}}},
@@ -60,7 +61,7 @@ func headerLine(t *testing.T, lines []string, number int) int {
 // TestGridContentRowsAlignWithHeaders guards the per-bar off-by-one: content
 // rows were padded to a fixed barWidth-4 after a prefix whose label style is
 // actually 5 cells wide, making string rows drift one cell per bar under
-// their headers. Every row must span exactly bars × barWidth cells.
+// their headers. Every row must span exactly bars x barWidth cells.
 func TestGridContentRowsAlignWithHeaders(t *testing.T) {
 	tab := &model.Tab{Tuning: model.ParseTuning("EADGBE")}
 	for i := 1; i <= 6; i++ {
@@ -71,7 +72,7 @@ func TestGridContentRowsAlignWithHeaders(t *testing.T) {
 	for _, w := range []int{60, 76, 120} {
 		lines := strings.Split(RenderTabGrid(tab, w, 0, nil), "\n")
 		m := BarGridLayout(tab, w)
-		// Assert per-row widths: each row spans barsInRow × barWidth cells
+		// Assert per-row widths: each row spans barsInRow x barWidth cells
 		// (the last row may be partial).
 		lineIdx := 0
 		for rowStart := 0; rowStart < len(tab.Bars); rowStart += m.BarsPerRow {
@@ -97,11 +98,11 @@ func TestGridContentRowsAlignWithHeaders(t *testing.T) {
 func TestGridBarLineOffsetsMatchRenderer(t *testing.T) {
 	tab := &model.Tab{Title: "Mixed", Tuning: model.ParseTuning("EADGBE")}
 	tab.Bars = append(tab.Bars,
-		model.Bar{Number: 1, Strings: []model.StringLine{{}}},                                  // 1 string
-		model.Bar{Number: 2, Strings: []model.StringLine{{}}},                                  // 1 string
-		model.Bar{Number: 3, Strings: make([]model.StringLine, 6)},                             // 6 strings
-		model.Bar{Number: 4, Strings: make([]model.StringLine, 6)},                             // 6 strings
-		model.Bar{Number: 5, Strings: []model.StringLine{{}, {}}},                              // 2 strings
+		model.Bar{Number: 1, Strings: []model.StringLine{{}}},      // 1 string
+		model.Bar{Number: 2, Strings: []model.StringLine{{}}},      // 1 string
+		model.Bar{Number: 3, Strings: make([]model.StringLine, 6)}, // 6 strings
+		model.Bar{Number: 4, Strings: make([]model.StringLine, 6)}, // 6 strings
+		model.Bar{Number: 5, Strings: []model.StringLine{{}, {}}},  // 2 strings
 	)
 	for _, w := range []int{40, 76, 120} {
 		offsets := GridBarLineOffsets(tab, w)

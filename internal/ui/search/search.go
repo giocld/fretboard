@@ -37,7 +37,7 @@ type SearchModel struct {
 // NewSearchModel creates an online search view.
 func NewSearchModel(client *scraper.Client) SearchModel {
 	ti := textinput.New()
-	ti.Placeholder = "Search Ultimate Guitar, Songsterr, GuitarTabs.cc…"
+	ti.Placeholder = "Search Ultimate Guitar, Songsterr, GuitarTabs.cc..."
 	ti.Prompt = "› "
 	ti.CharLimit = 120
 	ti.Focus()
@@ -436,9 +436,9 @@ func (m *SearchModel) refresh() {
 func (m SearchModel) renderResults() string {
 	if m.loading {
 		if m.importing {
-			return kit.InfoStyle.Render("⠋ Fetching tab…")
+			return kit.InfoStyle.Render("⠋ Fetching tab...")
 		}
-		return kit.InfoStyle.Render("⠋ Searching…")
+		return kit.InfoStyle.Render("⠋ Searching...")
 	}
 	if m.errMsg != "" {
 		return kit.ErrorStyle.Render(m.errMsg)
@@ -498,14 +498,14 @@ func formatResult(r scraper.SearchResult) string {
 	// strongly-voted tabs — the official version is recognizable at a glance.
 	rating := ""
 	if r.Rating > 0 {
-		rating = kit.SuccessStyle.Render(fmt.Sprintf("★%.1f", r.Rating))
+		rating = kit.SuccessStyle.Render(fmt.Sprintf("*%.1f", r.Rating))
 		if r.Votes > 0 {
-			rating = kit.SuccessStyle.Render(fmt.Sprintf("★%.1f · %s", r.Rating, shortVotes(r.Votes)))
+			rating = kit.SuccessStyle.Render(fmt.Sprintf("*%.1f · %s", r.Rating, shortVotes(r.Votes)))
 		}
 	}
 	top := ""
 	if scraper.IsTopRated(r) {
-		top = kit.SuccessStyle.Render("★top")
+		top = kit.SuccessStyle.Render("top")
 	}
 	parts := []string{badge + " " + r.SongName + " — " + r.ArtistName}
 	if typeBadge != "" {
@@ -520,7 +520,7 @@ func formatResult(r scraper.SearchResult) string {
 	return strings.Join(parts, "  ")
 }
 
-// shortVotes renders a vote count compactly: 2100 → "2.1k", 500 → "500".
+// shortVotes renders a vote count compactly: 2100 -> "2.1k", 500 -> "500".
 func shortVotes(v int64) string {
 	if v >= 1000 {
 		return fmt.Sprintf("%.1fk", float64(v)/1000.0)

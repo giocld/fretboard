@@ -12,8 +12,8 @@ func TestParseBPMFromText(t *testing.T) {
 // fret 0, open strings and structure stay intact, metadata is preserved.
 func TestTransposedTab(t *testing.T) {
 	tab := &Tab{
-		Title:  "X",
-		Tuning: Standard,
+		Title:    "X",
+		Tuning:   Standard,
 		Metadata: map[string]string{"capo": "3"},
 		Bars: []Bar{{
 			Strings: []StringLine{{Segments: []Segment{

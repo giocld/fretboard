@@ -66,7 +66,7 @@ func TestLiveSearchRankedOfficialFirst(t *testing.T) {
 		if i >= 8 {
 			break
 		}
-		t.Logf("  %d. %s %s — %s [%s] %.1f★ %dv", i+1, SourceBadge(r), r.SongName, r.ArtistName, r.Type, r.Rating, r.Votes)
+		t.Logf("  %d. %s %s — %s [%s] %.1f* %dv", i+1, SourceBadge(r), r.SongName, r.ArtistName, r.Type, r.Rating, r.Votes)
 	}
 	top := results[0]
 	if !IsTabType(top) {
@@ -78,7 +78,7 @@ func TestLiveSearchRankedOfficialFirst(t *testing.T) {
 	if top.Rating < 4.0 {
 		t.Fatalf("top result should be strongly rated, got %.1f (%+v)", top.Rating, top)
 	}
-	t.Logf("PASS: top result is the official tab: %s — %s (%.1f★, %d votes, %s)", top.SongName, top.ArtistName, top.Rating, top.Votes, top.Source)
+	t.Logf("PASS: top result is the official tab: %s — %s (%.1f*, %d votes, %s)", top.SongName, top.ArtistName, top.Rating, top.Votes, top.Source)
 }
 
 // TestLiveSearchPage2FindsMore guards G1.3: a second page returns results

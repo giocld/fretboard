@@ -80,7 +80,7 @@ Library browser
   j / ↓      move down
   k / ↑      move up
   Enter      open selected tab
-  /          fuzzy filter (type j/k; ↑/↓ move; Esc×2 home)
+  /          fuzzy filter (type j/k; ↑/↓ move; Escx2 home)
   F          toggle favorites-only view
   s          cycle sort order
   o          online search
@@ -130,11 +130,11 @@ Tab viewer
 Syncing with a recording
   1. Pick the studio/official source (a) — in strict mode live,
      cover, and lesson recordings are excluded from auto-pick.
-  2. Intros are auto-detected from leading silence (↔ +Xs); fine-tune
+  2. Intros are auto-detected from leading silence (offset +Xs); fine-tune
      with [ ] (0.5 s) or , . (0.1 s).
   3. During playback, jump to a bar you recognize (number + Enter), then
      press s exactly when you hear it. Repeat at 2–3 bars.
-  4. Anchors build a tempo map (118→122 bpm) and a drift estimate
+  4. Anchors build a tempo map (118->122 bpm) and a drift estimate
      (±0.3 s); the playhead follows the audio even as the tempo changes.
   Calibration is stored per audio source — switching to another recording
   restores that source's own offset and anchors.

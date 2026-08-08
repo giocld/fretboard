@@ -15,10 +15,10 @@ func TestElapsedAccountsForAudioBaseAndRate(t *testing.T) {
 	e.playbackStart = time.Now().Add(-10 * time.Second)
 
 	cases := []struct {
-		name      string
-		base      time.Duration
-		rate      float64
-		min, max  time.Duration
+		name     string
+		base     time.Duration
+		rate     float64
+		min, max time.Duration
 	}{
 		{"rate 1 keeps base", 5 * time.Second, 1, 14 * time.Second, 16 * time.Second},
 		{"rate 2 doubles wall time", 5 * time.Second, 2, 24 * time.Second, 26 * time.Second},

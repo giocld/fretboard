@@ -429,7 +429,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 			offset := strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
 			m.tab.Metadata[m.audioOffsetKey()] = offset
 			m.tab.Metadata[model.MetaKeyAudioOffset] = offset
-			m.infoMsg = fmt.Sprintf("auto-detected intro ↔ %+.1fs — fine-tune with [ ] , .", m.audioOffset)
+			m.infoMsg = fmt.Sprintf("auto-detected intro offset %+.1fs — fine-tune with [ ] , .", m.audioOffset)
 			m.refresh()
 			return m, m.saveTabPrefsCmd()
 		}
@@ -1138,7 +1138,7 @@ func (m ViewerModel) audioOffsetDur() time.Duration {
 	return time.Duration(m.audioOffset * float64(time.Second))
 }
 
-// tempoMap returns the low→high BPM range spanned by the per-segment tempi
+// tempoMap returns the low->high BPM range spanned by the per-segment tempi
 // derived from the sync anchors, when at least two anchors exist and the
 // tempo actually varies between them.
 func (m ViewerModel) tempoMap() ([2]int, bool) {
@@ -1360,11 +1360,11 @@ func (m ViewerModel) renderPerformance() string {
 	}
 	state := "paused"
 	if m.playing {
-		state = "▶ playing"
+		state = "playing"
 	}
-	src := "♪ midi"
+	src := "midi"
 	if m.engine.Mode() == "audio" {
-		src = "♪ audio"
+		src = "audio"
 	}
 	const scale = 40
 	filled := 0
@@ -1379,7 +1379,7 @@ func (m ViewerModel) renderPerformance() string {
 		"",
 		kit.MutedStyle.Render(fmt.Sprintf("   BPM %d   %s   %s", m.bpm, state, src)),
 		"",
-		kit.SuccessStyle.Render("   " + strings.Repeat("▓", filled) + strings.Repeat("░", scale-filled)),
+		kit.SuccessStyle.Render("   " + strings.Repeat("#", filled) + strings.Repeat(".", scale-filled)),
 		"",
 	}, "\n")
 }
@@ -1509,42 +1509,42 @@ func (m ViewerModel) View() string {
 				if label == "" {
 					label = "audio"
 				}
-				status += "  " + kit.SuccessStyle.Render("▶ "+label)
+				status += "  " + kit.SuccessStyle.Render(""+label)
 			} else if label != "" {
-				status += "  " + kit.SuccessStyle.Render("▶ midi:"+label)
+				status += "  " + kit.SuccessStyle.Render("midi:"+label)
 			} else {
-				status += "  " + kit.SuccessStyle.Render("▶ midi")
+				status += "  " + kit.SuccessStyle.Render("midi")
 			}
 		}
 		if src := m.selectedSource(); !m.playing {
 			if m.fetchingCatalog || m.fetchingAudio {
-				status += kit.MutedStyle.Render("  … finding audio")
+				status += kit.MutedStyle.Render("  ... finding audio")
 			} else if src.Kind == player.SourceMIDI {
-				status += kit.MutedStyle.Render("  ♪ midi")
+				status += kit.MutedStyle.Render("  midi")
 			} else if m.resolvedAudio != "" {
-				status += kit.MutedStyle.Render("  ♪ " + filepath.Base(m.resolvedAudio))
+				status += kit.MutedStyle.Render("   " + filepath.Base(m.resolvedAudio))
 			}
 		}
 		if m.audioOffset != 0 {
-			status += kit.MutedStyle.Render(fmt.Sprintf("  ↔ %+.1fs", m.audioOffset))
+			status += kit.MutedStyle.Render(fmt.Sprintf("  offset %+.1fs", m.audioOffset))
 		}
 		if len(m.syncPoints) > 0 {
-			status += kit.MutedStyle.Render(fmt.Sprintf("  ⚓%d", len(m.syncPoints)))
+			status += kit.MutedStyle.Render(fmt.Sprintf("  anchors %d", len(m.syncPoints)))
 		}
 		if q, ok := m.syncQuality(); ok {
 			status += kit.InfoStyle.Render(fmt.Sprintf("  ±%.2fs", q))
 		}
 		if map_, ok := m.tempoMap(); ok {
-			status += kit.InfoStyle.Render(fmt.Sprintf("  %d→%d bpm", map_[0], map_[1]))
+			status += kit.InfoStyle.Render(fmt.Sprintf("  %d->%d bpm", map_[0], map_[1]))
 		}
 		if m.loopStartBar > 0 && m.loopEndBar > 0 {
-			status += kit.MutedStyle.Render(fmt.Sprintf("  ↻ %d-%d", m.loopStartBar, m.loopEndBar))
+			status += kit.MutedStyle.Render(fmt.Sprintf("  loop %d-%d", m.loopStartBar, m.loopEndBar))
 		}
 		if m.metronome {
-			status += kit.MutedStyle.Render("  ♪ metronome")
+			status += kit.MutedStyle.Render("   metronome")
 		}
 		if m.countIn > 0 {
-			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏱ %d-bar count-in", m.countIn))
+			status += kit.MutedStyle.Render(fmt.Sprintf("  %d-bar count-in", m.countIn))
 		}
 		if m.program != 0 {
 			status += kit.InfoStyle.Render("  " + programLabel(m.program))
@@ -1553,22 +1553,22 @@ func (m ViewerModel) View() string {
 			status += kit.InfoStyle.Render(fmt.Sprintf("  transpose %+d", m.transpose))
 		}
 		if m.showNotes {
-			status += kit.InfoStyle.Render("  ♪ notes")
+			status += kit.InfoStyle.Render("  notes")
 		}
 		if len(m.searchMatches) > 0 {
 			status += kit.WarningStyle.Render(fmt.Sprintf("  [%s] %d/%d", m.searchInput, m.searchIdx+1, len(m.searchMatches)))
 		}
 		if m.perfMode {
-			status += kit.InfoStyle.Render("  ◉ perf")
+			status += kit.InfoStyle.Render("  perf")
 		}
 		if m.driftMs != 0 && !m.audioSync {
-			status += kit.WarningStyle.Render(fmt.Sprintf("  ↕ %dms", m.driftMs))
+			status += kit.WarningStyle.Render(fmt.Sprintf("  drift %dms", m.driftMs))
 		}
 		if total := m.practiceTotal(); total > 0 {
-			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏱ %d:%02d", total/60, total%60))
+			status += kit.MutedStyle.Render(fmt.Sprintf("  practice %d:%02d", total/60, total%60))
 		}
 		if rate := m.engine.Rate(); rate != 1 {
-			status += kit.MutedStyle.Render(fmt.Sprintf("  ⏩ ×%.2f", rate))
+			status += kit.MutedStyle.Render(fmt.Sprintf("  x %.2f", rate))
 		}
 	}
 	if m.jumpBuffer != "" {
@@ -1578,7 +1578,7 @@ func (m ViewerModel) View() string {
 		status += "  " + kit.InfoStyle.Render(kit.Truncate(m.infoMsg, 48))
 	}
 	if m.errMsg != "" {
-		status += "  " + kit.ErrorStyle.Render("⚠ "+kit.Truncate(m.errMsg, 48))
+		status += "  " + kit.ErrorStyle.Render("! "+kit.Truncate(m.errMsg, 48))
 	}
 	status = kit.Truncate(status, m.width-8)
 
@@ -1606,7 +1606,7 @@ func (m ViewerModel) View() string {
 	}
 	statusLine := ""
 	if m.tab != nil && m.tab.Title != "" {
-		statusLine = fmt.Sprintf("♪ %s", kit.Truncate(m.tab.Title, 24))
+		statusLine = fmt.Sprintf(" %s", kit.Truncate(m.tab.Title, 24))
 	}
 	footer := kit.RenderFooterWithStatus(m.width, statusLine, []kit.KeyHint{
 		{Key: "a", Label: "audio"},
@@ -2034,5 +2034,5 @@ func driftNudge(derived, tabBPM int) string {
 	if diff <= 0.02 {
 		return ""
 	}
-	return fmt.Sprintf("Audio tempo ≈ %d BPM vs tab %d — drifting ~%.0fs/min; press s at a recognizable bar to anchor", derived, tabBPM, diff*60)
+	return fmt.Sprintf("Audio tempo ~ %d BPM vs tab %d — drifting ~%.0fs/min; press s at a recognizable bar to anchor", derived, tabBPM, diff*60)
 }

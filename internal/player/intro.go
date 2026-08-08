@@ -15,7 +15,7 @@ import (
 //
 // Count-ins and claps are handled: the offset is the end of the LAST silence
 // segment before a sustained sound (≥ 1.5 s of audio), so a
-// "silence → clicks → music" opening anchors at the music, not at the end of
+// "silence -> clicks -> music" opening anchors at the music, not at the end of
 // the first silent gap.
 func LeadingSilence(path string) (time.Duration, error) {
 	if path == "" {

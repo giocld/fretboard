@@ -75,7 +75,7 @@ func TestScoreYouTubeResultDurationProximity(t *testing.T) {
 		{Char: '-', Position: 1}, {Char: '-', Position: 2}, {Char: '-', Position: 3},
 		{Char: '3', Value: 3, Position: 4, Width: 1},
 	}}}}
-	// 240 identical bars → ~240 s of schedule at the tab BPM: a realistic
+	// 240 identical bars -> ~240 s of schedule at the tab BPM: a realistic
 	// song length, so the duration-proximity term engages.
 	bars := make([]model.Bar, 240)
 	for i := range bars {
@@ -86,9 +86,9 @@ func TestScoreYouTubeResultDurationProximity(t *testing.T) {
 	if want < 120 {
 		t.Fatalf("schedule duration should be a realistic song length, got %.0fs", want)
 	}
-	studio := int(want)          // exact length
-	marathon := int(want * 2)    // live jam
-	clip := int(want / 3)        // preview clip
+	studio := int(want)       // exact length
+	marathon := int(want * 2) // live jam
+	clip := int(want / 3)     // preview clip
 	s := ScoreYouTubeResult(tab, "Sultans of Swing", "Some Channel", "", studio)
 	m := ScoreYouTubeResult(tab, "Sultans of Swing", "Some Channel", "", marathon)
 	c := ScoreYouTubeResult(tab, "Sultans of Swing", "Some Channel", "", clip)
