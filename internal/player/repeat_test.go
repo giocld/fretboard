@@ -83,6 +83,43 @@ func TestRepeatOrderUnpairedMarkers(t *testing.T) {
 	}
 }
 
+// TestEventsWalksRepeatOrder pins that MIDI events follow RepeatOrder like
+// BuildSchedule: a |: A B :| section repeats A B before continuing to C, so
+// the note-on sequence is A B A B C, not A B C.
+func TestEventsWalksRepeatOrder(t *testing.T) {
+	fretBar := func(fret int, start, end bool) model.Bar {
+		return model.Bar{Number: fret, RepeatStart: start, RepeatEnd: end,
+			Strings: []model.StringLine{{Segments: []model.Segment{{Char: rune('0' + fret), Value: fret, Position: 0, Width: 1}}}}}
+	}
+	tab := &model.Tab{
+		Tuning: model.Standard,
+		Bars: []model.Bar{
+			fretBar(1, true, false),  // A (|:)  fret 1
+			fretBar(2, false, true),  // B (:|)  fret 2
+			fretBar(3, false, false), // C       fret 3
+		},
+	}
+	evts, err := Events(tab, 120)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frets []int
+	for _, e := range evts {
+		if e.Type == NoteOn {
+			frets = append(frets, e.Fret)
+		}
+	}
+	want := []int{1, 2, 1, 2, 3}
+	if len(frets) != len(want) {
+		t.Fatalf("note-ons = %v, want %v", frets, want)
+	}
+	for i := range want {
+		if frets[i] != want[i] {
+			t.Fatalf("note-ons = %v, want %v", frets, want)
+		}
+	}
+}
+
 // TestBuildScheduleExpandsRepeats verifies playback steps follow the
 // performance order: the cursor visits the repeated bar twice.
 func TestBuildScheduleExpandsRepeats(t *testing.T) {

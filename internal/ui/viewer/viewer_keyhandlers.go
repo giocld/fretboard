@@ -2,6 +2,7 @@ package viewer
 
 import (
 	"fmt"
+	"time"
 
 	"fretboard/internal/player"
 	"fretboard/internal/ui/kit"
@@ -126,6 +127,51 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		m.countIn = (m.countIn + 1) % 3
 		m.jumpBuffer = ""
 		m.refresh()
+	case "f8":
+		// F8 mirrors C: cycle the count-in lead-in length 0/1/2 bars.
+		m.countIn = (m.countIn + 1) % 3
+		m.jumpBuffer = ""
+		m.refresh()
+	case "f7":
+		// F7 seeks +15s in the backing audio (the hyperplan "F7 = 15%"
+		// reading is impossible because SetRate clamps at 0.25). bubbletea
+		// cannot distinguish shift+F7 from F7, so plain F7 is forward-only.
+		m.jumpBuffer = ""
+		if pos, ok := seekBy(m, 15*time.Second); ok {
+			if err := m.engine.RestartAt(pos); err != nil {
+				m.errMsg = err.Error()
+				m.refresh()
+				return m, nil
+			}
+			m.errMsg = ""
+		}
+		m.refresh()
+		return m, nil
+	case "f12":
+		// F12 reports the repeat-order MIDI event summary. No events view
+		// exists yet, so the counts surface as an info status line.
+		m.jumpBuffer = ""
+		if m.tab != nil {
+			evts, err := player.Events(m.displayTab(), m.bpm)
+			if err != nil {
+				m.errMsg = err.Error()
+				m.refresh()
+				return m, nil
+			}
+			nOns := 0
+			for _, e := range evts {
+				if e.Type == player.NoteOn {
+					nOns++
+				}
+			}
+			m.infoMsg = fmt.Sprintf("%d events / %d note-ons (repeat order)", len(evts), nOns)
+			m.errMsg = ""
+			m.refresh()
+			return m, nil
+		}
+		m.errMsg = "No tab to summarize"
+		m.refresh()
+		return m, nil
 	case "y":
 		m.program = nextProgram(m.program)
 		m.jumpBuffer = ""

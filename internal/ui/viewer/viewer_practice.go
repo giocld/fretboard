@@ -11,6 +11,25 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// seekBy returns the clamped audio position d away from the current playback
+// position, and whether a seek is possible at all. Seeking only applies to
+// real audio playback: the position is clamped to the track length when it is
+// known, otherwise just to zero. (The hyperplan "F7 = 15%" reading is
+// impossible because SetRate clamps at 0.25, so F7 is a 15-second seek.)
+func seekBy(m ViewerModel, d time.Duration) (time.Duration, bool) {
+	if !m.playing || m.engine.Mode() != "audio" {
+		return 0, false
+	}
+	pos := m.engine.Elapsed() + d
+	if dur := m.engine.AudioDuration(); dur > 0 && pos > dur {
+		pos = dur
+	}
+	if pos < 0 {
+		pos = 0
+	}
+	return pos, true
+}
+
 // loopStartTime returns the audio file position of the loop start bar:
 // schedule time (0-based bar, converted from the user-facing 1-based bar)
 // plus the calibrated intro offset.

@@ -9,7 +9,9 @@ import (
 // Events generates a chronological list of MIDI note events for a tab.
 // BPM drives the tempo. Note spacing density and optional rhythm markers
 // determine each step's duration; when neither is present every column is
-// treated as an equal 16th-note step.
+// treated as an equal 16th-note step. Bars are visited in repeat-aware
+// performance order (RepeatOrder), so "|:" ":" sections and 1./2. endings
+// play the way a human reads them, matching BuildSchedule.
 func Events(tab *model.Tab, bpm int) ([]Event, error) {
 	if tab == nil {
 		return nil, errors.New("nil tab")
@@ -21,7 +23,8 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 	var events []Event
 	currentTick := int64(0)
 
-	for _, bar := range tab.Bars {
+	for _, b := range RepeatOrder(tab) {
+		bar := tab.Bars[b]
 		if len(bar.Strings) == 0 {
 			continue
 		}

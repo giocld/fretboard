@@ -78,7 +78,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		return m, nil
 	}
 	switch msg.String() {
-	case kit.KeyQuit, kit.KeyQuit2, "b", "H", "a", " ", "p", "+", "=", "-", "_", "P", "y", "m", "C", "s", "S", "i", "u", "x", ">", "<", "r", "w", "W", "f9", "[", "{", "]", "}", ",", ".", "o", "esc":
+	case kit.KeyQuit, kit.KeyQuit2, "b", "H", "a", " ", "p", "+", "=", "-", "_", "P", "y", "m", "C", "s", "S", "i", "u", "x", ">", "<", "r", "w", "W", "f7", "f8", "f9", "f12", "[", "{", "]", "}", ",", ".", "o", "esc":
 		return m.handleKeyPractice(msg)
 	default:
 		return m.handleKeyNav(msg)
