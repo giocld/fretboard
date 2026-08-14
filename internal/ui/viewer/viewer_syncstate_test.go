@@ -214,7 +214,7 @@ func TestCalibratingLifecycle(t *testing.T) {
 	// A MIDI source gets no analysis: calibrating stays off.
 	m = NewViewerModel()
 	m.tab = &model.Tab{Title: "T", Artist: "A", Metadata: map[string]string{}}
-	m.alignedSources = map[string]bool{}
+	m.alignedIdentity = map[string]string{}
 	if cmd := m.maybeAlignCmd(); cmd != nil {
 		t.Fatal("MIDI source must not produce an align command")
 	}

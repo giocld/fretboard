@@ -185,7 +185,7 @@ func realignSetup(t *testing.T) ViewerModel {
 	m.LoadTab(tab, "x.txt", 0)
 	m.audioCatalog = mixedCatalog(path)
 	m.selectedSourceIdx = 5 // local:path
-	m.alignedSources = map[string]bool{"local:path": true}
+	m.alignedIdentity = map[string]string{"local:path": identityFor(m, "local:path")}
 	return m
 }
 
@@ -225,7 +225,7 @@ func TestF9RealignWithoutSource(t *testing.T) {
 	tab := &model.Tab{Title: "X", Tuning: model.Standard,
 		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
 	m.LoadTab(tab, "x.txt", 0)
-	m.alignedSources = nil
+	m.alignedIdentity = nil
 
 	m, _ = m.Update(key("f9"))
 	if m.errMsg != "No audio source to align" {

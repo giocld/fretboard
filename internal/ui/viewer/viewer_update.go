@@ -240,6 +240,9 @@ func (m ViewerModel) applyAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cmd
 	m.syncDrift = 0
 	if id := m.currentSourceID(); id != "" {
 		m.tab.Metadata["tempo_map:"+id] = player.MarshalTempoMap(anchors, msg.Onsets, msg.OnsetStrengths)
+		// Record the identity this alignment was computed against so a later
+		// session can detect a swapped audio file and drop the stale map.
+		m.tab.Metadata["audio_identity:"+id] = identityFor(m, id)
 	}
 	m.refresh()
 	return m, m.saveTabPrefsCmd()

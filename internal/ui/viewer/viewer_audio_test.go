@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -665,5 +666,119 @@ func TestHandleBPMDerivedRespectsMetaBPM(t *testing.T) {
 	m = updated
 	if m.bpm != 140 {
 		t.Fatalf("recorded BPM metadata must win, got %d, want 140", m.bpm)
+	}
+}
+
+// alignmentTestViewer returns a viewer with a single local source pointing at
+// audio, its calibration restored, ready for alignment.
+func alignmentTestViewer(t *testing.T, audio string) (ViewerModel, string) {
+	t.Helper()
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Artist: "Y", Tuning: model.Standard,
+		Metadata: map[string]string{},
+		Bars:     []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	id := "local:" + audio
+	m.audioCatalog = player.AudioCatalog{Sources: []player.AudioSource{
+		{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI"},
+		{ID: id, Kind: player.SourceLocal, Label: "song.mp3", Path: audio, Category: player.CatLocal, StrictOK: true},
+	}}
+	m.selectedSourceIdx = 1
+	m.restoreCalibrationForSource()
+	return m, id
+}
+
+// TestIdentityStableForUnchangedFile guards the identity fingerprint: the
+// same file and tab produce the same identity on every call, and a different
+// file produces a different one.
+func TestIdentityStableForUnchangedFile(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.mp3")
+	b := filepath.Join(dir, "b.mp3")
+	if err := os.WriteFile(a, bytes.Repeat([]byte("A"), 100), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, bytes.Repeat([]byte("B"), 100), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mA, idA := alignmentTestViewer(t, a)
+	mB, idB := alignmentTestViewer(t, b)
+
+	if got, want := identityFor(mA, idA), identityFor(mA, idA); got != want {
+		t.Fatalf("same file twice = %q and %q, want equal", got, want)
+	}
+	if got, want := identityFor(mA, idA), identityFor(mB, idB); got == want {
+		t.Fatal("different files must produce different identities")
+	}
+}
+
+// TestIdentityIncludesDocument guards the document-hash: editing the tab
+// (here its title) changes the identity even when the audio file is the same,
+// so a stale alignment cannot survive a tab edit.
+func TestIdentityIncludesDocument(t *testing.T) {
+	audio := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(audio, bytes.Repeat([]byte("A"), 100), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, id := alignmentTestViewer(t, audio)
+	before := identityFor(m, id)
+	m.tab.Title = "Different Title"
+	after := identityFor(m, id)
+	if before == after {
+		t.Fatal("editing the tab title must change the identity")
+	}
+}
+
+// TestAlignmentInvalidatedWhenAudioChanges guards the alignment identity
+// invalidation: an alignment persisted for a file is restored only while the
+// file is unchanged. Swapping the audio file (different size/content) for the
+// same source must clear the stored tempo map and aligned marker, skip
+// restoring the auto anchors, and let the alignment analysis re-run.
+func TestAlignmentInvalidatedWhenAudioChanges(t *testing.T) {
+	audio := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(audio, bytes.Repeat([]byte("A"), 100), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, id := alignmentTestViewer(t, audio)
+
+	// Align: the analysis runs once and the result is persisted (tempo map,
+	// aligned marker, identity) under the source's keys.
+	if cmd := m.maybeAlignCmd(); cmd == nil {
+		t.Fatal("first align must return a command")
+	}
+	storedIdentity := identityFor(m, id)
+	m, _ = m.Update(msgs.AlignmentMsg{
+		SourceID: id, BPM: 118, Offset: 3200 * time.Millisecond, Confidence: 0.85,
+		Artist: "Y", Title: "X", TabID: 0, TabPath: "x.txt",
+		Anchors: []player.SyncPoint{{Bar: 1, Seconds: 1}, {Bar: 2, Seconds: 3}},
+	})
+	if m.tab.Metadata["tempo_map:"+id] == "" {
+		t.Fatal("alignment must persist a tempo map")
+	}
+	if m.tab.Metadata["audio_identity:"+id] != storedIdentity {
+		t.Fatalf("alignment must persist the identity, got %q want %q",
+			m.tab.Metadata["audio_identity:"+id], storedIdentity)
+	}
+
+	// Swap the file for a different one: same source, different audio.
+	if err := os.WriteFile(audio, bytes.Repeat([]byte("B"), 200), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restoring must detect the mismatch and drop the stale alignment.
+	m.restoreCalibrationForSource()
+	if m.autoAnchors != nil || m.autoActive {
+		t.Fatal("stale alignment must not restore auto anchors after the file changed")
+	}
+	if m.tab.Metadata["tempo_map:"+id] != "" {
+		t.Fatal("stale tempo map must be cleared")
+	}
+	if m.tab.Metadata["audio_aligned:"+id] != "" {
+		t.Fatal("stale aligned marker must be cleared")
+	}
+
+	// A re-run of the alignment must be allowed (identity mismatch).
+	if cmd := m.maybeAlignCmd(); cmd == nil {
+		t.Fatal("maybeAlignCmd must re-run after the file changed")
 	}
 }

@@ -54,8 +54,11 @@ type ViewerModel struct {
 	// MIDI deadline clock: absolute step deadlines so the beat never drifts.
 	stepClock player.StepClock
 	driftMs   int64 // measured lateness of the last tick (ms, 0 = on time)
-	// Auto-alignment: which sources have been aligned this session.
-	alignedSources map[string]bool
+	// Auto-alignment: which sources have been aligned this session, keyed by
+	// src.ID -> identity fingerprint (document-hash + audio content-hash). A
+	// swapped audio file yields a different identity, so the already-aligned
+	// shortcut is invalidated and the analysis re-runs.
+	alignedIdentity map[string]string
 	// Auto tempo map + drift meter (measured bar anchors and onsets).
 	autoAnchors   []player.SyncPoint
 	autoOnsets    []time.Duration
@@ -95,12 +98,13 @@ type ViewerModel struct {
 func NewViewerModel() ViewerModel {
 	vp := viewport.New(80, 20)
 	return ViewerModel{
-		viewport:      vp,
-		engine:        player.NewEngine(),
-		width:         80,
-		height:        24,
-		bpm:           120,
-		alignmentPick: -1,
+		viewport:        vp,
+		engine:          player.NewEngine(),
+		width:           80,
+		height:          24,
+		bpm:             120,
+		alignmentPick:   -1,
+		alignedIdentity: map[string]string{},
 	}
 }
 
@@ -140,7 +144,7 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.perfMode = false
 	m.practiceStart = time.Time{}
 	m.practiceSecs = 0
-	m.alignedSources = map[string]bool{}
+	m.alignedIdentity = map[string]string{}
 	m.autoAnchors = nil
 	m.autoOnsets = nil
 	m.autoStrengths = nil

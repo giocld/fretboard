@@ -163,14 +163,14 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 }
 
 // realignAudio re-runs the auto alignment for the current source: it clears
-// the already-aligned marker so maybeAlignCmd starts a fresh analysis, and
-// reports an error when there is no tab or audio catalog to align. Shared by
-// the W and F9 keys.
+// the already-aligned identity marker so maybeAlignCmd starts a fresh
+// analysis, and reports an error when there is no tab or audio catalog to
+// align. Shared by the W and F9 keys.
 func (m ViewerModel) realignAudio() (ViewerModel, tea.Cmd) {
 	m.jumpBuffer = ""
-	if m.tab != nil && m.alignedSources != nil {
+	if m.tab != nil && m.alignedIdentity != nil {
 		if id := m.currentSourceID(); id != "" {
-			delete(m.alignedSources, id)
+			delete(m.alignedIdentity, id)
 		}
 		m.errMsg = ""
 		m.infoMsg = "Re-running audio alignment..."

@@ -1,17 +1,27 @@
 package viewer
 
 import (
+	"fmt"
+	"hash"
+	"hash/fnv"
+	"io"
+	"os"
+	"strconv"
+
 	"fretboard/internal/player"
 	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 // maybeAlignCmd returns a command that auto-aligns the selected audio
-// source against the tab (once per source per session): it probes the
-// leading silence for an offset prior, runs the onset analysis, and delivers
-// the result for the viewer to apply.
+// source against the tab (once per source per session while the source's
+// identity is unchanged): it probes the leading silence for an offset prior,
+// runs the onset analysis, and delivers the result for the viewer to apply.
+// A source that was already aligned for THIS file is skipped; swapping the
+// audio file (or editing the tab) changes the identity, so the analysis
+// re-runs for the same source.
 func (m *ViewerModel) maybeAlignCmd() tea.Cmd {
-	if m.tab == nil || m.alignedSources == nil {
+	if m.tab == nil || m.alignedIdentity == nil {
 		return nil
 	}
 	src := m.selectedSource()
@@ -22,10 +32,10 @@ func (m *ViewerModel) maybeAlignCmd() tea.Cmd {
 	if path == "" || !player.FileExists(path) {
 		return nil
 	}
-	if m.alignedSources[src.ID] {
+	if m.alignedIdentity[src.ID] == identityFor(*m, src.ID) {
 		return nil
 	}
-	m.alignedSources[src.ID] = true
+	m.alignedIdentity[src.ID] = identityFor(*m, src.ID)
 	tab, tabID, tabPath, srcID := m.tab, m.tabID, m.tabPath, src.ID
 	baseBPM := player.TabBPM(tab)
 	if baseBPM <= 0 {
@@ -150,4 +160,71 @@ func (m *ViewerModel) BeginAudioFetch(allowOnline bool) tea.Cmd {
 	m.fetchingCatalog = true
 	cmds = append(cmds, fetchAudioCatalogCmd(m.tab, m.tabPath, m.tabID, m.audioDirs, allowOnline), m.maybeDetectIntroCmd())
 	return tea.Batch(cmds...)
+}
+
+// identityFor returns an FNV-1a fingerprint of the inputs an alignment was
+// computed against: the loaded document and the audio file behind the given
+// source. The document-hash covers the tab path, title, artist and the total
+// MIDI ticks of the playback schedule (player.ScheduleTotalTicks of
+// player.BuildSchedule — a cheap, BPM-independent structural measure of the
+// song as written). The content-hash covers the audio file's size, its mtime
+// in nanoseconds, and the first and last 64 KiB of its bytes (cheap and
+// change-detecting for swapped files). An unchanged tab and file produce the
+// same string across calls and sessions; swapping the file (or editing the
+// tab) produces a different one, so a persisted alignment can be invalidated.
+func identityFor(m ViewerModel, srcID string) string {
+	h := fnv.New64a()
+	// document-hash
+	hashField(h, m.tabPath)
+	title, artist := "", ""
+	total := int64(0)
+	if m.tab != nil {
+		title, artist = m.tab.Title, m.tab.Artist
+		total = player.ScheduleTotalTicks(player.BuildSchedule(m.tab))
+	}
+	hashField(h, title)
+	hashField(h, artist)
+	hashField(h, strconv.FormatInt(total, 10))
+	// content-hash of the audio file this source currently points at.
+	path := ""
+	if idx := m.audioCatalog.FindByID(srcID); idx >= 0 {
+		path = m.audioCatalog.Sources[idx].Path
+	}
+	hashFileContent(h, path)
+	return fmt.Sprintf("%016x", h.Sum64())
+}
+
+// hashField folds a length-prefixed string into the hash so concatenated
+// values never collide ("ab"+"c" != "a"+"bc").
+func hashField(h hash.Hash64, s string) {
+	fmt.Fprintf(h, "%d:%s", len(s), s)
+}
+
+// hashFileContent folds a file's change-detecting attributes into the hash.
+// A missing file still hashes deterministically, over size 0.
+func hashFileContent(h hash.Hash64, path string) {
+	info, err := os.Stat(path)
+	if err != nil {
+		hashField(h, "0")
+		hashField(h, "0")
+		return
+	}
+	hashField(h, strconv.FormatInt(info.Size(), 10))
+	hashField(h, strconv.FormatInt(info.ModTime().UnixNano(), 10))
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	const chunk = 64 * 1024
+	head := make([]byte, chunk)
+	n, _ := io.ReadFull(f, head)
+	hashField(h, string(head[:n]))
+	if info.Size() >= chunk {
+		tail := make([]byte, chunk)
+		if _, err := f.Seek(info.Size()-chunk, io.SeekStart); err == nil {
+			n, _ := io.ReadFull(f, tail)
+			hashField(h, string(tail[:n]))
+		}
+	}
 }
