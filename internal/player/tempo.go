@@ -151,17 +151,59 @@ func MergeAnchors(user, auto []SyncPoint) []SyncPoint {
 	return out
 }
 
+// snapThresholds derives the drift-correction thresholds from the tempo: the
+// snap trigger is a quarter beat and the search radius half a beat, clamped
+// so extreme tempos neither snap at every tick nor fail to find a drift. At
+// 120 BPM (beat 500ms) this yields snap 125ms / radius 250ms; at 240 BPM
+// (beat 250ms) snap 62ms / radius 125ms; at 60 BPM (beat 1000ms) the clamps
+// hold it at snap 200ms / radius 250ms. bpm <= 0 falls back to a 500ms beat.
+func snapThresholds(bpm int) (snapThreshold, searchRadius time.Duration) {
+	beat := 500 * time.Millisecond
+	if bpm > 0 {
+		beat = time.Duration(60000/bpm) * time.Millisecond
+	}
+	snapThreshold = beat / 4
+	if snapThreshold < 40*time.Millisecond {
+		snapThreshold = 40 * time.Millisecond
+	}
+	if snapThreshold > 200*time.Millisecond {
+		snapThreshold = 200 * time.Millisecond
+	}
+	searchRadius = beat / 2
+	if searchRadius < 100*time.Millisecond {
+		searchRadius = 100 * time.Millisecond
+	}
+	if searchRadius > 250*time.Millisecond {
+		searchRadius = 250 * time.Millisecond
+	}
+	return snapThreshold, searchRadius
+}
+
 // CorrectStepSnap snaps an audio-time mapping to the nearest detected onset
 // when the mapping has drifted beyond tolerance: returns the step index at
-// the onset time (and true) when a trustworthy onset exists nearby.
+// the onset time (and true) when a trustworthy onset exists nearby. The
+// thresholds follow the tempo (see snapThresholds); no onset strengths are
+// available here, so exact ties fall back to NearestOnset's behavior.
 func CorrectStepSnap(schedule []PlaybackStep, points []SyncPoint, elapsed time.Duration, onsets []time.Duration, bpm int) (int, bool) {
+	weighted := make([]Onset, len(onsets))
+	for i, o := range onsets {
+		weighted[i] = Onset{Time: o}
+	}
+	return CorrectStepSnapWithStrength(schedule, points, elapsed, weighted, bpm)
+}
+
+// CorrectStepSnapWithStrength is CorrectStepSnap with per-onset strength:
+// when two onsets are equidistant from elapsed (within 1ms) the stronger one
+// wins the tie. All-equal strengths degenerate to CorrectStepSnap's behavior.
+func CorrectStepSnapWithStrength(schedule []PlaybackStep, points []SyncPoint, elapsed time.Duration, onsets []Onset, bpm int) (int, bool) {
 	if len(onsets) == 0 || len(schedule) == 0 {
 		return 0, false
 	}
+	snapThreshold, searchRadius := snapThresholds(bpm)
 	// Only correct when the elapsed time maps near a detected onset: a
 	// silence gap has no onsets and must not cause a jump.
-	if n, ok := NearestOnset(onsets, elapsed, 250*time.Millisecond); ok {
-		if absDur(elapsed-n) >= 150*time.Millisecond {
+	if n, ok := nearestOnsetWithStrength(onsets, elapsed, searchRadius); ok {
+		if absDur(elapsed-n) >= snapThreshold {
 			idx := StepIndexAtSyncPoints(schedule, points, n.Seconds(), bpm)
 			if idx >= 0 && idx < len(schedule) {
 				return idx, true
@@ -171,17 +213,62 @@ func CorrectStepSnap(schedule []PlaybackStep, points []SyncPoint, elapsed time.D
 	return 0, false
 }
 
-// TempoMap persists the auto tempo map for a source: the measured anchors
-// and the detected onsets, so a later session can restore the map without
-// re-running the analysis.
+// msTie is the equidistance band within which two onsets are treated as tied
+// for the strength-aware nearest search.
+const msTie = time.Millisecond
+
+// nearestOnsetWithStrength is a strength-aware NearestOnset: it returns the
+// onset closest to t among those within maxGap, and when several onsets share
+// the minimum distance (within 1ms) the strongest one wins. With all
+// strengths equal it reproduces NearestOnset exactly (the later onset of an
+// exact tie wins).
+func nearestOnsetWithStrength(onsets []Onset, t time.Duration, maxGap time.Duration) (time.Duration, bool) {
+	i := sort.Search(len(onsets), func(i int) bool { return onsets[i].Time >= t })
+	best, found := 0, false
+	if i < len(onsets) {
+		best, found = i, true
+	}
+	if i > 0 {
+		d := t - onsets[i-1].Time
+		if !found || d < absDur(onsets[best].Time-t) {
+			best, found = i-1, true
+		}
+	}
+	if !found || absDur(onsets[best].Time-t) > maxGap {
+		return 0, false
+	}
+	// Strength tie-break: any onset within 1ms of the nearest distance that
+	// is strictly stronger replaces the candidate. The band is measured from
+	// the original nearest distance, so the comparison never chains.
+	bestDist := absDur(onsets[best].Time - t)
+	for j, o := range onsets {
+		if j == best {
+			continue
+		}
+		d := absDur(o.Time - t)
+		if d > maxGap || absDur(d-bestDist) > msTie {
+			continue
+		}
+		if o.Strength > onsets[best].Strength {
+			best = j
+		}
+	}
+	return onsets[best].Time, true
+}
+
+// TempoMap persists the auto tempo map for a source: the measured anchors,
+// the detected onsets, and their strengths, so a later session can restore
+// the map without re-running the analysis. Strengths is omitempty so maps
+// persisted before the field existed still unmarshal (nil strengths).
 type TempoMap struct {
-	Anchors []SyncPoint `json:"anchors"`
-	Onsets  []float64   `json:"onsets"` // seconds
+	Anchors   []SyncPoint `json:"anchors"`
+	Onsets    []float64   `json:"onsets"` // seconds
+	Strengths []float64   `json:"strengths,omitempty"`
 }
 
 // MarshalTempoMap serializes the map for tab metadata.
-func MarshalTempoMap(anchors []SyncPoint, onsets []time.Duration) string {
-	tm := TempoMap{Anchors: anchors, Onsets: make([]float64, len(onsets))}
+func MarshalTempoMap(anchors []SyncPoint, onsets []time.Duration, strengths []float64) string {
+	tm := TempoMap{Anchors: anchors, Onsets: make([]float64, len(onsets)), Strengths: strengths}
 	for i, o := range onsets {
 		tm.Onsets[i] = o.Seconds()
 	}
@@ -190,15 +277,16 @@ func MarshalTempoMap(anchors []SyncPoint, onsets []time.Duration) string {
 	return string(data)
 }
 
-// UnmarshalTempoMap restores the map from tab metadata.
-func UnmarshalTempoMap(raw string) ([]SyncPoint, []time.Duration) {
+// UnmarshalTempoMap restores the map from tab metadata. Payloads without a
+// "strengths" key (persisted before the field existed) yield nil strengths.
+func UnmarshalTempoMap(raw string) ([]SyncPoint, []time.Duration, []float64) {
 	var tm TempoMap
 	if err := json.Unmarshal([]byte(raw), &tm); err != nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	onsets := make([]time.Duration, len(tm.Onsets))
 	for i, s := range tm.Onsets {
 		onsets[i] = time.Duration(s * float64(time.Second))
 	}
-	return tm.Anchors, onsets
+	return tm.Anchors, onsets, tm.Strengths
 }

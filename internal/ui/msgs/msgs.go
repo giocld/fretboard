@@ -160,14 +160,15 @@ type HomeSettingsMsg struct{}
 
 // AlignmentMsg delivers an automatic audio-alignment result for a source.
 type AlignmentMsg struct {
-	SourceID   string
-	BPM        int
-	Offset     time.Duration
-	Confidence float64
-	Artist     string
-	Title      string
-	TabID      int64
-	TabPath    string
-	Onsets     []time.Duration    // detected onsets, for the live drift meter
-	Anchors    []player.SyncPoint // measured bar anchors (auto tempo map)
+	SourceID       string
+	BPM            int
+	Offset         time.Duration
+	Confidence     float64
+	Artist         string
+	Title          string
+	TabID          int64
+	TabPath        string
+	Onsets         []time.Duration    // detected onsets, for the live drift meter
+	OnsetStrengths []float64          // normalized onset strengths, aligned with Onsets
+	Anchors        []player.SyncPoint // measured bar anchors (auto tempo map)
 }

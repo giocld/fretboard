@@ -70,13 +70,13 @@ func (m *ViewerModel) restoreCalibrationForSource() {
 		}
 	}
 	// Restore the persisted auto tempo map for this source (measured bar
-	// anchors + onsets), so a later session keeps the alignment without
-	// re-running the analysis.
-	m.autoAnchors, m.autoOnsets = nil, nil
+	// anchors + onsets + strengths), so a later session keeps the alignment
+	// without re-running the analysis.
+	m.autoAnchors, m.autoOnsets, m.autoStrengths = nil, nil, nil
 	m.autoActive = false
 	if id := m.currentSourceID(); id != "" {
-		if anchors, onsets := player.UnmarshalTempoMap(m.tab.Metadata["tempo_map:"+id]); len(anchors) >= 2 {
-			m.autoAnchors, m.autoOnsets, m.autoActive = anchors, onsets, true
+		if anchors, onsets, strengths := player.UnmarshalTempoMap(m.tab.Metadata["tempo_map:"+id]); len(anchors) >= 2 {
+			m.autoAnchors, m.autoOnsets, m.autoStrengths, m.autoActive = anchors, onsets, strengths, true
 		}
 	}
 }

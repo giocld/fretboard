@@ -91,8 +91,20 @@ func (m ViewerModel) handlePlaybackMonitor(msg msgs.PlaybackMonitorMsg) (ViewerM
 		if m.autoActive {
 			// Live drift meter + bounded self-correction: when the
 			// playhead has drifted off the recording's detected onsets,
-			// snap it to the onset-aligned position.
-			if snapIdx, ok := player.CorrectStepSnap(m.schedule, points, elapsed, m.autoOnsets, m.bpm); ok {
+			// snap it to the onset-aligned position. With onset strengths
+			// available, equidistant onsets resolve to the stronger one.
+			var snapIdx int
+			var ok bool
+			if m.autoStrengths != nil && len(m.autoStrengths) == len(m.autoOnsets) {
+				weighted := make([]player.Onset, len(m.autoOnsets))
+				for i, o := range m.autoOnsets {
+					weighted[i] = player.Onset{Time: o, Strength: m.autoStrengths[i]}
+				}
+				snapIdx, ok = player.CorrectStepSnapWithStrength(m.schedule, points, elapsed, weighted, m.bpm)
+			} else {
+				snapIdx, ok = player.CorrectStepSnap(m.schedule, points, elapsed, m.autoOnsets, m.bpm)
+			}
+			if ok {
 				idx = snapIdx
 			}
 			m.syncDrift = 0

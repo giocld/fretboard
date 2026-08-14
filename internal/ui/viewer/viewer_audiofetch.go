@@ -37,7 +37,7 @@ func (m *ViewerModel) maybeAlignCmd() tea.Cmd {
 		msg := msgs.AlignmentMsg{
 			SourceID: srcID, BPM: a.BPM, Offset: a.Offset, Confidence: a.Confidence,
 			Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath,
-			Onsets: a.Onsets,
+			Onsets: a.Onsets, OnsetStrengths: a.Strengths,
 		}
 		if a.Confidence >= 0.6 && a.BPM > 0 {
 			// Measure bar anchors from the aligned onsets: the auto tempo map.

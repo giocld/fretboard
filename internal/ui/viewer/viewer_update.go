@@ -167,10 +167,11 @@ func (m ViewerModel) handleAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cm
 	// restore it without re-running the analysis.
 	m.autoAnchors = msg.Anchors
 	m.autoOnsets = msg.Onsets
+	m.autoStrengths = msg.OnsetStrengths
 	m.autoActive = len(msg.Anchors) >= 2
 	m.syncDrift = 0
 	if id := m.currentSourceID(); id != "" {
-		m.tab.Metadata["tempo_map:"+id] = player.MarshalTempoMap(msg.Anchors, msg.Onsets)
+		m.tab.Metadata["tempo_map:"+id] = player.MarshalTempoMap(msg.Anchors, msg.Onsets, msg.OnsetStrengths)
 	}
 	m.refresh()
 	return m, m.saveTabPrefsCmd()

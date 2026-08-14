@@ -31,6 +31,7 @@ type Alignment struct {
 	Confidence float64         // 0..1 — fraction of expected onsets matched (strict)
 	Detected   int             // how many onsets the analysis found
 	Onsets     []time.Duration // the detected onset times (for the drift meter)
+	Strengths  []float64       // normalized onset strengths, aligned with Onsets
 }
 
 // ExpectedOnset is one expected note time with its bar-start flag and bar.
@@ -178,6 +179,7 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 	}
 	if best.BPM > 0 {
 		best.Onsets = times
+		best.Strengths = strengths
 	}
 	// Congruent offsets — whole beats apart — score identically up to onset
 	// jitter and floating-point noise, and any offset more than a beat below

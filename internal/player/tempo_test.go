@@ -153,17 +153,113 @@ func absInt(v int) int {
 	return v
 }
 
-// TestMarshalTempoMapRoundTrip guards the per-source persistence.
+// TestMarshalTempoMapRoundTrip guards the per-source persistence: anchors,
+// onsets, and (new) strengths all round-trip, and a payload persisted before
+// strengths existed unmarshals to nil strengths (backward compatible).
 func TestMarshalTempoMapRoundTrip(t *testing.T) {
 	anchors := []SyncPoint{{Bar: 1, Seconds: 1.0}, {Bar: 5, Seconds: 5.0}}
 	onsets := []time.Duration{1 * time.Second, 1*time.Second + 250*time.Millisecond}
-	raw := MarshalTempoMap(anchors, onsets)
+	strengths := []float64{1.0, 0.5}
+	raw := MarshalTempoMap(anchors, onsets, strengths)
 	if raw == "" {
 		t.Fatal("marshal failed")
 	}
-	gotA, gotO := UnmarshalTempoMap(raw)
+	gotA, gotO, gotS := UnmarshalTempoMap(raw)
 	if len(gotA) != 2 || gotA[1].Bar != 5 || len(gotO) != 2 || gotO[1] != 1250*time.Millisecond {
 		t.Fatalf("round-trip mismatch: %+v %+v", gotA, gotO)
+	}
+	if len(gotS) != 2 || gotS[0] != 1.0 || gotS[1] != 0.5 {
+		t.Fatalf("strengths round-trip mismatch: %+v", gotS)
+	}
+	// An OLD payload (no "strengths" key) must restore with nil strengths.
+	oldRaw := `{"anchors":[{"bar":1,"seconds":1.0},{"bar":5,"seconds":5.0}],"onsets":[1.0,1.25]}`
+	gotA2, gotO2, gotS2 := UnmarshalTempoMap(oldRaw)
+	if len(gotA2) != 2 || len(gotO2) != 2 || gotO2[1] != 1250*time.Millisecond {
+		t.Fatalf("old payload round-trip mismatch: %+v %+v", gotA2, gotO2)
+	}
+	if gotS2 != nil {
+		t.Fatalf("old payload without strengths must unmarshal to nil, got %+v", gotS2)
+	}
+}
+
+// TestCorrectStepSnapBeatRelativeThresholds guards the tempo-relative snap
+// thresholds: at 240 BPM (beat 250ms, snap 62ms, radius 125ms) a 100ms drift
+// snaps but a 50ms drift does not; at 60 BPM (beat 1000ms clamped to snap
+// 200ms, radius 250ms) a 250ms drift still finds the onset and a 400ms drift
+// is beyond the radius.
+func TestCorrectStepSnapBeatRelativeThresholds(t *testing.T) {
+	tab := testTab()
+	sched := BuildSchedule(tab)
+	points := []SyncPoint{{Bar: 1, Seconds: 1.0}}
+
+	// 240 BPM: beat = 250ms -> snapThreshold = 62ms, searchRadius = 125ms.
+	fast := make([]time.Duration, 0, 64)
+	for i := 0; i < 64; i++ {
+		fast = append(fast, 1*time.Second+time.Duration(i)*250*time.Millisecond)
+	}
+	if _, ok := CorrectStepSnap(sched, points, 2*time.Second+100*time.Millisecond, fast, 240); !ok {
+		t.Fatal("240 BPM: 100ms drift should snap (threshold 62ms, radius 125ms)")
+	}
+	if _, ok := CorrectStepSnap(sched, points, 2*time.Second+50*time.Millisecond, fast, 240); ok {
+		t.Fatal("240 BPM: 50ms drift is below the 62ms snap threshold and must not snap")
+	}
+
+	// 60 BPM: beat = 1000ms -> snapThreshold clamped to 200ms, searchRadius
+	// clamped to 250ms. A 250ms drift still finds the onset and snaps.
+	if _, ok := CorrectStepSnap(sched, points, 2*time.Second+250*time.Millisecond, []time.Duration{2 * time.Second, 2*time.Second + 600*time.Millisecond}, 60); !ok {
+		t.Fatal("60 BPM: 250ms drift should still find the onset (radius clamp 250ms)")
+	}
+	// 400ms drift is beyond the clamped 250ms radius: no snap.
+	if _, ok := CorrectStepSnap(sched, points, 2*time.Second+400*time.Millisecond, []time.Duration{2 * time.Second, 2*time.Second + 900*time.Millisecond}, 60); ok {
+		t.Fatal("60 BPM: 400ms drift is beyond the 250ms radius and must not snap")
+	}
+}
+
+// TestCorrectStepSnapStrengthTieBreak guards the strength-weighted tie-break:
+// when two onsets are equidistant from elapsed, the stronger one wins; equal
+// strengths keep NearestOnset's exact-tie behavior.
+func TestCorrectStepSnapStrengthTieBreak(t *testing.T) {
+	tab := testTab()
+	sched := BuildSchedule(tab)
+	points := []SyncPoint{{Bar: 1, Seconds: 1.0}}
+	// 2.0s and 2.5s are both 250ms from 2.25s. The stronger later onset
+	// must win over the weaker earlier one.
+	onsets := []Onset{
+		{Time: 2 * time.Second, Strength: 0.2},
+		{Time: 2*time.Second + 500*time.Millisecond, Strength: 0.9},
+	}
+	idx, ok := CorrectStepSnapWithStrength(sched, points, 2*time.Second+250*time.Millisecond, onsets, 120)
+	if !ok {
+		t.Fatal("equidistant onsets should still snap")
+	}
+	want := StepIndexAtSyncPoints(sched, points, 2.5, 120)
+	if idx != want {
+		t.Fatalf("stronger equidistant onset should win: got idx %d, want %d", idx, want)
+	}
+	// The stronger EARLIER onset must win too.
+	early := []Onset{
+		{Time: 2 * time.Second, Strength: 0.9},
+		{Time: 2*time.Second + 500*time.Millisecond, Strength: 0.2},
+	}
+	idx, ok = CorrectStepSnapWithStrength(sched, points, 2*time.Second+250*time.Millisecond, early, 120)
+	if !ok {
+		t.Fatal("equidistant onsets should still snap")
+	}
+	if want := StepIndexAtSyncPoints(sched, points, 2.0, 120); idx != want {
+		t.Fatalf("stronger earlier onset should win: got idx %d, want %d", idx, want)
+	}
+	// Equal strengths must match CorrectStepSnap exactly (NearestOnset picks
+	// the later onset of an exact tie).
+	equal := []Onset{
+		{Time: 2 * time.Second, Strength: 1},
+		{Time: 2*time.Second + 500*time.Millisecond, Strength: 1},
+	}
+	idx, ok = CorrectStepSnapWithStrength(sched, points, 2*time.Second+250*time.Millisecond, equal, 120)
+	if !ok {
+		t.Fatal("equidistant onsets should still snap")
+	}
+	if want := StepIndexAtSyncPoints(sched, points, 2.5, 120); idx != want {
+		t.Fatalf("equal-strength tie should match NearestOnset: got idx %d, want %d", idx, want)
 	}
 }
 

@@ -57,10 +57,11 @@ type ViewerModel struct {
 	// Auto-alignment: which sources have been aligned this session.
 	alignedSources map[string]bool
 	// Auto tempo map + drift meter (measured bar anchors and onsets).
-	autoAnchors []player.SyncPoint
-	autoOnsets  []time.Duration
-	autoActive  bool
-	syncDrift   float64 // seconds the playhead is off the nearest onset (0 = on)
+	autoAnchors   []player.SyncPoint
+	autoOnsets    []time.Duration
+	autoStrengths []float64 // normalized onset strengths, aligned with autoOnsets
+	autoActive    bool
+	syncDrift     float64 // seconds the playhead is off the nearest onset (0 = on)
 	// Undo support.
 	prevOffset float64 // offset value before the last `o` reset
 	manualPick bool    // user chose the source manually; keep it across refreshes
@@ -131,6 +132,7 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.alignedSources = map[string]bool{}
 	m.autoAnchors = nil
 	m.autoOnsets = nil
+	m.autoStrengths = nil
 	m.autoActive = false
 	m.syncDrift = 0
 	m.restoreCalibrationForSource()
