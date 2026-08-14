@@ -118,6 +118,10 @@ func TestPracticeKeyStateAndStatus(t *testing.T) {
 	tab := &model.Tab{Title: "X", Artist: "Y", Tuning: model.Standard,
 		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
 	m.LoadTab(tab, "x.txt", 0)
+	// A realistic terminal width: the status row now leads with the
+	// [load|sync] state label, and the 80-col default would truncate the
+	// practice indicators under test.
+	m, _ = m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	m, _ = m.Update(key("m"))
 	m, _ = m.Update(key("C"))
 	m, _ = m.Update(key("y"))

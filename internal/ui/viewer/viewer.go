@@ -70,6 +70,9 @@ type ViewerModel struct {
 	// Undo support.
 	prevOffset float64 // offset value before the last `o` reset
 	manualPick bool    // user chose the source manually; keep it across refreshes
+	// Two-axis sync state flags.
+	calibrating bool // an align/intro/BPM analysis command is in flight
+	endBanner   bool // the track-ended banner is showing
 
 	cursorBar  int
 	cursorCol  int
@@ -146,6 +149,8 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.alignmentCandidates = nil
 	m.showAlignmentConfirm = false
 	m.alignmentPick = -1
+	m.calibrating = false
+	m.endBanner = false
 	m.restoreCalibrationForSource()
 	_ = m.engine.Stop()
 	m.engine.SetLoop(0, 0)

@@ -25,8 +25,10 @@ func (m ViewerModel) View() string {
 		if b := strings.TrimSpace(m.tab.Metadata[model.MetaKeySourceBadge]); b != "" {
 			title += kit.MutedStyle.Render("  " + b)
 		}
-		status = kit.MutedStyle.Render(fmt.Sprintf("%s · bar %d/%d · %d BPM",
-			m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm))
+		// The two-axis state label leads the status row: [load|sync] plus
+		// the calibrating "..." and track-ended "[end]" tags.
+		status = kit.MutedStyle.Render(fmt.Sprintf("%s · %s · bar %d/%d · %d BPM",
+			syncStateOf(m).label(), m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm))
 		if sec := m.currentSection(); sec != "" {
 			status = kit.MutedStyle.Render(sec) + "  " + status
 		}
@@ -91,11 +93,10 @@ func (m ViewerModel) View() string {
 		if m.driftMs != 0 && !m.audioSync {
 			status += kit.WarningStyle.Render(fmt.Sprintf("  drift %dms", m.driftMs))
 		}
-		if m.audioSync && m.autoActive {
-			status += kit.InfoStyle.Render("  auto-sync")
-			if m.syncDrift > 0.04 || m.syncDrift < -0.04 {
-				status += kit.WarningStyle.Render(fmt.Sprintf("  drift %+.2fs", m.syncDrift))
-			}
+		// SyncDrift carries the live drift magnitude the [load|drift] state
+		// tag cannot; the plain auto-sync marker is folded into the state.
+		if m.audioSync && m.autoActive && (m.syncDrift > 0.04 || m.syncDrift < -0.04) {
+			status += kit.WarningStyle.Render(fmt.Sprintf("  drift %+.2fs", m.syncDrift))
 		}
 		if total := m.practiceTotal(); total > 0 {
 			status += kit.MutedStyle.Render(fmt.Sprintf("  practice %d:%02d", total/60, total%60))

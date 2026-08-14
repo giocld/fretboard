@@ -15,6 +15,7 @@ func (m ViewerModel) handlePlaybackStarted(msg msgs.PlaybackStartedMsg) (ViewerM
 	m.stepIdx = msg.StepIdx
 	m.tickDur = msg.Duration
 	m.audioSync = msg.AudioSync
+	m.endBanner = false // a new playback clears any previously shown track-ended banner
 	m.practiceStart = time.Now()
 	// Drift nudge: without sync points the cursor maps at the tab's
 	// BPM; if the recording is a different tempo, warn once so the user
@@ -50,6 +51,7 @@ func (m ViewerModel) handlePlaybackStarted(msg msgs.PlaybackStartedMsg) (ViewerM
 // handlePlaybackError stops playback and surfaces the playback error.
 func (m ViewerModel) handlePlaybackError(msg msgs.PlaybackErrorMsg) (ViewerModel, tea.Cmd) {
 	m.stopPlayback()
+	m.endBanner = false // a failed restart must not keep the banner state
 	m.errMsg = msg.Err.Error()
 	m.refresh()
 	var cmd tea.Cmd
@@ -129,6 +131,7 @@ func (m ViewerModel) handlePlaybackMonitor(msg msgs.PlaybackMonitorMsg) (ViewerM
 			// to restart.
 			if !atEnd {
 				m.errMsg = trackEndedBanner(m.engine.AudioDuration())
+				m.endBanner = true
 			}
 			m.stopPlayback()
 			m.refresh()

@@ -22,6 +22,7 @@ func (m ViewerModel) handleAudioFetched(msg msgs.AudioFetchedMsg) (ViewerModel, 
 			m.resolvedAudio = msg.Path
 			var cmds []tea.Cmd
 			if cmd := m.applySelectedSourceStateOnly(); cmd != nil {
+				m.calibrating = true // the async BPM probe is in flight
 				cmds = append(cmds, cmd)
 			}
 			src := m.selectedSource()
@@ -96,6 +97,7 @@ func (m ViewerModel) handleAudioCatalog(msg msgs.AudioCatalogMsg) (ViewerModel, 
 				// the intro offset is excluded from the tempo math.
 				m.restoreCalibrationForSource()
 				if cmd := m.applySelectedSourceStateOnly(); cmd != nil {
+					m.calibrating = true // the async BPM probe is in flight
 					cmds = append(cmds, cmd)
 				}
 			} else if prevPick < len(m.audioCatalog.Sources) {
@@ -119,6 +121,7 @@ func (m ViewerModel) handleIntroDetected(msg msgs.IntroDetectedMsg) (ViewerModel
 	if msg.SourceID != "" && msg.SourceID != m.currentSourceID() {
 		return m, nil // the user switched sources while the probe ran
 	}
+	m.calibrating = false // the silence probe landed for the current source
 	if msg.Err == nil && msg.Offset > 0 && m.audioOffset == 0 && len(m.syncPoints) == 0 {
 		m.audioOffset = msg.Offset.Seconds()
 		if m.tab.Metadata == nil {
@@ -146,6 +149,7 @@ func (m ViewerModel) handleBPMDerived(msg msgs.BPMDerivedMsg) (ViewerModel, tea.
 	if msg.SourceID == "" || msg.SourceID != m.currentSourceID() {
 		return m, nil // the user switched sources while the probe ran
 	}
+	m.calibrating = false // the BPM probe landed for the current source
 	if m.tab != nil && m.tab.Metadata != nil && strings.TrimSpace(m.tab.Metadata[model.MetaKeyBPM]) != "" {
 		return m, nil // a recorded tempo wins over the derived one
 	}
@@ -168,6 +172,7 @@ func (m ViewerModel) handleAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cm
 	if msg.SourceID != "" && msg.SourceID != m.currentSourceID() {
 		return m, nil // the user switched sources while the analysis ran
 	}
+	m.calibrating = false // the alignment analysis landed for the current source
 	if msg.Err != nil {
 		// F3: an analysis failure must surface, never apply partial state.
 		m.errMsg = fmt.Sprintf("Audio analysis failed: %v", msg.Err)
@@ -249,6 +254,7 @@ func (m ViewerModel) handleAlignmentCandidates(msg msgs.AlignmentCandidatesMsg) 
 	if msg.SourceID != "" && msg.SourceID != m.currentSourceID() {
 		return m, nil // the user switched sources while the analysis ran
 	}
+	m.calibrating = false // the alignment analysis landed for the current source
 	m.alignmentCandidates = msg.Candidates
 	m.alignmentPick = -1
 	m.showAlignmentConfirm = len(msg.Candidates) > 0

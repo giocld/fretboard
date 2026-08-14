@@ -31,6 +31,7 @@ func (m *ViewerModel) maybeAlignCmd() tea.Cmd {
 	if baseBPM <= 0 {
 		baseBPM = 120
 	}
+	m.calibrating = true // the onset analysis is in flight until its msg lands
 	return func() tea.Msg {
 		hint, _ := player.LeadingSilence(path)
 		cands, err := player.RankAlignments(tab, path, hint)
@@ -99,6 +100,7 @@ func (m *ViewerModel) maybeDetectIntroCmd() tea.Cmd {
 	}
 	srcID := src.ID
 	tab, tabID, tabPath := m.tab, m.tabID, m.tabPath
+	m.calibrating = true // the silence probe is in flight until its msg lands
 	return func() tea.Msg {
 		offset, err := player.LeadingSilence(path)
 		if err != nil {
@@ -137,6 +139,7 @@ func (m *ViewerModel) BeginAudioFetch(allowOnline bool) tea.Cmd {
 		m.audioCursor = m.selectedSourceIdx
 		m.restoreCalibrationForSource()
 		if cmd := m.applySelectedSourceStateOnly(); cmd != nil {
+			m.calibrating = true // the async BPM probe is in flight
 			cmds = append(cmds, cmd)
 		}
 	}
