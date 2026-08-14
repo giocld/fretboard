@@ -21,6 +21,39 @@ func (m ViewerModel) loopStartTime() time.Duration {
 	return player.ScheduleTimeAtBar(m.schedule, m.loopStartBar-1, m.bpm) + m.audioOffsetDur()
 }
 
+// loopRestartPos returns the audio position at which an A-B loop restarts:
+// the loop start bar warped through the same merged-anchor map the step
+// mapping consumes, so a loop wraps on the recording's timeline instead of
+// the tab's schedule@BPM line. With no anchors the TimeMapper degenerates to
+// the naive formula, so the unanchored path falls back to loopStartTime()
+// exactly.
+func (m ViewerModel) loopRestartPos() time.Duration {
+	if len(m.schedule) == 0 || m.loopStartBar <= 0 {
+		return m.loopStartTime()
+	}
+	points := syncPointsZeroBased(player.MergeAnchors(m.syncPoints, m.autoAnchors))
+	if len(points) == 0 {
+		return m.loopStartTime()
+	}
+	tm := player.NewTimeMapper(m.schedule, points, m.bpm)
+	tm.SetAudioOffset(m.audioOffsetDur())
+	start, _ := tm.WarpedLoopTimes(m.loopStartBar-1, m.loopEndBar)
+	return start
+}
+
+// resumeAudioPos maps the cursor's bar/col through the anchor warp to the
+// audio position where a paused session must continue. Without a schedule
+// there is nothing to map; without anchors the map degenerates to the naive
+// schedule position (score at BPM plus the calibrated offset).
+func (m ViewerModel) resumeAudioPos() time.Duration {
+	if len(m.schedule) == 0 {
+		return 0
+	}
+	tm := player.NewTimeMapper(m.schedule, syncPointsZeroBased(player.MergeAnchors(m.syncPoints, m.autoAnchors)), m.bpm)
+	tm.SetAudioOffset(m.audioOffsetDur())
+	return tm.ResumePos(m.cursorBar, m.cursorCol)
+}
+
 // setLoopPoint registers the A (start) or B (end) loop boundary at the current
 // bar and re-arms the engine region. The engine region is also re-armed at
 // playback start so loops set while paused work from the first pass.
@@ -40,9 +73,11 @@ func (m ViewerModel) setLoopPoint(isStart bool) (ViewerModel, tea.Cmd) {
 }
 
 // applyLoopRegion maps the stored A-B bars (1-based, inclusive) to engine
-// loop times: schedule time at the half-open 0-based range plus the calibrated
-// intro offset. With no schedule yet (paused before first play) the region is
-// left to PlaybackStartedMsg to arm.
+// loop times through the anchor warp: audio time of the half-open 0-based
+// range. With anchors the TimeMapper stretches the region onto the
+// recording's timeline; without anchors its naive path is exactly schedule
+// time at the bars plus the calibrated intro offset. With no schedule yet
+// (paused before first play) the region is left to PlaybackStartedMsg to arm.
 func (m *ViewerModel) applyLoopRegion() {
 	if m.loopStartBar <= 0 || m.loopEndBar <= 0 {
 		m.engine.SetLoop(0, 0)
@@ -51,8 +86,9 @@ func (m *ViewerModel) applyLoopRegion() {
 	if len(m.schedule) == 0 {
 		return
 	}
-	start := player.ScheduleTimeAtBar(m.schedule, m.loopStartBar-1, m.bpm) + m.audioOffsetDur()
-	end := player.ScheduleTimeAtBar(m.schedule, m.loopEndBar, m.bpm) + m.audioOffsetDur()
+	tm := player.NewTimeMapper(m.schedule, syncPointsZeroBased(player.MergeAnchors(m.syncPoints, m.autoAnchors)), m.bpm)
+	tm.SetAudioOffset(m.audioOffsetDur())
+	start, end := tm.WarpedLoopTimes(m.loopStartBar-1, m.loopEndBar)
 	if end > start {
 		m.engine.SetLoop(start, end)
 	}
@@ -178,6 +214,9 @@ func (m *ViewerModel) togglePlayback() tea.Cmd {
 		return nil
 	}
 	if m.playing {
+		// Bank the cursor's mapped audio position before stopping so a
+		// later Space resumes mid-song instead of restarting the file.
+		m.resumePos = m.resumeAudioPos()
 		m.stopPlayback()
 		m.refresh()
 		return nil
@@ -198,7 +237,10 @@ func (m *ViewerModel) togglePlayback() tea.Cmd {
 			return m.downloadSelectedSourceCmd()
 		}
 	}
-	return startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, src, m.playbackStartIndex(), m.playbackOpts())
+	opts := m.playbackOpts()
+	opts.resume = m.resumePos
+	m.resumePos = 0
+	return startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, src, m.playbackStartIndex(), opts)
 }
 
 // programNames is the instrument cycle for MIDI playback (`y`): GM programs

@@ -317,6 +317,122 @@ func TestStartPlaybackSyncIgnoresUnknownDuration(t *testing.T) {
 	}
 }
 
+// TestLoopRestartUsesWarpedPosition guards F9: the A-B loop restarts at the
+// anchor-warped audio position of the loop start bar, not the naive
+// schedule@BPM position. Anchors that stretch the map (bar 2 of the tab at
+// 10s instead of 1s) must move the restart point; with no anchors the warped
+// position equals the naive loopStartTime formula.
+func TestLoopRestartUsesWarpedPosition(t *testing.T) {
+	m := NewViewerModel()
+	m.schedule = []player.PlaybackStep{
+		{Bar: 0, Ticks: 480}, {Bar: 0, Ticks: 480},
+		{Bar: 1, Ticks: 480}, {Bar: 1, Ticks: 480},
+		{Bar: 2, Ticks: 480}, {Bar: 2, Ticks: 480},
+		{Bar: 3, Ticks: 480}, {Bar: 3, Ticks: 480},
+	}
+	m.bpm = 120 // two 480-tick steps per bar: 1s per bar
+	m.loopStartBar = 2
+	m.loopEndBar = 3
+	m.audioOffset = 0
+	naive := m.loopStartTime() // ScheduleTimeAtBar(schedule, 1) = 1s
+
+	// Bar 2 (0-based 1) anchored at 10s and bar 4 (0-based 3) at 30s: the
+	// segment stretches 2s of score over 20s of audio.
+	m.syncPoints = []player.SyncPoint{{Bar: 2, Seconds: 10}, {Bar: 4, Seconds: 30}}
+
+	got := m.loopRestartPos()
+	tm := player.NewTimeMapper(m.schedule, syncPointsZeroBased(m.syncPoints), m.bpm)
+	wantStart, _ := tm.WarpedLoopTimes(1, 3)
+	if got != wantStart {
+		t.Fatalf("loopRestartPos = %v, want TimeMapper warped start %v", got, wantStart)
+	}
+	if got == naive {
+		t.Fatalf("warped restart %v must differ from naive %v when anchors stretch the map", got, naive)
+	}
+	if got != 10*time.Second {
+		t.Fatalf("loopRestartPos = %v, want 10s", got)
+	}
+
+	// No anchors: the warped path degenerates to the naive formula.
+	m2 := NewViewerModel()
+	m2.schedule = m.schedule
+	m2.bpm = 120
+	m2.loopStartBar = 2
+	m2.loopEndBar = 3
+	m2.audioOffset = 20
+	if got, want := m2.loopRestartPos(), m2.loopStartTime(); got != want {
+		t.Fatalf("no-anchor loopRestartPos = %v, want naive loopStartTime %v", got, want)
+	}
+}
+
+// TestResumeMapsViaTimeMapper guards F9 resume: the audio position to resume
+// from a mid-tab cursor maps through the TimeMapper's anchors, and the naive
+// (unanchored) position differs when the anchors warp the map.
+func TestResumeMapsViaTimeMapper(t *testing.T) {
+	m := NewViewerModel()
+	m.schedule = []player.PlaybackStep{
+		{Bar: 0, Col: 0, Ticks: 480}, {Bar: 0, Col: 4, Ticks: 480},
+		{Bar: 1, Col: 0, Ticks: 480}, {Bar: 1, Col: 4, Ticks: 480},
+		{Bar: 2, Col: 0, Ticks: 480}, {Bar: 2, Col: 4, Ticks: 480},
+	}
+	m.bpm = 120
+	m.cursorBar = 1 // 0-based bar 2, mid-segment col 4
+	m.cursorCol = 4
+	m.syncPoints = []player.SyncPoint{{Bar: 1, Seconds: 10}, {Bar: 3, Seconds: 22}}
+	m.autoAnchors = []player.SyncPoint{{Bar: 2, Seconds: 16}}
+
+	got := m.resumeAudioPos()
+	points := syncPointsZeroBased(player.MergeAnchors(m.syncPoints, m.autoAnchors))
+	want := player.NewTimeMapper(m.schedule, points, m.bpm).ResumePos(m.cursorBar, m.cursorCol)
+	if got != want {
+		t.Fatalf("resumeAudioPos = %v, want TimeMapper.ResumePos %v", got, want)
+	}
+	naive := player.NewTimeMapper(m.schedule, nil, m.bpm).ResumePos(m.cursorBar, m.cursorCol)
+	if got == naive {
+		t.Fatalf("resume %v must differ from the naive position %v when anchors warp the map", got, naive)
+	}
+	if got != 19*time.Second {
+		t.Fatalf("resumeAudioPos = %v, want 19s (mid-segment interpolation)", got)
+	}
+
+	// No anchors: resume falls back to the naive schedule position.
+	m2 := NewViewerModel()
+	m2.schedule = m.schedule
+	m2.bpm = 120
+	m2.cursorBar = 2
+	m2.cursorCol = 0
+	m2.audioOffset = 20
+	if got := m2.resumeAudioPos(); got != 22*time.Second {
+		t.Fatalf("no-anchor resumeAudioPos = %v, want 22s (2s of score + 20s offset)", got)
+	}
+}
+
+// TestApplyLoopRegionWarped guards F9: the engine A-B loop region is armed
+// with the anchor-warped audio times, so the loop wraps on the recording's
+// timeline rather than the tab's schedule@BPM line.
+func TestApplyLoopRegionWarped(t *testing.T) {
+	m := NewViewerModel()
+	m.schedule = []player.PlaybackStep{
+		{Bar: 0, Ticks: 480}, {Bar: 0, Ticks: 480},
+		{Bar: 1, Ticks: 480}, {Bar: 1, Ticks: 480},
+		{Bar: 2, Ticks: 480}, {Bar: 2, Ticks: 480},
+		{Bar: 3, Ticks: 480}, {Bar: 3, Ticks: 480},
+	}
+	m.bpm = 120
+	m.loopStartBar = 2
+	m.loopEndBar = 3
+	m.syncPoints = []player.SyncPoint{{Bar: 2, Seconds: 10}, {Bar: 4, Seconds: 30}}
+
+	m.applyLoopRegion()
+	start, end, ok := m.engine.LoopRegion()
+	if !ok {
+		t.Fatal("loop region not armed")
+	}
+	if start != 10*time.Second || end != 30*time.Second {
+		t.Fatalf("warped loop region = [%v, %v], want [10s, 30s]", start, end)
+	}
+}
+
 // TestBpmChangeRebasesClockWithoutRestart guards the BPM re-base: in MIDI
 // mode, + re-bases the clock and keeps the session (no stop/start).
 func TestBpmChangeRebasesClockWithoutRestart(t *testing.T) {

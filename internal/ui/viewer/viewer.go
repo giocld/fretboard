@@ -73,6 +73,7 @@ type ViewerModel struct {
 	schedule   []player.PlaybackStep
 	stepIdx    int
 	tickDur    time.Duration
+	resumePos  time.Duration // audio position to resume at on the next play
 	bpm        int
 	jumpBuffer string
 	lastKey    string
@@ -107,6 +108,7 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.schedule = nil
 	m.stepIdx = 0
 	m.tickDur = 0
+	m.resumePos = 0
 	m.errMsg = ""
 	m.bpm = player.TabBPM(tab)
 	m.resolvedAudio = player.FindAudio(tab, tabPath, m.audioDirs)

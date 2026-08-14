@@ -50,6 +50,15 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 			if err := engine.PlaySource(tab, bpm, src, ctx); err != nil {
 				return msgs.PlaybackErrorMsg{Err: err}
 			}
+			// Resume mid-song: PlaySource starts at the file's position 0,
+			// so seek to the cursor's mapped audio position before the
+			// monitor compares Elapsed() against it. MIDI fallbacks and
+			// first-ever plays (resume == 0) ignore the seek.
+			if opts.resume > 0 && engine.Mode() == "audio" {
+				if err := engine.RestartAt(opts.resume); err != nil {
+					return msgs.PlaybackErrorMsg{Err: err}
+				}
+			}
 		}
 		if engine.ShutdownRequested() {
 			_ = engine.Stop()
@@ -79,6 +88,7 @@ type playbackOpts struct {
 	metronome bool
 	countIn   int
 	program   int
+	resume    time.Duration // audio position to seek on start (resume after a pause)
 }
 
 func (m ViewerModel) playbackOpts() playbackOpts {

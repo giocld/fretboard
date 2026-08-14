@@ -70,7 +70,7 @@ func (m ViewerModel) handlePlaybackMonitor(msg msgs.PlaybackMonitorMsg) (ViewerM
 		elapsed := m.engine.Elapsed()
 		if m.loopEndBar > 0 {
 			if end, _, ok := m.engine.LoopRegion(); ok && elapsed >= end {
-				if err := m.engine.RestartAt(m.loopStartTime()); err != nil {
+				if err := m.engine.RestartAt(m.loopRestartPos()); err != nil {
 					m.errMsg = "Loop restart failed: " + err.Error()
 					m.stopPlayback()
 					m.refresh()
