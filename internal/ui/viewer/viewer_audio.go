@@ -38,6 +38,36 @@ func RenderAudioPicker(width int, catalog player.AudioCatalog, cursor int, fetch
 	return "\n" + kit.RenderPanel(width-2, title, body)
 }
 
+// renderAlignmentConfirm draws the alignment confirm overlay: the top-N
+// ranked hypotheses with BPM, offset, confidence, coverage, the tempo-delta
+// warning, and the +- half-beat / +- one-bar offset variant keys.
+func renderAlignmentConfirm(m ViewerModel) string {
+	var lines []string
+	for i, c := range m.alignmentCandidates {
+		a := c.Alignment
+		line := fmt.Sprintf(" %d) %d BPM  offset +%.1fs  conf %.0f%%  coverage %.0f%%",
+			i+1, a.BPM, a.Offset.Seconds(), a.Confidence*100, c.Coverage*100)
+		if c.Partial {
+			line += kit.WarningStyle.Render("  partial")
+		}
+		if c.TempoDelta != "" {
+			line += kit.WarningStyle.Render("  " + c.TempoDelta)
+		}
+		lines = append(lines, line)
+		if len(c.Variants) > 0 {
+			var vlines []string
+			for vi, v := range c.Variants {
+				vlines = append(vlines, fmt.Sprintf("%c %s", 'a'+vi, v.Label))
+			}
+			lines = append(lines, kit.MutedStyle.Render("   "+strings.Join(vlines, "  ")))
+		}
+	}
+	lines = append(lines, "")
+	lines = append(lines, kit.MutedStyle.Render("1/2/3 accept  Enter accept top  a/b/c/d variant  Esc cancel"))
+	body := strings.Join(lines, "\n")
+	return "\n" + kit.RenderPanel(m.width-2, "Alignment confirm", body)
+}
+
 func categoryBadge(c player.AudioCategory) string {
 	switch c {
 	case player.CatOfficial:

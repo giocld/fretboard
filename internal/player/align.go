@@ -97,13 +97,50 @@ func ExpectedOnsets(tab *model.Tab, bpm int) []ExpectedOnset {
 // usable-but-weak analysis (too few onsets, thin tab) returns a
 // zero-confidence alignment with Err == nil.
 func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
-	var zero Alignment
-	onsets, err := DetectOnsetsWithStrength(path)
+	in, ok, err := prepareAlignment(tab, path)
 	if err != nil {
 		return Alignment{Err: err} // explicit degradation: surface the failure
 	}
+	if !ok {
+		return Alignment{} // usable-but-weak analysis stays zero-confidence
+	}
+	hyps := in.gridSearch(hint)
+	if len(hyps) == 0 {
+		return Alignment{}
+	}
+	sort.SliceStable(hyps, func(i, j int) bool { return hyps[i].score > hyps[j].score })
+	return in.refineHypothesis(hyps[0], hint)
+}
+
+// alignKey identifies a distinct (bpm, offset) hypothesis.
+type alignKey struct {
+	bpm    int
+	offset time.Duration
+}
+
+// alignInput bundles the prepared inputs shared by AlignAudio and
+// RankAlignments so the two entry points run one analysis.
+type alignInput struct {
+	expected  []ExpectedOnset
+	onsets    []Onset
+	strengths []float64
+	times     []time.Duration
+	offsets   []time.Duration
+	baseBPM   int
+}
+
+// prepareAlignment detects the recording's onsets and derives the shared
+// search inputs. ok is false when the analysis cannot run or the tab is too
+// thin to align; an analysis failure (no decoder, decode error) is returned
+// as err and must surface, never be swallowed.
+func prepareAlignment(tab *model.Tab, path string) (alignInput, bool, error) {
+	var in alignInput
+	onsets, err := DetectOnsetsWithStrength(path)
+	if err != nil {
+		return in, false, err
+	}
 	if len(onsets) < 10 {
-		return zero
+		return in, false, nil
 	}
 	// The detector emits the strong-pass onsets first and appends the
 	// weak-pass onsets after, so the combined list can be out of time
@@ -116,44 +153,55 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 	}
 	expected := ExpectedOnsets(tab, baseBPM)
 	if len(expected) < 20 {
-		return zero // not enough musical content in the tab
+		return in, false, nil // not enough musical content in the tab
 	}
-
 	// Normalize onset strengths so weighting is comparable.
 	maxStr := 0.0
 	for _, o := range onsets {
 		maxStr = max(maxStr, o.Strength)
 	}
 	if maxStr <= 0 {
-		return zero
+		return in, false, nil
 	}
 	strengths := make([]float64, len(onsets))
 	for i, o := range onsets {
 		strengths[i] = o.Strength / maxStr
 	}
-
 	// The onset times do not depend on the candidate BPM, so collect them
 	// once: they feed both the audio-derived tempo window and the result.
 	times := make([]time.Duration, len(onsets))
 	for i, o := range onsets {
 		times[i] = o.Time
 	}
+	return alignInput{
+		expected: expected, onsets: onsets, strengths: strengths,
+		times: times, offsets: onsetSeedOffsets(onsets), baseBPM: baseBPM,
+	}, true, nil
+}
 
-	// Primary window: the tab's tempo plus/minus 25%, clamped to the shared
-	// bounds. When the clamp inverts it (tab slower than bpmWindowMin*4/3),
-	// the window is empty and the audio-derived window carries the search.
+// scoredHyp is one grid hypothesis before the refinement passes.
+type scoredHyp struct {
+	bpm      int
+	offset   time.Duration
+	score    float64
+	wideConf float64
+}
+
+// gridSearch scores every (bpm, offset) hypothesis over the two tempo
+// windows: the tab's tempo plus/minus 25% and a second window around the
+// tempo the recording itself implies (from the median inter-onset
+// interval), each clamped to the shared bounds. When a clamp inverts a
+// window (a tab slower than bpmWindowMin*4/3), it is left empty and the
+// other window carries the search.
+func (in alignInput) gridSearch(hint time.Duration) []scoredHyp {
+	baseBPM := in.baseBPM
 	lo := max(baseBPM-baseBPM/4, bpmWindowMin)
 	hi := min(baseBPM+baseBPM/4, bpmWindowMax)
 	if lo > hi {
 		lo, hi = 1, 0
 	}
-	// Second window: the tempo the recording itself implies, from the
-	// median inter-onset interval. This rescues recordings whose tempo
-	// differs from the tab by more than the primary window tolerates —
-	// a 45 BPM tab over 33 BPM audio inverts the primary window entirely.
-	// Skipped when no stable interval can be measured.
 	dlo, dhi := 1, 0
-	if interval := medianIntervals(times); interval > 0 {
+	if interval := medianIntervals(in.times); interval > 0 {
 		detected := int(60000 / interval.Milliseconds())
 		dlo = max(detected-detected/4, bpmWindowMin)
 		dhi = min(detected+detected/4, bpmWindowMax)
@@ -161,13 +209,7 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 			dlo, dhi = 1, 0
 		}
 	}
-
-	// Candidate offsets are seeded from the recording's own early onsets
-	// instead of a blind 0..15 s scan: the true offset is always within one
-	// 250 ms neighborhood of some early onset when the recording's opening
-	// is the tab's opening, and the search is unbounded for longer intros.
-	offsets := onsetSeedOffsets(onsets)
-	best := zero
+	var hyps []scoredHyp
 	for bpm := max(min(lo, dlo), bpmWindowMin); bpm <= max(hi, dhi); bpm++ {
 		inPrimary := lo <= hi && bpm >= lo && bpm <= hi
 		inDetected := dlo <= dhi && bpm >= dlo && bpm <= dhi
@@ -175,59 +217,54 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 			continue
 		}
 		scale := float64(baseBPM) / float64(bpm)
-		for _, off := range offsets {
-			score, matched := scoreAlignment(expected, onsets, strengths, scale, off, bpm, hint)
-			if score > best.Score {
-				best = Alignment{BPM: bpm, Offset: off,
-					Score: score, Confidence: matched, Detected: len(onsets)}
-			}
+		for _, off := range in.offsets {
+			score, matched := scoreAlignment(in.expected, in.onsets, in.strengths, scale, off, bpm, hint)
+			hyps = append(hyps, scoredHyp{bpm: bpm, offset: off, score: score, wideConf: matched})
 		}
 	}
-	if best.BPM > 0 {
-		best.Onsets = times
-		best.Strengths = strengths
-	}
+	return hyps
+}
+
+// refineHypothesis applies the near-tie earliest-offset pass and the 25 ms
+// offset refinement to one grid hypothesis and returns the final alignment
+// with strict-verified confidence and the onset arrays filled.
+func (in alignInput) refineHypothesis(h scoredHyp, hint time.Duration) Alignment {
+	best := Alignment{BPM: h.bpm, Offset: h.offset, Score: h.score, Confidence: h.wideConf, Detected: len(in.onsets)}
 	// Congruent offsets — whole beats apart — score identically up to onset
 	// jitter and floating-point noise, and any offset more than a beat below
 	// the first onset fails the opening gate. So among the near-ties, the
 	// earliest is the true one: the recording's first note is the tab's
 	// first note. Prefer it explicitly instead of whichever noise won.
-	if best.BPM > 0 {
-		scale := float64(baseBPM) / float64(best.BPM)
-		for _, off := range offsets {
-			if off >= best.Offset {
-				continue
-			}
-			score, matched := scoreAlignment(expected, onsets, strengths, scale, off, best.BPM, hint)
-			if score > best.Score-offsetTieEps {
-				best.Offset = off
-				best.Score = score
-				best.Confidence = matched
-			}
+	for _, off := range in.offsets {
+		if off >= best.Offset {
+			continue
+		}
+		score, matched := scoreAlignment(in.expected, in.onsets, in.strengths, float64(in.baseBPM)/float64(best.BPM), off, best.BPM, hint)
+		if score > best.Score-offsetTieEps {
+			best.Offset = off
+			best.Score = score
+			best.Confidence = matched
 		}
 	}
 	// Refine the offset around the winner at 25 ms resolution.
-	if best.BPM > 0 {
-		scale := float64(baseBPM) / float64(best.BPM)
-		base := best.Offset
-		for off := -75 * time.Millisecond; off <= 75*time.Millisecond; off += 25 * time.Millisecond {
-			o := base + off
-			if o < 0 {
-				continue
-			}
-			score, matched := scoreAlignment(expected, onsets, strengths, scale, o, best.BPM, hint)
-			if score > best.Score {
-				best.Offset = o
-				best.Score = score
-				best.Confidence = matched
-			}
+	base := best.Offset
+	for off := -75 * time.Millisecond; off <= 75*time.Millisecond; off += 25 * time.Millisecond {
+		o := base + off
+		if o < 0 {
+			continue
+		}
+		score, matched := scoreAlignment(in.expected, in.onsets, in.strengths, float64(in.baseBPM)/float64(best.BPM), o, best.BPM, hint)
+		if score > best.Score {
+			best.Offset = o
+			best.Score = score
+			best.Confidence = matched
 		}
 	}
 	// Strict verification: the final confidence comes from a 60 ms tolerance
 	// re-check, which collapses harmonic aliases the wide pass tolerates.
-	if best.BPM > 0 {
-		best.Confidence = verifyStrict(expected, onsets, float64(baseBPM)/float64(best.BPM), best.Offset)
-	}
+	best.Confidence = verifyStrict(in.expected, in.onsets, float64(in.baseBPM)/float64(best.BPM), best.Offset)
+	best.Onsets = in.times
+	best.Strengths = in.strengths
 	return best
 }
 

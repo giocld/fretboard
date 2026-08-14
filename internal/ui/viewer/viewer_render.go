@@ -129,7 +129,9 @@ func (m ViewerModel) View() string {
 	} else {
 		body += kit.RenderPanel(m.width-2, "Tab", m.viewport.View())
 	}
-	if m.showAudioPicker {
+	if m.showAlignmentConfirm {
+		body += renderAlignmentConfirm(m)
+	} else if m.showAudioPicker {
 		body += RenderAudioPicker(m.width, m.audioCatalog, m.audioCursor, m.fetchingCatalog, m.strictAudio, m.recommendedSourceIdx(), rejectedSources(m.tab))
 	}
 

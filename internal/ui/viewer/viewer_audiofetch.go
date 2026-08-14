@@ -33,19 +33,47 @@ func (m *ViewerModel) maybeAlignCmd() tea.Cmd {
 	}
 	return func() tea.Msg {
 		hint, _ := player.LeadingSilence(path)
-		a := player.AlignAudio(tab, path, hint)
-		msg := msgs.AlignmentMsg{
-			SourceID: srcID, BPM: a.BPM, Offset: a.Offset, Confidence: a.Confidence,
-			Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath,
-			Onsets: a.Onsets, OnsetStrengths: a.Strengths, Err: a.Err,
+		cands, err := player.RankAlignments(tab, path, hint)
+		if err != nil {
+			return msgs.AlignmentMsg{SourceID: srcID, Err: err, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
 		}
-		if a.Confidence >= 0.6 && a.BPM > 0 {
-			// Measure bar anchors from the aligned onsets: the auto tempo map.
-			expected := player.ExpectedOnsets(tab, baseBPM)
-			scale := float64(baseBPM) / float64(a.BPM)
-			msg.Anchors = player.TempoAnchors(expected, a.Onsets, scale, a.Offset, a.BPM, 4)
+		if len(cands) == 0 {
+			return msgs.AlignmentMsg{SourceID: srcID, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
 		}
-		return msg
+		// One analysis drives both the auto path and the ranked list: the
+		// band of the best candidate decides how the viewer treats it.
+		top := cands[0]
+		band, _ := player.ClassifyBand(top.Alignment.Confidence, top.Coverage, top.IdentityZone)
+		switch band {
+		case player.BandAuto:
+			// Confident and well covered: apply without asking.
+			msg := msgs.AlignmentMsg{
+				SourceID: srcID, BPM: top.Alignment.BPM, Offset: top.Alignment.Offset, Confidence: top.Alignment.Confidence,
+				Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath,
+				Onsets: top.Alignment.Onsets, OnsetStrengths: top.Alignment.Strengths, Err: top.Alignment.Err,
+			}
+			if msg.BPM > 0 {
+				// Measure bar anchors from the aligned onsets: the auto tempo map.
+				expected := player.ExpectedOnsets(tab, baseBPM)
+				scale := float64(baseBPM) / float64(msg.BPM)
+				msg.Anchors = player.TempoAnchors(expected, msg.Onsets, scale, msg.Offset, msg.BPM, 4)
+			}
+			return msg
+		case player.BandPresent:
+			// Present the top-N for the user to confirm or dismiss.
+			return msgs.AlignmentCandidatesMsg{
+				SourceID: srcID, Candidates: cands,
+				Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath,
+			}
+		default:
+			// Reject: never silent — the weak branch of handleAlignment hints
+			// at manual anchoring, and the source stays usable.
+			return msgs.AlignmentMsg{
+				SourceID: srcID, BPM: top.Alignment.BPM, Offset: top.Alignment.Offset, Confidence: top.Alignment.Confidence,
+				Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath,
+				Onsets: top.Alignment.Onsets, OnsetStrengths: top.Alignment.Strengths,
+			}
+		}
 	}
 }
 

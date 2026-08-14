@@ -166,6 +166,19 @@ type BPMDerivedMsg struct {
 	BPM      int
 }
 
+// AlignmentCandidatesMsg delivers the top-N ranked alignment hypotheses for
+// a source whose best candidate sits in the present band (0.4-0.6
+// confidence or downgraded there): the viewer opens the confirm overlay and
+// lets the user accept one candidate or dismiss it.
+type AlignmentCandidatesMsg struct {
+	SourceID   string
+	Candidates []player.Candidate
+	Artist     string
+	Title      string
+	TabID      int64
+	TabPath    string
+}
+
 // AlignmentMsg delivers an automatic audio-alignment result for a source.
 type AlignmentMsg struct {
 	SourceID       string

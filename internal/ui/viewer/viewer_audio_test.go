@@ -459,14 +459,22 @@ func TestAutoAlignmentApplied(t *testing.T) {
 		t.Fatal("source should be marked aligned")
 	}
 
-	// A weak result only hints; it never touches the calibration.
-	m, _ = m.Update(msgs.AlignmentMsg{SourceID: "local:" + audio, BPM: 100, Offset: 0,
-		Confidence: 0.45, Artist: "Y", Title: "X", TabID: 0, TabPath: "x.txt"})
+	// A weak result is presented for user confirmation; it never touches
+	// the calibration (the never-auto-apply-below-0.6 invariant).
+	m, _ = m.Update(msgs.AlignmentCandidatesMsg{
+		SourceID: "local:" + audio,
+		Candidates: []player.Candidate{{
+			Alignment: player.Alignment{BPM: 100, Offset: 0, Confidence: 0.45},
+			Coverage:  0.45,
+			Partial:   true,
+		}},
+		Artist: "Y", Title: "X", TabID: 0, TabPath: "x.txt",
+	})
 	if m.bpm != 118 || m.audioOffset != 3.2 {
-		t.Fatalf("weak alignment must not apply: bpm=%d offset=%v", m.bpm, m.audioOffset)
+		t.Fatalf("presented alignment must not auto-apply: bpm=%d offset=%v", m.bpm, m.audioOffset)
 	}
-	if !strings.Contains(m.infoMsg, "weak") {
-		t.Fatalf("weak alignment should hint, got %q", m.infoMsg)
+	if !m.showAlignmentConfirm {
+		t.Fatal("a weak alignment must be presented for user confirmation")
 	}
 
 	// A stale source is ignored entirely.
@@ -474,6 +482,98 @@ func TestAutoAlignmentApplied(t *testing.T) {
 		Confidence: 0.9, Artist: "Y", Title: "X", TabID: 0, TabPath: "x.txt"})
 	if m.bpm != 118 {
 		t.Fatalf("stale source must be ignored, bpm=%d", m.bpm)
+	}
+}
+
+// TestHandleAlignmentCandidatesPresentsTop3 guards the present band: a
+// candidates message opens the confirm overlay and stores the ranked list
+// without applying anything.
+func TestHandleAlignmentCandidatesPresentsTop3(t *testing.T) {
+	m, audio := bpmTestViewer(t)
+	m, _ = m.Update(msgs.AlignmentCandidatesMsg{
+		SourceID: "local:" + audio,
+		Candidates: []player.Candidate{
+			{Alignment: player.Alignment{BPM: 118, Offset: 3200 * time.Millisecond, Confidence: 0.55}, Coverage: 0.6},
+			{Alignment: player.Alignment{BPM: 236, Offset: 3200 * time.Millisecond, Confidence: 0.5}, Coverage: 0.5},
+		},
+		Artist: "Y", Title: "X", TabID: 0, TabPath: "x.txt",
+	})
+	if !m.showAlignmentConfirm {
+		t.Fatal("candidates must open the confirm overlay")
+	}
+	if len(m.alignmentCandidates) != 2 {
+		t.Fatalf("candidates stored = %d, want 2", len(m.alignmentCandidates))
+	}
+	if m.bpm != 120 {
+		t.Fatalf("presenting must not apply, bpm=%d", m.bpm)
+	}
+}
+
+// TestConfirmAcceptApplies guards the accept key: pressing 1 in the confirm
+// overlay applies the first candidate exactly like the auto-apply path and
+// closes the overlay.
+func TestConfirmAcceptApplies(t *testing.T) {
+	m, _ := bpmTestViewer(t)
+	onsets := []time.Duration{
+		3200 * time.Millisecond, 3705 * time.Millisecond, 4210 * time.Millisecond, 4715 * time.Millisecond,
+	}
+	m.showAlignmentConfirm = true
+	m.alignmentCandidates = []player.Candidate{{
+		Alignment: player.Alignment{BPM: 118, Offset: 3200 * time.Millisecond, Confidence: 0.55,
+			Onsets: onsets, Strengths: []float64{1, 0.5, 0.5, 0.5}},
+		Coverage: 0.6,
+	}}
+	m, _ = m.Update(key("1"))
+	if m.bpm != 118 {
+		t.Fatalf("accepting must apply the tempo, got %d", m.bpm)
+	}
+	if m.audioOffset != 3.2 {
+		t.Fatalf("accepting must apply the offset, got %v", m.audioOffset)
+	}
+	if m.showAlignmentConfirm {
+		t.Fatal("accepting must close the confirm overlay")
+	}
+}
+
+// TestConfirmVariantApplies guards the variant keys: a/b/c/d apply the
+// picked candidate with that +- half-beat / +- one-bar offset.
+func TestConfirmVariantApplies(t *testing.T) {
+	m, _ := bpmTestViewer(t)
+	m.showAlignmentConfirm = true
+	m.alignmentCandidates = []player.Candidate{{
+		Alignment: player.Alignment{BPM: 120, Offset: 3200 * time.Millisecond, Confidence: 0.55},
+		Coverage:  0.6,
+		Variants: []player.OffsetVariant{
+			{Label: "half beat early", Offset: 2950 * time.Millisecond},
+			{Label: "half beat late", Offset: 3450 * time.Millisecond},
+			{Label: "one bar early", Offset: 1200 * time.Millisecond},
+			{Label: "one bar late", Offset: 5200 * time.Millisecond},
+		},
+	}}
+	m, _ = m.Update(key("a"))
+	if m.audioOffset != 2.95 {
+		t.Fatalf("variant accept must apply the half-beat-early offset, got %v", m.audioOffset)
+	}
+	if m.bpm != 120 {
+		t.Fatalf("variant accept must apply the tempo, got %d", m.bpm)
+	}
+	if m.showAlignmentConfirm {
+		t.Fatal("variant accept must close the overlay")
+	}
+}
+
+// TestConfirmEscDismisses guards dismissal: esc closes the confirm overlay
+// without applying anything.
+func TestConfirmEscDismisses(t *testing.T) {
+	m, _ := bpmTestViewer(t)
+	m.showAlignmentConfirm = true
+	m.alignmentCandidates = []player.Candidate{{Alignment: player.Alignment{BPM: 118, Offset: 3200 * time.Millisecond}}}
+	m, _ = m.Update(key("esc"))
+	if m.showAlignmentConfirm {
+		t.Fatal("esc must dismiss the confirm overlay")
+	}
+	if m.bpm != 120 {
+		t.Fatalf("dismissing must not apply, bpm=%d", m.bpm)
 	}
 }
 

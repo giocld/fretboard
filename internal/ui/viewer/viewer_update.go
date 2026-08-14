@@ -157,7 +157,10 @@ func (m ViewerModel) handleBPMDerived(msg msgs.BPMDerivedMsg) (ViewerModel, tea.
 	return m, nil
 }
 
-// handleAlignment applies a completed auto-alignment result.
+// handleAlignment applies a completed auto-alignment result. The two-tier
+// gate lives here: confident results auto-apply, borderline ones are
+// presented through the candidates message, and weak ones are rejected with
+// a hint — never silently, never a hard reject of the source.
 func (m ViewerModel) handleAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cmd) {
 	if !m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
 		return m, nil
@@ -171,15 +174,31 @@ func (m ViewerModel) handleAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cm
 		m.refresh()
 		return m, nil
 	}
-	if msg.BPM <= 0 || msg.Confidence < 0.6 {
-		if msg.BPM > 0 && msg.Confidence >= 0.4 {
-			m.infoMsg = "Audio alignment is weak — press s at a recognizable bar to anchor"
-			m.refresh()
+	if msg.BPM <= 0 {
+		return m, nil // usable-but-weak analysis: nothing to apply
+	}
+	if msg.Confidence < 0.6 {
+		// The 0.4-0.6 band normally arrives as AlignmentCandidatesMsg (the
+		// command routes it); a direct weak AlignmentMsg keeps the legacy
+		// hint path, and the reject band is never silent.
+		if msg.Confidence >= 0.4 {
+			m.infoMsg = "Audio alignment is weak - press s at a recognizable bar to anchor"
+		} else {
+			m.infoMsg = "Audio alignment too weak to apply - press s at a recognizable bar to anchor"
 		}
+		m.refresh()
 		return m, nil
 	}
-	// Apply the detected tempo and the per-source intro offset (marked
-	// auto so silence probing does not re-run).
+	return m.applyAlignment(msg)
+}
+
+// applyAlignment applies a completed alignment: the detected tempo, the
+// per-source intro offset (marked auto so silence probing does not re-run),
+// the measured bar anchors as the auto tempo map, the onsets for the live
+// drift meter, and per-source persistence. Shared by the auto-apply path and
+// the user-confirmed candidate — the caller decides whether the result is
+// trustworthy enough to reach this point.
+func (m ViewerModel) applyAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cmd) {
 	m.bpm = player.ClampBPM(msg.BPM)
 	if m.audioOffset == 0 && len(m.syncPoints) == 0 {
 		m.audioOffset = msg.Offset.Seconds()
@@ -194,17 +213,116 @@ func (m ViewerModel) handleAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cm
 		}
 		m.infoMsg = fmt.Sprintf("Auto-aligned %d BPM, offset +%.1fs (confidence %.0f%%)", msg.BPM, m.audioOffset, msg.Confidence*100)
 	}
-	// The measured bar anchors become the auto tempo map; the onsets
-	// feed the live drift meter. Persisted per source so later sessions
-	// restore it without re-running the analysis.
-	m.autoAnchors = msg.Anchors
+	// The measured bar anchors become the auto tempo map; the onsets feed
+	// the live drift meter. Persisted per source so later sessions restore
+	// it without re-running the analysis.
+	anchors := msg.Anchors
+	if len(anchors) == 0 && msg.BPM > 0 && len(msg.Onsets) > 0 {
+		// A confirmed candidate carries no measured anchors: derive them
+		// from its onsets exactly like the command does for auto results.
+		baseBPM := player.TabBPM(m.tab)
+		if baseBPM <= 0 {
+			baseBPM = 120
+		}
+		expected := player.ExpectedOnsets(m.tab, baseBPM)
+		scale := float64(baseBPM) / float64(msg.BPM)
+		anchors = player.TempoAnchors(expected, msg.Onsets, scale, msg.Offset, msg.BPM, 4)
+	}
+	m.autoAnchors = anchors
 	m.autoOnsets = msg.Onsets
 	m.autoStrengths = msg.OnsetStrengths
-	m.autoActive = len(msg.Anchors) >= 2
+	m.autoActive = len(anchors) >= 2
 	m.syncDrift = 0
 	if id := m.currentSourceID(); id != "" {
-		m.tab.Metadata["tempo_map:"+id] = player.MarshalTempoMap(msg.Anchors, msg.Onsets, msg.OnsetStrengths)
+		m.tab.Metadata["tempo_map:"+id] = player.MarshalTempoMap(anchors, msg.Onsets, msg.OnsetStrengths)
 	}
 	m.refresh()
 	return m, m.saveTabPrefsCmd()
+}
+
+// handleAlignmentCandidates opens the alignment confirm overlay with the
+// top-N ranked hypotheses for the still-current source.
+func (m ViewerModel) handleAlignmentCandidates(msg msgs.AlignmentCandidatesMsg) (ViewerModel, tea.Cmd) {
+	if !m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
+		return m, nil
+	}
+	if msg.SourceID != "" && msg.SourceID != m.currentSourceID() {
+		return m, nil // the user switched sources while the analysis ran
+	}
+	m.alignmentCandidates = msg.Candidates
+	m.alignmentPick = -1
+	m.showAlignmentConfirm = len(msg.Candidates) > 0
+	m.refresh()
+	return m, nil
+}
+
+// handleAlignmentConfirmKey drives the confirm overlay while it is open:
+// 1/2/3 accepts that candidate, Enter accepts the top pick (or the last
+// picked candidate), a/b/c/d accepts the picked candidate with that offset
+// variant, Esc dismisses without applying.
+func (m ViewerModel) handleAlignmentConfirmKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
+	s := msg.String()
+	if len(s) == 1 && s[0] >= '1' && s[0] <= '3' {
+		idx := int(s[0] - '1')
+		if idx < len(m.alignmentCandidates) {
+			m.alignmentPick = idx
+		}
+		return m.applyCandidate(m.alignmentPick, 0)
+	}
+	switch s {
+	case "esc":
+		m.alignmentCandidates = nil
+		m.showAlignmentConfirm = false
+		m.alignmentPick = -1
+		m.refresh()
+		return m, nil
+	case "enter":
+		idx := m.alignmentPick
+		if idx < 0 || idx >= len(m.alignmentCandidates) {
+			idx = 0
+		}
+		return m.applyCandidate(idx, 0)
+	case "a", "b", "c", "d":
+		idx := m.alignmentPick
+		if idx < 0 || idx >= len(m.alignmentCandidates) {
+			idx = 0
+		}
+		return m.applyCandidate(idx, int(s[0]-'a')+1)
+	}
+	return m, nil
+}
+
+// applyCandidate applies the chosen candidate (optionally with one of its
+// +- half-beat / +- one-bar offset variants) through the shared apply path
+// and closes the confirm overlay.
+func (m ViewerModel) applyCandidate(idx, varIdx int) (ViewerModel, tea.Cmd) {
+	if idx < 0 || idx >= len(m.alignmentCandidates) {
+		return m, nil
+	}
+	c := m.alignmentCandidates[idx]
+	offset := c.Alignment.Offset
+	if varIdx > 0 && varIdx-1 < len(c.Variants) {
+		offset = c.Variants[varIdx-1].Offset
+	}
+	artist, title := "", ""
+	if m.tab != nil {
+		artist, title = m.tab.Artist, m.tab.Title
+	}
+	msg := msgs.AlignmentMsg{
+		SourceID:       m.currentSourceID(),
+		BPM:            c.Alignment.BPM,
+		Offset:         offset,
+		Confidence:     c.Coverage,
+		Artist:         artist,
+		Title:          title,
+		TabID:          m.tabID,
+		TabPath:        m.tabPath,
+		Onsets:         c.Alignment.Onsets,
+		OnsetStrengths: c.Alignment.Strengths,
+		Err:            c.Alignment.Err,
+	}
+	m.alignmentCandidates = nil
+	m.showAlignmentConfirm = false
+	m.alignmentPick = -1
+	return m.applyAlignment(msg)
 }

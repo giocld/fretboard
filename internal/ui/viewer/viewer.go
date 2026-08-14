@@ -62,6 +62,11 @@ type ViewerModel struct {
 	autoStrengths []float64 // normalized onset strengths, aligned with autoOnsets
 	autoActive    bool
 	syncDrift     float64 // seconds the playhead is off the nearest onset (0 = on)
+	// Alignment confirm overlay: the top-N ranked hypotheses waiting for the
+	// user to accept or dismiss (1/2/3 accept, a/b/c/d variant, Esc cancel).
+	alignmentCandidates  []player.Candidate
+	showAlignmentConfirm bool
+	alignmentPick        int // candidate index for the Enter/variant keys (-1 = none)
 	// Undo support.
 	prevOffset float64 // offset value before the last `o` reset
 	manualPick bool    // user chose the source manually; keep it across refreshes
@@ -87,11 +92,12 @@ type ViewerModel struct {
 func NewViewerModel() ViewerModel {
 	vp := viewport.New(80, 20)
 	return ViewerModel{
-		viewport: vp,
-		engine:   player.NewEngine(),
-		width:    80,
-		height:   24,
-		bpm:      120,
+		viewport:      vp,
+		engine:        player.NewEngine(),
+		width:         80,
+		height:        24,
+		bpm:           120,
+		alignmentPick: -1,
 	}
 }
 
@@ -137,6 +143,9 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.autoStrengths = nil
 	m.autoActive = false
 	m.syncDrift = 0
+	m.alignmentCandidates = nil
+	m.showAlignmentConfirm = false
+	m.alignmentPick = -1
 	m.restoreCalibrationForSource()
 	_ = m.engine.Stop()
 	m.engine.SetLoop(0, 0)
@@ -179,6 +188,8 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		return m.handleBPMDerived(msg)
 	case msgs.AlignmentMsg:
 		return m.handleAlignment(msg)
+	case msgs.AlignmentCandidatesMsg:
+		return m.handleAlignmentCandidates(msg)
 	case msgs.PlaybackStartedMsg:
 		return m.handlePlaybackStarted(msg)
 	case msgs.PlaybackErrorMsg:
@@ -188,6 +199,9 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 	case msgs.PlaybackTickMsg:
 		return m.handlePlaybackTick(msg)
 	case tea.KeyMsg:
+		if m.showAlignmentConfirm {
+			return m.handleAlignmentConfirmKey(msg)
+		}
 		return m.handleKey(msg)
 	}
 	var cmd tea.Cmd
