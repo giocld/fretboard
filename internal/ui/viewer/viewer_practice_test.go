@@ -165,6 +165,70 @@ func TestPerformanceModeToggles(t *testing.T) {
 	}
 }
 
+// realignSetup returns a viewer with a tab loaded, a real local audio file
+// on disk, and that source marked already-aligned — the state W/F9 realign
+// is expected to reset.
+func realignSetup(t *testing.T) ViewerModel {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "backing.mp3")
+	if err := os.WriteFile(path, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Artist: "Y", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	m.audioCatalog = mixedCatalog(path)
+	m.selectedSourceIdx = 5 // local:path
+	m.alignedSources = map[string]bool{"local:path": true}
+	return m
+}
+
+// TestF9RealignRerunsAlignment guards the F9 realign shortcut: like W, it
+// clears the already-aligned marker for the current source and kicks off a
+// fresh alignment. An already-aligned source normally makes maybeAlignCmd
+// return nil, so a non-nil cmd here proves the marker was cleared and the
+// alignment is re-running.
+func TestF9RealignRerunsAlignment(t *testing.T) {
+	m := realignSetup(t)
+	m, cmd := m.Update(key("f9"))
+	if cmd == nil {
+		t.Fatal("F9 should return an alignment cmd (marker must have been cleared)")
+	}
+	if m.infoMsg != "Re-running audio alignment..." {
+		t.Fatalf("infoMsg = %q, want the realign hint", m.infoMsg)
+	}
+}
+
+// TestWRealignRerunsAlignment guards W keeps re-running alignment after the
+// shared realign helper was extracted.
+func TestWRealignRerunsAlignment(t *testing.T) {
+	m := realignSetup(t)
+	m, cmd := m.Update(key("W"))
+	if cmd == nil {
+		t.Fatal("W should return an alignment cmd (marker must have been cleared)")
+	}
+	if m.infoMsg != "Re-running audio alignment..." {
+		t.Fatalf("infoMsg = %q, want the realign hint", m.infoMsg)
+	}
+}
+
+// TestF9RealignWithoutSource guards F9 without a loaded audio catalog shows
+// the same no-source error W does.
+func TestF9RealignWithoutSource(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	m.alignedSources = nil
+
+	m, _ = m.Update(key("f9"))
+	if m.errMsg != "No audio source to align" {
+		t.Fatalf("errMsg = %q, want %q", m.errMsg, "No audio source to align")
+	}
+}
+
 // TestPracticeTimerAccumulatesAndPersists guards G3.2: playback time banks
 // into practice_seconds metadata when playback stops, and survives a tab
 // reload (it comes back from the metadata).

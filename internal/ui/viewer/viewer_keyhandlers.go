@@ -113,21 +113,11 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		// candidate; the rejection is persisted so future sessions skip it.
 		m.jumpBuffer = ""
 		return m.rejectCurrentSource()
-	case "W":
+	case "W", "f9":
 		// Re-run the auto alignment for the current source (e.g. after a
-		// better recording was downloaded).
-		m.jumpBuffer = ""
-		if m.tab != nil && m.alignedSources != nil {
-			if id := m.currentSourceID(); id != "" {
-				delete(m.alignedSources, id)
-			}
-			m.errMsg = ""
-			m.infoMsg = "Re-running audio alignment..."
-			m.refresh()
-			return m, m.maybeAlignCmd()
-		}
-		m.errMsg = "No audio source to align"
-		m.refresh()
+		// better recording was downloaded). F9 is the explicit realign
+		// shortcut; W shares the same behavior.
+		return m.realignAudio()
 	case "m":
 		m.metronome = !m.metronome
 		m.jumpBuffer = ""
@@ -170,4 +160,24 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
+}
+
+// realignAudio re-runs the auto alignment for the current source: it clears
+// the already-aligned marker so maybeAlignCmd starts a fresh analysis, and
+// reports an error when there is no tab or audio catalog to align. Shared by
+// the W and F9 keys.
+func (m ViewerModel) realignAudio() (ViewerModel, tea.Cmd) {
+	m.jumpBuffer = ""
+	if m.tab != nil && m.alignedSources != nil {
+		if id := m.currentSourceID(); id != "" {
+			delete(m.alignedSources, id)
+		}
+		m.errMsg = ""
+		m.infoMsg = "Re-running audio alignment..."
+		m.refresh()
+		return m, m.maybeAlignCmd()
+	}
+	m.errMsg = "No audio source to align"
+	m.refresh()
+	return m, nil
 }
