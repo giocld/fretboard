@@ -25,8 +25,11 @@ func newSongsterrClient(rl *rateLimiter) *songsterrClient {
 	}
 }
 
-func (c *songsterrClient) Search(query string) ([]SearchResult, error) {
-	return c.SearchPage(query, 1)
+// songsterrTrack is one playable version of a song on Songsterr, shared by
+// the search response decode and the instrument picker.
+type songsterrTrack struct {
+	Instrument string `json:"instrument"`
+	Views      int    `json:"views"`
 }
 
 // SearchPage queries Songsterr with a per-page result size (page 1 = 15,
@@ -59,13 +62,10 @@ func (c *songsterrClient) SearchPage(query string, page int) ([]SearchResult, er
 		return nil, err
 	}
 	var songs []struct {
-		SongID int64  `json:"songId"`
-		Artist string `json:"artist"`
-		Title  string `json:"title"`
-		Tracks []struct {
-			Instrument string `json:"instrument"`
-			Views      int    `json:"views"`
-		} `json:"tracks"`
+		SongID int64            `json:"songId"`
+		Artist string           `json:"artist"`
+		Title  string           `json:"title"`
+		Tracks []songsterrTrack `json:"tracks"`
 	}
 	if err := json.Unmarshal(body, &songs); err != nil {
 		return nil, fmt.Errorf("songsterr decode: %w", err)
@@ -84,10 +84,7 @@ func (c *songsterrClient) SearchPage(query string, page int) ([]SearchResult, er
 	return out, nil
 }
 
-func pickSongsterrInstrument(tracks []struct {
-	Instrument string `json:"instrument"`
-	Views      int    `json:"views"`
-}) string {
+func pickSongsterrInstrument(tracks []songsterrTrack) string {
 	best := "Guitar"
 	bestViews := -1
 	for _, t := range tracks {
@@ -121,9 +118,8 @@ func (c *songsterrClient) Fetch(id int64, artist, title string, ug *Client) (*mo
 		}
 		tab, err := ug.Fetch(r)
 		if err == nil {
-			if tab.Metadata == nil {
-				tab.Metadata = map[string]string{}
-			}
+			// ug.Fetch always runs applyUGMetadata, which initializes
+			// Metadata, so it is safe to write keys directly.
 			tab.Metadata[model.MetaKeySource] = "songsterr-via-ug"
 			tab.Metadata[model.MetaKeySongsterrID] = fmt.Sprintf("%d", id)
 			return tab, nil

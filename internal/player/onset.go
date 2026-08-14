@@ -91,7 +91,6 @@ func onsetStrength(env []float64) []float64 {
 	for i, e := range env {
 		energy[i] = e * e
 	}
-	// Half-wave-rectified delta.
 	delta := make([]float64, len(env))
 	for i := 1; i < len(env); i++ {
 		d := energy[i] - energy[i-1]
@@ -99,7 +98,6 @@ func onsetStrength(env []float64) []float64 {
 			delta[i] = d
 		}
 	}
-	// Smooth with a 3-frame moving average.
 	sm := make([]float64, len(delta))
 	for i := range delta {
 		sum, n := 0.0, 0.0
@@ -129,13 +127,7 @@ func pickOnsets(strength []float64, frameMs int, gap time.Duration, k float64) [
 	if len(strength) == 0 {
 		return nil
 	}
-	if k <= 0 {
-		k = 1.5
-	}
 	minGapFrames := int(gap.Milliseconds()) / frameMs
-	if minGapFrames < 1 {
-		minGapFrames = 1
-	}
 	var onsets []Onset
 	last := -minGapFrames
 	// Floor relative to the global peak: weak-but-real onsets (unaccented
@@ -151,7 +143,7 @@ func pickOnsets(strength []float64, frameMs int, gap time.Duration, k float64) [
 	win := 2000 / frameMs
 	for i := 1; i < len(strength)-1; i++ {
 		if strength[i] <= strength[i-1] || strength[i] <= strength[i+1] {
-			continue // not a local max
+			continue
 		}
 		lo := i - win
 		if lo < 0 {
@@ -181,13 +173,7 @@ func pickOnsets(strength []float64, frameMs int, gap time.Duration, k float64) [
 		if i-last < minGapFrames {
 			continue
 		}
-		// Refine to the sharpest peak in a small neighborhood.
-		best := i
-		for j := i + 1; j < len(strength) && j <= i+2; j++ {
-			if strength[j] > strength[best] {
-				best = j
-			}
-		}
+		best := sharpestPeak(strength, i)
 		onsets = append(onsets, Onset{
 			Time:     time.Duration(best*frameMs) * time.Millisecond,
 			Strength: strength[best],
@@ -211,15 +197,11 @@ func pickOnsets(strength []float64, frameMs int, gap time.Duration, k float64) [
 			if i-weakLast < minGapFrames {
 				continue
 			}
-			best := i
-			for j := i + 1; j < len(strength) && j <= i+2; j++ {
-				if strength[j] > strength[best] {
-					best = j
-				}
-			}
+			best := sharpestPeak(strength, i)
+			bestTime := time.Duration(best*frameMs) * time.Millisecond
 			merged := false
 			for oi := range onsets {
-				if absDur(onsets[oi].Time-time.Duration(best*frameMs)*time.Millisecond) <= time.Duration(frameMs)*time.Millisecond {
+				if absDur(onsets[oi].Time-bestTime) <= time.Duration(frameMs)*time.Millisecond {
 					if strength[best] > onsets[oi].Strength {
 						onsets[oi].Strength = strength[best]
 					}
@@ -229,7 +211,7 @@ func pickOnsets(strength []float64, frameMs int, gap time.Duration, k float64) [
 			}
 			if !merged {
 				onsets = append(onsets, Onset{
-					Time:     time.Duration(best*frameMs) * time.Millisecond,
+					Time:     bestTime,
 					Strength: strength[best],
 				})
 			}
@@ -238,6 +220,18 @@ func pickOnsets(strength []float64, frameMs int, gap time.Duration, k float64) [
 		}
 	}
 	return onsets
+}
+
+// sharpestPeak refines a local maximum at i to the strongest sample within
+// two frames, so picked times sit on the sharpest point of the onset.
+func sharpestPeak(strength []float64, i int) int {
+	best := i
+	for j := i + 1; j < len(strength) && j <= i+2; j++ {
+		if strength[j] > strength[best] {
+			best = j
+		}
+	}
+	return best
 }
 
 // DetectOnsets returns the detected note-onset times of the recording, or an
@@ -283,7 +277,7 @@ func writeSyntheticWAVAlt(path string, rate int, clicks []time.Duration, clickDu
 	for ci, c := range clicks {
 		start := int(c.Seconds() * float64(rate))
 		strong := strongEvery > 0 && ci%strongEvery == 0
-		for i := 0; i < clickLen && start+i >= 0; i++ {
+		for i := 0; i < clickLen; i++ {
 			clickSamples[start+i] = true
 			if strong {
 				strongSamples[start+i] = true
@@ -309,14 +303,15 @@ func writeSyntheticWAVAlt(path string, rate int, clicks []time.Duration, clickDu
 	buf.WriteString("data")
 	_ = binary.Write(&buf, binary.LittleEndian, uint32(total*2))
 	phase := 0.0
+	phaseInc := 2 * math.Pi * 440 / float64(rate)
 	for i := 0; i < total; i++ {
 		var v int16
 		switch {
 		case strongSamples[i]:
-			phase += 2 * math.Pi * 440 / float64(rate)
+			phase += phaseInc
 			v = int16(12000 * math.Sin(phase))
 		case clickSamples[i]:
-			phase += 2 * math.Pi * 440 / float64(rate)
+			phase += phaseInc
 			v = int16(4500 * math.Sin(phase))
 		default:
 			// Quiet noise floor so silence detection never confuses us.
@@ -325,10 +320,5 @@ func writeSyntheticWAVAlt(path string, rate int, clicks []time.Duration, clickDu
 		}
 		_ = binary.Write(&buf, binary.LittleEndian, v)
 	}
-	return writeFile(path, buf.Bytes())
-}
-
-// writeFile writes bytes (test helper decoupled from os import usage).
-func writeFile(path string, data []byte) error {
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, buf.Bytes(), 0o644)
 }

@@ -38,7 +38,6 @@ func RenderAudioPicker(width int, catalog player.AudioCatalog, cursor int, fetch
 	return "\n" + kit.RenderPanel(width-2, title, body)
 }
 
-// categoryBadge renders a short performance-type badge for a source.
 func categoryBadge(c player.AudioCategory) string {
 	switch c {
 	case player.CatOfficial:

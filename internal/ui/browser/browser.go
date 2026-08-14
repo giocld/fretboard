@@ -236,10 +236,9 @@ func (m BrowserModel) handleSearchKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 		if m.searchInput != "" {
 			m.searchInput = ""
 			return m, m.apply()
-		} else {
-			m.searchActive = false
-			return m, func() tea.Msg { return msgs.GoHomeMsg{} }
 		}
+		m.searchActive = false
+		return m, func() tea.Msg { return msgs.GoHomeMsg{} }
 	case "o":
 		m.searchActive = false
 		m.searchInput = ""
@@ -320,7 +319,7 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 				m.errMsg = ""
 				m.updateTabRow(row.ID, func(r *library.TabRow) { r.Favorite = newFav })
 				return m, m.apply()
-			} else if err != nil {
+			} else {
 				m.errMsg = "Favorite failed: " + err.Error()
 				m.refresh()
 			}
@@ -371,10 +370,6 @@ func (m BrowserModel) handleNormalKey(msg tea.KeyMsg) (BrowserModel, tea.Cmd) {
 			m.searchInput = ""
 			m.searchActive = false
 			m.cursor = 0
-			return m, m.apply()
-		}
-		if m.searchActive {
-			m.searchActive = false
 			return m, m.apply()
 		}
 		return m, func() tea.Msg { return msgs.GoHomeMsg{} }
@@ -456,13 +451,10 @@ func (m *BrowserModel) apply() tea.Cmd {
 	m.filtered = m.filterAndSort(m.tabs)
 	if len(m.filtered) == 0 {
 		m.cursor = 0
-	} else {
-		if m.cursor >= len(m.filtered) {
-			m.cursor = len(m.filtered) - 1
-		}
-		if m.cursor < 0 {
-			m.cursor = 0
-		}
+	} else if m.cursor >= len(m.filtered) {
+		m.cursor = len(m.filtered) - 1
+	} else if m.cursor < 0 {
+		m.cursor = 0
 	}
 	m.ensureCursorVisible()
 	m.refresh()
@@ -489,13 +481,9 @@ func (m BrowserModel) filterAndSort(rows []library.TabRow) []library.TabRow {
 			targets = append(targets, r.Title+" "+r.Artist+" "+formatRowTuning(r.Tuning))
 		}
 		matches := fuzzy.Find(m.searchInput, targets)
-		var filtered []library.TabRow
-		seen := make(map[int]bool)
-		for _, m := range matches {
-			if !seen[m.Index] {
-				seen[m.Index] = true
-				filtered = append(filtered, rows[m.Index])
-			}
+		filtered := make([]library.TabRow, 0, len(matches))
+		for _, match := range matches {
+			filtered = append(filtered, rows[match.Index])
 		}
 		out = filtered
 	}
@@ -567,8 +555,6 @@ func (m BrowserModel) renderList() string {
 	// Table header with a sort indicator on the active column.
 	header := fmt.Sprintf("%-3s %-34s %-24s %s", " ", "TITLE", "ARTIST", "TUNING")
 	switch m.sortMode {
-	case SortRecent:
-		header = fmt.Sprintf("%-3s %-34s %-24s %s", " ", "TITLE", "ARTIST", "TUNING")
 	case SortAlpha:
 		header = fmt.Sprintf("%-3s %-34s %-24s %s", " ", "TITLE ▼", "ARTIST", "TUNING")
 	case SortArtist:
@@ -715,15 +701,13 @@ func formatRowTuning(raw string) string {
 	return raw
 }
 
-func (m *BrowserModel) resetFilter() {
+// ResetFilter clears the search filter and returns to the full list.
+func (m *BrowserModel) ResetFilter() {
 	m.searchActive = false
 	m.searchInput = ""
 	m.errMsg = ""
 	m.apply()
 }
-
-// ResetFilter clears the search filter and returns to the full list.
-func (m *BrowserModel) ResetFilter() { m.resetFilter() }
 
 // SetAutoImportWarn updates the auto-import warning banner.
 func (m *BrowserModel) SetAutoImportWarn(msg string) { m.autoImportWarn = msg }

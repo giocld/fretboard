@@ -11,7 +11,6 @@ import (
 	"fretboard/internal/model"
 )
 
-// gpExtensions lists Guitar Pro file extensions supported via gp-parser.
 var gpExtensions = []string{".gp3", ".gp4", ".gp5", ".gpx", ".gp"}
 
 // IsGpFile reports whether path looks like a Guitar Pro file.
@@ -101,9 +100,6 @@ func decodeGPTabJSON(data []byte) (*model.Tab, error) {
 		Artist:   raw.Artist,
 		Tuning:   model.Tuning(raw.Tuning),
 		Metadata: raw.Metadata,
-	}
-	if tab.Metadata == nil {
-		tab.Metadata = map[string]string{}
 	}
 	for _, b := range raw.Bars {
 		bar := model.Bar{

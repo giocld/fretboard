@@ -130,11 +130,11 @@ func (m *HomeModel) moveCursor(delta int) {
 }
 
 func (m HomeModel) maxCursor() int {
-	n := homeActionCount - 1
-	if len(m.recentTabs()) > 0 {
-		n = homeActionCount + len(m.recentTabs()) - 1
+	recent := m.recentTabs()
+	if len(recent) == 0 {
+		return homeActionCount - 1
 	}
-	return n
+	return homeActionCount + len(recent) - 1
 }
 
 func (m HomeModel) activate() tea.Cmd {
@@ -146,13 +146,11 @@ func (m HomeModel) activate() tea.Cmd {
 			return func() tea.Msg { return msgs.HomeSearchMsg{} }
 		case 2:
 			return nil // import help toggled via showImportHelp in Update
-		case 3:
-			return func() tea.Msg { return msgs.HomeSettingsMsg{} }
 		}
 	}
 	recent := m.recentTabs()
 	idx := m.cursor - homeActionCount
-	if idx >= 0 && idx < len(recent) {
+	if idx < len(recent) {
 		id := recent[idx].ID
 		return func() tea.Msg { return msgs.TabSelectedMsg{ID: id} }
 	}
@@ -168,11 +166,7 @@ func (m HomeModel) recentTabs() []library.TabRow {
 	sort.Slice(sorted, func(i, j int) bool {
 		return library.MoreRecentlyUsed(sorted[i], sorted[j])
 	})
-	n := 3
-	if len(sorted) < n {
-		n = len(sorted)
-	}
-	return sorted[:n]
+	return sorted[:min(3, len(sorted))]
 }
 
 func (m *HomeModel) loadPreview() string {
@@ -184,7 +178,7 @@ func (m *HomeModel) loadPreview() string {
 		return ""
 	}
 	idx := m.cursor - homeActionCount
-	if idx < 0 || idx >= len(recent) {
+	if idx >= len(recent) {
 		return ""
 	}
 	row := recent[idx]

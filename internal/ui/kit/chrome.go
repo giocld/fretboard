@@ -1,6 +1,7 @@
 package kit
 
 import (
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -34,9 +35,6 @@ func RenderTooSmall(width, height int) string {
 
 // FormatBreadcrumb joins navigation segments with a visual separator.
 func FormatBreadcrumb(parts ...string) string {
-	if len(parts) == 0 {
-		return ""
-	}
 	return strings.Join(parts, " › ")
 }
 
@@ -83,10 +81,11 @@ func RenderFooterWithStatus(width int, status string, hints []KeyHint) string {
 		}
 		return strings.Join(parts, "  ")
 	}
-	content := render(hints)
+	var statusPrefix string
 	if status != "" {
-		content = FooterStatusStyle.Render(status) + PanelDividerStyle.Render(" │ ") + content
+		statusPrefix = FooterStatusStyle.Render(status) + PanelDividerStyle.Render(" │ ")
 	}
+	content := statusPrefix + render(hints)
 	fit := width - 2 // StatusBarStyle adds 1 cell of padding on each side
 	if lipgloss.Width(content) <= fit || len(hints) <= 1 {
 		return StatusBarStyle.Render(content)
@@ -96,10 +95,7 @@ func RenderFooterWithStatus(width int, status string, hints []KeyHint) string {
 	for {
 		trimmed := append([]KeyHint{first}, mid...)
 		trimmed = append(trimmed, last)
-		content = render(trimmed)
-		if status != "" {
-			content = FooterStatusStyle.Render(status) + PanelDividerStyle.Render(" │ ") + content
-		}
+		content = statusPrefix + render(trimmed)
 		if lipgloss.Width(content) <= fit || len(mid) == 0 {
 			return StatusBarStyle.Render(content)
 		}
@@ -126,7 +122,6 @@ func RenderPanel(width int, title, content string) string {
 
 // LayoutScreen stacks header, body, and footer into a full-screen view.
 func LayoutScreen(width, height int, breadcrumb, body, footer string) string {
-	_ = width
 	if TermTooSmall(width, height) {
 		return RenderTooSmall(width, height)
 	}
@@ -142,13 +137,5 @@ func LayoutScreen(width, height int, breadcrumb, body, footer string) string {
 }
 
 func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var digits []byte
-	for n > 0 {
-		digits = append([]byte{byte('0' + n%10)}, digits...)
-		n /= 10
-	}
-	return string(digits)
+	return strconv.Itoa(n)
 }

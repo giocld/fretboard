@@ -15,7 +15,6 @@ type Client struct {
 	ugHTML    *ugHTMLClient
 	songsterr *songsterrClient
 	textTabs  *textTabClient
-	delay     time.Duration
 }
 
 // NewClient creates a scraper client. delay controls the minimum time between
@@ -28,7 +27,6 @@ func NewClient(delay time.Duration) *Client {
 		ugHTML:    newUGHTMLClient(rl),
 		songsterr: newSongsterrClient(rl),
 		textTabs:  newTextTabClient(rl),
-		delay:     delay,
 	}
 }
 

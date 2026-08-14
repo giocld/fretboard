@@ -84,7 +84,7 @@ func (s *Store) addMissingColumns() error {
 }
 
 func (s *Store) tableColumns(table string) (map[string]bool, error) {
-	rows, err := s.db.Query(`PRAGMA table_info(` + table + `)`)
+	rows, err := s.db.Query(`SELECT name FROM pragma_table_info('` + table + `')`)
 	if err != nil {
 		return nil, fmt.Errorf("read table info: %w", err)
 	}
@@ -92,11 +92,8 @@ func (s *Store) tableColumns(table string) (map[string]bool, error) {
 
 	existing := make(map[string]bool)
 	for rows.Next() {
-		var cid int
-		var name, ctype string
-		var notnull, pk int
-		var dflt sql.NullString
-		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+		var name string
+		if err := rows.Scan(&name); err != nil {
 			return nil, fmt.Errorf("scan table info: %w", err)
 		}
 		existing[name] = true

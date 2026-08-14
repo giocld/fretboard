@@ -9,33 +9,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// fetchAudioCmd looks up backing audio in the background.
-func fetchAudioCmd(tab *model.Tab, tabPath string, tabID int64, audioDirs []string, allowOnline bool) tea.Cmd {
-	return func() tea.Msg {
-		if tab == nil {
-			return msgs.AudioFetchedMsg{}
-		}
-		cat, err := player.BuildAudioCatalog(tab, tabPath, audioDirs, allowOnline)
-		if err != nil || len(cat.Sources) == 0 {
-			return msgs.AudioFetchedMsg{Err: err, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
-		}
-		idx := pickAudioSourceIndex(tab, cat)
-		src := cat.Sources[idx]
-		path := src.Path
-		if src.Kind == player.SourceOnline && (path == "" || !player.OnlineAudioAvailable()) {
-			var derr error
-			path, derr = player.EnsureAudioSource(tab, src)
-			if derr != nil {
-				return msgs.AudioFetchedMsg{Err: derr, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
-			}
-		}
-		if src.Kind == player.SourceMIDI {
-			return msgs.AudioFetchedMsg{Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
-		}
-		return msgs.AudioFetchedMsg{Path: path, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
-	}
-}
-
 // startPlaybackCmd launches playback for the selected audio source,
 // applying the practice-tool settings (metronome, count-in, program).
 func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath string, audioDirs []string, src player.AudioSource, startIdx int, opts playbackOpts) tea.Cmd {
@@ -61,7 +34,7 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 			src.Path = path
 		}
 		step := schedule[startIdx]
-		dur := time.Duration(player.StepDuration(step.Ticks, bpm)) * time.Millisecond
+		dur := stepDur(step.Ticks, bpm)
 		if src.Kind == player.SourceMIDI {
 			engine.Synth.Metronome = opts.metronome
 			engine.Synth.Program = opts.program
@@ -107,24 +80,14 @@ type playbackOpts struct {
 	program   int
 }
 
-// playbackOpts snapshots the current practice-tool state.
 func (m ViewerModel) playbackOpts() playbackOpts {
 	return playbackOpts{metronome: m.metronome, countIn: m.countIn, program: m.program}
 }
 
-// tickCmd returns a command that waits for the next playback tick.
 func tickCmd(duration time.Duration) tea.Cmd {
 	return tea.Tick(duration, func(time.Time) tea.Msg {
 		return msgs.PlaybackTickMsg{}
 	})
-}
-
-// beatStep returns the duration of one 16th-note step at the given BPM.
-func beatStep(bpm int) time.Duration {
-	if bpm <= 0 {
-		bpm = 120
-	}
-	return time.Duration(60_000/bpm/4) * time.Millisecond
 }
 
 // monitorPlaybackCmd polls synth process health while audio may be playing.
@@ -136,7 +99,6 @@ func monitorPlaybackCmd(engine *player.Engine) tea.Cmd {
 
 var (
 	errNoPlaybackSteps = playerErr("no playable notes in tab")
-	errAudioNotReady   = playerErr("audio still downloading — wait or press a to pick a source")
 	errPlaybackStopped = playerErr("playback stopped")
 )
 

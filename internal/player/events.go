@@ -14,9 +14,6 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 	if tab == nil {
 		return nil, errors.New("nil tab")
 	}
-	if bpm <= 0 {
-		bpm = 120
-	}
 	if len(tab.Tuning) == 0 {
 		return nil, errors.New("tab has no tuning")
 	}
@@ -29,9 +26,6 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 			continue
 		}
 		cols := maxColumns(bar.Strings)
-		if cols == 0 {
-			continue
-		}
 		noteCols := NoteColumns(bar)
 		if len(noteCols) == 0 {
 			continue
@@ -39,9 +33,6 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 		for i, col := range noteCols {
 			notes, _ := collectNotesAt(tab.Tuning, bar.Strings, col)
 			advance := columnTicks(bar, col, cols, noteCols, i)
-			if advance < 1 {
-				advance = ticksPerQuarter / 4
-			}
 			sustain := sustainForNote(bar, col, advance)
 			if len(notes) > 0 {
 				for _, n := range notes {

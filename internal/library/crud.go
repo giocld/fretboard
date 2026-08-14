@@ -127,26 +127,7 @@ func (s *Store) List() ([]TabRow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list: %w", err)
 	}
-	defer rows.Close()
-
-	var out []TabRow
-	for rows.Next() {
-		var r TabRow
-		var fav int
-		var lastPlayed sql.NullString
-		if err := rows.Scan(&r.ID, &r.Filepath, &r.Title, &r.Artist, &r.Tuning, &fav, &r.PlayCount, &lastPlayed, &r.SourceBadge); err != nil {
-			return nil, fmt.Errorf("scan row: %w", err)
-		}
-		r.Favorite = fav != 0
-		if lastPlayed.Valid {
-			r.LastPlayed = lastPlayed.String
-		}
-		out = append(out, r)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows: %w", err)
-	}
-	return out, nil
+	return scanTabRows(rows)
 }
 
 // Search returns tabs whose title or artist matches the query.
@@ -167,8 +148,14 @@ func (s *Store) Search(query string) ([]TabRow, error) {
 	if err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
-	defer rows.Close()
+	return scanTabRows(rows)
+}
 
+// scanTabRows converts every row of a query result into TabRow summaries,
+// mapping the SQLite integer favorite and nullable last_played to the Go
+// types the UI consumes.
+func scanTabRows(rows *sql.Rows) ([]TabRow, error) {
+	defer rows.Close()
 	var out []TabRow
 	for rows.Next() {
 		var r TabRow
@@ -187,6 +174,19 @@ func (s *Store) Search(query string) ([]TabRow, error) {
 		return nil, fmt.Errorf("rows: %w", err)
 	}
 	return out, nil
+}
+
+// rowsAffected turns a zero-row UPDATE/DELETE into ErrNotFound and unwraps
+// RowsAffected errors, so every mutation reports a missing tab the same way.
+func rowsAffected(res sql.Result, id int64) error {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if n == 0 {
+		return fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
+	}
+	return nil
 }
 
 // UpdateMeta edits the display title/artist of a tab, rewriting both the
@@ -208,14 +208,7 @@ func (s *Store) UpdateMeta(id int64, title, artist string) error {
 	if err != nil {
 		return fmt.Errorf("update meta: %w", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("update meta: rows affected: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
-	}
-	return nil
+	return rowsAffected(res, id)
 }
 
 // SetFavorite toggles the favorite flag.
@@ -228,14 +221,7 @@ func (s *Store) SetFavorite(id int64, favorite bool) error {
 	if err != nil {
 		return fmt.Errorf("set favorite: %w", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("rows affected: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
-	}
-	return nil
+	return rowsAffected(res, id)
 }
 
 // RecordPlay increments play_count and updates last_played for a tab.
@@ -248,14 +234,7 @@ func (s *Store) RecordPlay(id int64) error {
 	if err != nil {
 		return fmt.Errorf("record play: %w", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("rows affected: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
-	}
-	return nil
+	return rowsAffected(res, id)
 }
 
 // Delete removes a tab by ID.
@@ -264,14 +243,7 @@ func (s *Store) Delete(id int64) error {
 	if err != nil {
 		return fmt.Errorf("delete: %w", err)
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("rows affected: %w", err)
-	}
-	if n == 0 {
-		return fmt.Errorf("library: tab %d: %w", id, ErrNotFound)
-	}
-	return nil
+	return rowsAffected(res, id)
 }
 
 // ImportDirectory walks a directory recursively and imports .txt tabs and

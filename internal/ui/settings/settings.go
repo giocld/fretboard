@@ -13,12 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// SettingsModel is the settings list.
 type SettingsModel struct {
 	cursor   int
 	width    int
 	height   int
-	errMsg   string
 	cfg      config.Config
 	themes   []string
 	themeIdx int
@@ -41,10 +39,8 @@ func NewSettingsModel() SettingsModel {
 // Init is part of the tea.Model interface.
 func (m SettingsModel) Init() tea.Cmd { return nil }
 
-// rowCount is the number of settings rows.
 func (m SettingsModel) rowCount() int { return 3 }
 
-// Update handles navigation and value changes.
 func (m SettingsModel) Update(msg tea.Msg) (SettingsModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -69,7 +65,6 @@ func (m SettingsModel) Update(msg tea.Msg) (SettingsModel, tea.Cmd) {
 	return m, nil
 }
 
-// adjust applies one interaction to the row under the cursor.
 func (m *SettingsModel) adjust(row int, key string) {
 	switch row {
 	case 0: // volume
@@ -111,7 +106,6 @@ func (m *SettingsModel) adjust(row int, key string) {
 // Config returns the adjusted configuration for the router to apply.
 func (m SettingsModel) Config() config.Config { return m.cfg }
 
-// View renders the settings list.
 func (m SettingsModel) View() string {
 	rows := []string{
 		fmt.Sprintf("Volume        %3d%%   (left/right adjust, enter mutes)", m.cfg.VolumePercent),

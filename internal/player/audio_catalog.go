@@ -89,21 +89,23 @@ func (c *AudioCatalog) SetSourcePath(idx int, path string) {
 
 // BestIndex returns the highest-scoring non-MIDI source, or 0.
 func (c AudioCatalog) BestIndex() int {
-	best := -1
-	bestScore := -1<<31 - 1
+	best := 0
+	bestScore := 0
+	found := false
 	for i, s := range c.Sources {
 		if s.Kind == SourceMIDI {
 			continue
 		}
-		if s.Score > bestScore {
+		if !found || s.Score > bestScore {
+			found = true
 			bestScore = s.Score
 			best = i
 		}
 	}
-	if best >= 0 {
-		return best
+	if !found {
+		return 0
 	}
-	return 0
+	return best
 }
 
 // HasStrictRejected reports whether the catalog contains online candidates
@@ -178,30 +180,32 @@ func BuildAudioCatalog(tab *model.Tab, tabPath string, extraDirs []string, searc
 	return cat, nil
 }
 
+// containsAny reports whether s contains any of the keywords.
+func containsAny(s string, kws ...string) bool {
+	for _, kw := range kws {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // ClassifyLocalFilename classifies a local audio file from its name, so the
 // strict picker treats "Song (Live).mp3" the same way it treats a live
 // YouTube result instead of blindly trusting any local file.
 func ClassifyLocalFilename(name string) AudioCategory {
 	n := strings.ToLower(strings.TrimSpace(name))
-	containsAny := func(kws ...string) bool {
-		for _, kw := range kws {
-			if strings.Contains(n, kw) {
-				return true
-			}
-		}
-		return false
-	}
 	// Lessons first, then covers (before live: "live cover"), then live.
 	switch {
-	case containsAny("lesson", "tutorial", "how to play", "chord chart"):
+	case containsAny(n, "lesson", "tutorial", "how to play", "chord chart"):
 		return CatLesson
-	case containsAny("karaoke", "backing track", "minus one", "without vocals", "no vocals"):
+	case containsAny(n, "karaoke", "backing track", "minus one", "without vocals", "no vocals"):
 		return CatBacking
-	case containsAny("cover", "tribute", "reimagined", "reinterpretation"):
+	case containsAny(n, "cover", "tribute", "reimagined", "reinterpretation"):
 		return CatCover
-	case containsAny("live", "mtv unplugged", "session", "soundcheck"):
+	case containsAny(n, "live", "mtv unplugged", "session", "soundcheck"):
 		return CatLive
-	case containsAny("official audio", "official video", "official music video", "(official)", "studio"):
+	case containsAny(n, "official audio", "official video", "official music video", "(official)", "studio"):
 		return CatOfficial
 	default:
 		return CatLocal
@@ -230,18 +234,10 @@ func ClassifyAudioCandidate(artist, song, title, channel, description string) Au
 		return strings.Contains(s, " "+w) || strings.HasPrefix(s, w+" ") || strings.HasSuffix(s, " "+w) || s == w ||
 			strings.Contains(s, "("+w+")") || strings.Contains(s, "["+w+"]") || strings.Contains(s, " - "+w+" ") || strings.Contains(s, " "+w+" ")
 	}
-	containsAny := func(s string, kws ...string) bool {
-		for _, kw := range kws {
-			if strings.Contains(s, kw) {
-				return true
-			}
-		}
-		return false
-	}
 
 	// Lessons and tutorials first: they are never what we want to play along
 	// with, even on an artist channel.
-	if containsAny(t+" "+desc, "lesson", "tutorial", "how to play", "how to", "guitar tab", "tablature", "chord chart", "reaction", "breakdown", "explained") {
+	if containsAny(t+" "+desc, "lesson", "tutorial", "how to", "guitar tab", "tablature", "chord chart", "reaction", "breakdown", "explained") {
 		return CatLesson
 	}
 	// Karaoke and backing tracks are instrumentals with the same arrangement.
@@ -313,11 +309,8 @@ func ScoreYouTubeResult(tab *model.Tab, title, channel, description string, dura
 	if strings.Contains(ch, "vevo") {
 		score += 25
 	}
-	for _, kw := range []string{"official audio", "official video", "official music video", "official visualizer", "official lyric"} {
-		if strings.Contains(t, kw) {
-			score += 30
-			break
-		}
+	if containsAny(t, "official audio", "official video", "official music video", "official visualizer", "official lyric") {
+		score += 30
 	}
 
 	// Generic guitar-friendly content.
@@ -367,11 +360,8 @@ func ScoreYouTubeResult(tab *model.Tab, title, channel, description string, dura
 			score -= 40
 		}
 	}
-	for _, kw := range []string{"8d audio", "nightcore", "slowed", "sped up", "remix", "bass boost", "reverb"} {
-		if strings.Contains(t, kw) {
-			score -= 70
-			break
-		}
+	if containsAny(t, "8d audio", "nightcore", "slowed", "sped up", "remix", "bass boost", "reverb") {
+		score -= 70
 	}
 	if strings.Contains(t, "cover") && artist != "" && !strings.Contains(ch, artist) {
 		score -= 6

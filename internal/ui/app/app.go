@@ -39,21 +39,18 @@ const (
 // AppModel is the top-level Bubble Tea model that routes between the landing
 // page, library browser, tab viewer, online search view, and help screen.
 type AppModel struct {
-	view             viewType
-	prev             viewType
-	store            *library.Store
-	home             home.HomeModel
-	library          browser.BrowserModel
-	viewer           viewer.ViewerModel
-	search           search.SearchModel
-	help             help.HelpModel
-	settings         settings.SettingsModel
-	watcher          *watcher.Watcher
-	autoImportPath   string
-	audioSearchPaths []string
-	width            int
-	height           int
-	startupCmd       tea.Cmd
+	view           viewType
+	prev           viewType
+	store          *library.Store
+	home           home.HomeModel
+	library        browser.BrowserModel
+	viewer         viewer.ViewerModel
+	search         search.SearchModel
+	help           help.HelpModel
+	settings       settings.SettingsModel
+	watcher        *watcher.Watcher
+	autoImportPath string
+	startupCmd     tea.Cmd
 }
 
 // NewApp creates a new TUI app for e2e tests and external callers that don't
@@ -67,8 +64,6 @@ func NewApp() AppModel {
 		search:   search.NewSearchModel(nil),
 		help:     help.NewHelpModel(),
 		settings: settings.NewSettingsModel(),
-		width:    80,
-		height:   24,
 	}
 }
 
@@ -78,18 +73,15 @@ func NewAppWithOptions(store *library.Store, client *scraper.Client, autoImportP
 	v := viewer.NewViewerModel()
 	v.SetAudioDirs(audioSearchPaths)
 	return AppModel{
-		view:             viewHome,
-		store:            store,
-		home:             home.NewHomeModel(store),
-		library:          browser.NewBrowserModel(store),
-		viewer:           v,
-		search:           search.NewSearchModel(client),
-		help:             help.NewHelpModel(),
-		settings:         settings.NewSettingsModel(),
-		autoImportPath:   autoImportPath,
-		audioSearchPaths: append([]string(nil), audioSearchPaths...),
-		width:            80,
-		height:           24,
+		view:           viewHome,
+		store:          store,
+		home:           home.NewHomeModel(store),
+		library:        browser.NewBrowserModel(store),
+		viewer:         v,
+		search:         search.NewSearchModel(client),
+		help:           help.NewHelpModel(),
+		settings:       settings.NewSettingsModel(),
+		autoImportPath: autoImportPath,
 	}
 }
 
@@ -123,8 +115,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
 		m.home, _ = m.home.Update(msg)
 		m.library, _ = m.library.Update(msg)
 		m.viewer, _ = m.viewer.Update(msg)
@@ -263,13 +253,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case msgs.TabPrefsSaveMsg:
 		if m.store != nil && m.viewer.Tab() != nil {
-			path := strings.TrimSpace(m.viewer.TabPath())
-			if path == "" && m.viewer.TabID() > 0 {
-				if row, err := m.store.GetRow(m.viewer.TabID()); err == nil && row != nil {
-					path = row.Filepath
-				}
-			}
-			if path != "" {
+			if path := m.tabFilePath(); path != "" {
 				if _, err := m.store.Import(path, m.viewer.Tab()); err != nil {
 					m.viewer.SetError("Could not save tab preferences: " + err.Error())
 				}
@@ -385,13 +369,7 @@ func (m *AppModel) Shutdown() {
 	m.viewer.StopPlayback()
 	m.viewer.ShutdownAudio()
 	if m.store != nil && m.viewer.Tab() != nil {
-		path := strings.TrimSpace(m.viewer.TabPath())
-		if path == "" && m.viewer.TabID() > 0 {
-			if row, err := m.store.GetRow(m.viewer.TabID()); err == nil && row != nil {
-				path = row.Filepath
-			}
-		}
-		if path != "" {
+		if path := m.tabFilePath(); path != "" {
 			_, _ = m.store.Import(path, m.viewer.Tab())
 		}
 	}
@@ -444,6 +422,19 @@ func (m AppModel) textInputActive() bool {
 	return false
 }
 
+// tabFilePath returns the on-disk path of the live tab. The viewer's in-memory
+// path can be empty when the tab came from online search, so fall back to the
+// library row for the persisted file.
+func (m *AppModel) tabFilePath() string {
+	path := strings.TrimSpace(m.viewer.TabPath())
+	if path == "" && m.viewer.TabID() > 0 {
+		if row, err := m.store.GetRow(m.viewer.TabID()); err == nil && row != nil {
+			path = row.Filepath
+		}
+	}
+	return path
+}
+
 func (m *AppModel) stopPlayback() {
 	m.viewer.StopPlayback()
 }
@@ -479,9 +470,10 @@ func (m *AppModel) openTab(id int64) tea.Cmd {
 
 func (m *AppModel) cycleTheme() {
 	names := kit.ThemeNames()
+	current := kit.CurrentTheme().Name
 	idx := 0
 	for i, n := range names {
-		if n == kit.CurrentTheme().Name {
+		if n == current {
 			idx = (i + 1) % len(names)
 			break
 		}

@@ -29,6 +29,8 @@ var noteToSemitone = map[string]int{
 	"G#": 8, "Ab": 8, "A": 9, "A#": 10, "Bb": 10, "B": 11, "Cb": 11,
 }
 
+var noteNames = []string{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
+
 // Semitone returns the MIDI note number for fretting `fret` on `stringIdx`.
 // Returns 0 for out-of-range indices.
 func (t Tuning) Semitone(stringIdx, fret int) int {
@@ -104,10 +106,9 @@ func midiToNoteName(midi int) string {
 	if midi <= 0 {
 		return ""
 	}
-	names := []string{"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
 	octave := (midi / 12) - 1
 	idx := midi % 12
-	return names[idx] + strconv.Itoa(octave)
+	return noteNames[idx] + strconv.Itoa(octave)
 }
 
 func stripOctave(noteName string) string {

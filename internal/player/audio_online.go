@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -110,6 +111,9 @@ func AudioSearchFallbackQueries(tab *model.Tab) []string {
 var (
 	ytSearchTimeout   = 12 * time.Second
 	ytDownloadTimeout = 10 * time.Minute
+	// errYtDlpMissing is shared by the search and download entry points so
+	// the "install yt-dlp" hint stays identical everywhere it is surfaced.
+	errYtDlpMissing = errors.New("yt-dlp not found — install yt-dlp (e.g. choco install yt-dlp, apt install yt-dlp)")
 )
 
 type ytSearchEntry struct {
@@ -131,7 +135,7 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 		return nil, errors.New("nil tab")
 	}
 	if !OnlineAudioAvailable() {
-		return nil, errors.New("yt-dlp not found — install yt-dlp (e.g. choco install yt-dlp, apt install yt-dlp)")
+		return nil, errYtDlpMissing
 	}
 	if limit <= 0 {
 		limit = 5
@@ -269,13 +273,8 @@ func ytSearch(query string, limit int) ([]ytSearchEntry, error) {
 }
 
 func sortAudioSources(sources []AudioSource) {
-	for i := 0; i < len(sources); i++ {
-		for j := i + 1; j < len(sources); j++ {
-			if sources[j].Score > sources[i].Score {
-				sources[i], sources[j] = sources[j], sources[i]
-			}
-		}
-	}
+	// Stable so equal-score candidates keep search-engine order.
+	sort.SliceStable(sources, func(i, j int) bool { return sources[i].Score > sources[j].Score })
 }
 
 // ResolveAudio finds a local backing track or downloads the best online match.
@@ -341,7 +340,7 @@ func DownloadYouTubeAudio(tab *model.Tab, videoID string, expected time.Duration
 		return "", errors.New("empty video id")
 	}
 	if !OnlineAudioAvailable() {
-		return "", errors.New("yt-dlp not found — install yt-dlp (e.g. choco install yt-dlp, apt install yt-dlp)")
+		return "", errYtDlpMissing
 	}
 	if path := cachedPathForVideo(tab, videoID); fileExists(path) {
 		return path, nil
@@ -425,14 +424,6 @@ func cachedPathForVideo(tab *model.Tab, videoID string) string {
 		}
 	}
 	return ""
-}
-
-func findCachedOnlineAudio(tab *model.Tab) string {
-	dir, err := config.AudioDir()
-	if err != nil {
-		return ""
-	}
-	return findAudioByNames(dir, audioNameCandidates(tab))
 }
 
 func sanitizeAudioFilename(name string) string {

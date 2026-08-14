@@ -89,7 +89,7 @@ func (c *ugHTMLClient) parseSearch(body []byte) ([]SearchResult, error) {
 	}
 	var out []SearchResult
 	for _, t := range page.Store.Page.Data.Results {
-		if t.Type == "" || (!strings.EqualFold(t.Type, "Tabs") && !strings.EqualFold(t.Type, "Chords")) {
+		if !strings.EqualFold(t.Type, "Tabs") && !strings.EqualFold(t.Type, "Chords") {
 			continue
 		}
 		id := t.ID
@@ -193,12 +193,7 @@ const ugBrowserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 // tab_url (e.g. results from the legacy API client).
 func ugTabURL(r SearchResult) string {
 	typ := strings.ToLower(r.Type)
-	switch typ {
-	case "tabs":
-		typ = "tabs"
-	case "chords":
-		typ = "chords"
-	default:
+	if typ != "chords" {
 		typ = "tabs"
 	}
 	return fmt.Sprintf("https://tabs.ultimate-guitar.com/tab/%s/%s-%s-%d",

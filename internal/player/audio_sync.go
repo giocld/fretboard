@@ -19,18 +19,6 @@ func ScheduleTotalTicks(schedule []PlaybackStep) int64 {
 	return total
 }
 
-// ScheduleMIDIDuration estimates wall-clock length at the given BPM.
-func ScheduleMIDIDuration(schedule []PlaybackStep, bpm int) time.Duration {
-	if bpm <= 0 {
-		bpm = DefaultBPM
-	}
-	ms := ScheduleTotalTicks(schedule) * int64(60_000) / int64(bpm) / int64(ticksPerQuarter)
-	if ms < 0 {
-		ms = 0
-	}
-	return time.Duration(ms) * time.Millisecond
-}
-
 // DeriveBPMFromAudio estimates tempo that maps the tab schedule to an audio
 // file. audioOffset excludes any calibrated intro from the timing math: the
 // musical content of a recording with an intro occupies audioDur - offset.
@@ -137,7 +125,6 @@ func StepIndexAtSyncPoints(schedule []PlaybackStep, points []SyncPoint, audioSec
 	if audioSeconds <= first.Seconds {
 		return 0
 	}
-	// Ensure bar anchors are ascending too; if not, clamp by time ordering.
 	for i := 0; i < len(sorted)-1; i++ {
 		cur, next := sorted[i], sorted[i+1]
 		if audioSeconds < next.Seconds {
@@ -175,12 +162,6 @@ func segmentStep(schedule []PlaybackStep, a, b SyncPoint, audioSeconds float64) 
 		return startStep
 	}
 	f := (audioSeconds - a.Seconds) / span
-	if f < 0 {
-		return startStep
-	}
-	if f >= 1 {
-		return endStep - 1
-	}
 	total := int64(0)
 	for i := startStep; i < endStep; i++ {
 		total += int64(schedule[i].Ticks)

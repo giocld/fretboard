@@ -19,7 +19,6 @@ var (
 	StringLabel    lipgloss.Style
 	ErrorStyle     lipgloss.Style
 
-	// Chrome / layout styles
 	HeaderStyle         lipgloss.Style
 	LogoStyle           lipgloss.Style
 	BreadcrumbStyle     lipgloss.Style

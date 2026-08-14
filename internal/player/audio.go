@@ -99,20 +99,14 @@ func findAudioByNames(dir string, names []string) string {
 	if err != nil {
 		return ""
 	}
+	files := audioFileNames(entries)
 	// Pass 1: exact normalized match.
 	for _, name := range names {
 		want := normalizeAudioName(name)
-		for _, ent := range entries {
-			if ent.IsDir() {
-				continue
-			}
-			ext := strings.ToLower(filepath.Ext(ent.Name()))
-			if !isAudioExt(ext) {
-				continue
-			}
-			stem := normalizeAudioName(strings.TrimSuffix(ent.Name(), ext))
+		for _, fname := range files {
+			stem := normalizeAudioName(strings.TrimSuffix(fname, filepath.Ext(fname)))
 			if stem == want {
-				return filepath.Join(dir, ent.Name())
+				return filepath.Join(dir, fname)
 			}
 		}
 	}
@@ -127,22 +121,31 @@ func findAudioByNames(dir string, names []string) string {
 		if len(want) < 4 {
 			continue
 		}
-		for _, ent := range entries {
-			if ent.IsDir() {
-				continue
-			}
-			ext := strings.ToLower(filepath.Ext(ent.Name()))
-			if !isAudioExt(ext) {
-				continue
-			}
-			stem := normalizeAudioName(strings.TrimSuffix(ent.Name(), ext))
+		for _, fname := range files {
+			stem := normalizeAudioName(strings.TrimSuffix(fname, filepath.Ext(fname)))
 			if strings.Contains(stem, want) && (best == "" || len(stem) < bestLen) {
-				best = filepath.Join(dir, ent.Name())
+				best = filepath.Join(dir, fname)
 				bestLen = len(stem)
 			}
 		}
 	}
 	return best
+}
+
+// audioFileNames returns the non-directory entries whose extension is a
+// recognized audio extension, in directory order.
+func audioFileNames(entries []os.DirEntry) []string {
+	var out []string
+	for _, ent := range entries {
+		if ent.IsDir() {
+			continue
+		}
+		if !isAudioExt(strings.ToLower(filepath.Ext(ent.Name()))) {
+			continue
+		}
+		out = append(out, ent.Name())
+	}
+	return out
 }
 
 func normalizeAudioName(s string) string {
@@ -170,7 +173,7 @@ func uniqueDirs(dirs []string) []string {
 	var out []string
 	for _, d := range dirs {
 		d = filepath.Clean(expandHome(d))
-		if d == "" || d == "." {
+		if d == "." {
 			continue
 		}
 		if _, ok := seen[d]; ok {
@@ -255,40 +258,9 @@ func (e *Engine) playAudio(path string, seek time.Duration) error {
 		if err != nil {
 			continue
 		}
-		cmd := exec.Command(binPath, c.args...)
-		cmd.SysProcAttr = childProcAttr()
-		var stderr stderrCollector
-		cmd.Stderr = &stderr
-		cmd.Stdout = io.Discard
-		if c.bin == "mpv" {
-			// Position feedback: pipe the status line into a scanner that
-			// feeds e.posFB (tee'd into the collector for error summaries).
-			pr, pw := io.Pipe()
-			cmd.Stderr = io.MultiWriter(&stderr, pw)
-			cmd.Stdout = io.MultiWriter(&stderr, pw)
-			go func() {
-				defer pw.Close()
-				defer pr.Close()
-				sc := bufio.NewScanner(pr)
-				sc.Buffer(make([]byte, 1024*1024), 4*1024*1024)
-				for sc.Scan() {
-					e.feedMPVStatus(sc.Text())
-				}
-			}()
-		}
-		if err := cmd.Start(); err != nil {
-			lastErr = fmt.Errorf("%s %v: %w", binPath, c.args, err)
-			continue
-		}
-		startReaper(cmd)
-		time.Sleep(150 * time.Millisecond)
-		if !processAlive(cmd) {
-			_ = cmd.Wait()
-			msg := stderr.String()
-			if msg == "" {
-				msg = "audio player exited immediately"
-			}
-			lastErr = fmt.Errorf("%s: %s", binPath, summarizeStderr(msg))
+		cmd, err := e.tryAudioCandidate(c, binPath, path)
+		if err != nil {
+			lastErr = err
 			continue
 		}
 		e.audioCmd = cmd
@@ -312,6 +284,47 @@ func (e *Engine) playAudio(path string, seek time.Duration) error {
 		return fmt.Errorf("audio playback failed: %w", lastErr)
 	}
 	return fmt.Errorf("no audio player found — install ffplay or mpv (mpg123 cannot seek or change speed)")
+}
+
+// tryAudioCandidate spawns one player candidate and verifies it stays alive
+// past the startup probe, returning the running command. mpv additionally gets
+// a --term-status-msg pipe that feeds e.posFB for position feedback.
+func (e *Engine) tryAudioCandidate(c candidate, binPath, path string) (*exec.Cmd, error) {
+	cmd := exec.Command(binPath, c.args...)
+	cmd.SysProcAttr = childProcAttr()
+	var stderr stderrCollector
+	cmd.Stderr = &stderr
+	cmd.Stdout = io.Discard
+	if c.bin == "mpv" {
+		// Position feedback: pipe the status line into a scanner that
+		// feeds e.posFB (tee'd into the collector for error summaries).
+		pr, pw := io.Pipe()
+		cmd.Stderr = io.MultiWriter(&stderr, pw)
+		cmd.Stdout = io.MultiWriter(&stderr, pw)
+		go func() {
+			defer pw.Close()
+			defer pr.Close()
+			sc := bufio.NewScanner(pr)
+			sc.Buffer(make([]byte, 1024*1024), 4*1024*1024)
+			for sc.Scan() {
+				e.feedMPVStatus(sc.Text())
+			}
+		}()
+	}
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("%s %v: %w", binPath, c.args, err)
+	}
+	startReaper(cmd)
+	time.Sleep(150 * time.Millisecond)
+	if !processAlive(cmd) {
+		_ = cmd.Wait()
+		msg := stderr.String()
+		if msg == "" {
+			msg = "audio player exited immediately"
+		}
+		return nil, fmt.Errorf("%s: %s", binPath, summarizeStderr(msg))
+	}
+	return cmd, nil
 }
 
 // feedMPVStatus parses one --term-status-msg line into the position feedback.

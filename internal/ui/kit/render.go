@@ -78,14 +78,7 @@ func RenderTabPlain(tab *model.Tab) string {
 		b.WriteString("\n\n")
 	}
 	for _, bar := range tab.Bars {
-		width := 0
-		for _, sl := range bar.Strings {
-			for _, seg := range sl.Segments {
-				if w := seg.Position + seg.Width; w > width {
-					width = w
-				}
-			}
-		}
+		width := maxBarCols(bar)
 		if width == 0 {
 			continue
 		}
@@ -125,11 +118,6 @@ func RenderTabPlain(tab *model.Tab) string {
 		}
 	}
 	return b.String()
-}
-
-// RenderTabWithOffset renders a tab starting at the given horizontal column offset.
-func RenderTabWithOffset(tab *model.Tab, offset int) string {
-	return RenderTabGrid(tab, defaultGridWidth, offset, nil)
 }
 
 // RenderTabLinear renders the tab as a vertical strip of bars (TuxGuitar's
@@ -223,20 +211,15 @@ func sectionHeaderFor(tab *model.Tab, barIdx int, open, ending, close string, ba
 	if barIdx >= 0 && barIdx < len(tab.Bars) {
 		num = tab.Bars[barIdx].Number
 	}
-	if name == "" {
-		header := fmt.Sprintf("%s %d %s", open, num, ending)
-		fill := barWidth - lipgloss.Width(header) - lipgloss.Width(close)
-		if fill < 1 {
-			fill = 1
+	head := fmt.Sprintf("%s %d %s", open, num, ending)
+	if name != "" {
+		head += " "
+		room := barWidth - lipgloss.Width(head) - lipgloss.Width(close) - 1
+		if room < 2 {
+			room = 2
 		}
-		return header + strings.Repeat("─", fill) + close
+		head += Truncate(name, room)
 	}
-	head := fmt.Sprintf("%s %d %s ", open, num, ending)
-	room := barWidth - lipgloss.Width(head) - lipgloss.Width(close) - 1
-	if room < 2 {
-		room = 2
-	}
-	head += Truncate(name, room)
 	fill := barWidth - lipgloss.Width(head) - lipgloss.Width(close)
 	if fill < 1 {
 		fill = 1
@@ -244,9 +227,20 @@ func sectionHeaderFor(tab *model.Tab, barIdx int, open, ending, close string, ba
 	return head + strings.Repeat("─", fill) + close
 }
 
-// barHeader renders the "│ N ───" bar-number line.
-func barHeader(number int, width int) string {
-	return BarNumberStyle.Render(fmt.Sprintf("│ %d %s", number, strings.Repeat("─", width)))
+// barMarkers computes a bar's repeat-open, repeat-close, and ending header
+// markers from its structure.
+func barMarkers(bar model.Bar) (open, close, ending string) {
+	open = "│"
+	if bar.RepeatStart {
+		open = "│:"
+	}
+	if bar.RepeatEnd {
+		close = ":│"
+	}
+	if bar.Ending == 1 || bar.Ending == 2 {
+		ending = fmt.Sprintf("%d.", bar.Ending)
+	}
+	return open, close, ending
 }
 
 // barHeaderWithMarkers renders the linear-layout bar header including repeat
@@ -254,30 +248,11 @@ func barHeader(number int, width int) string {
 // bar starts a new section.
 func barHeaderWithMarkers(tab *model.Tab, barIdx int) string {
 	bar := tab.Bars[barIdx]
-	open := "│"
-	if bar.RepeatStart {
-		open = "│:"
-	}
-	close := ""
-	if bar.RepeatEnd {
-		close = ":│"
-	}
-	ending := ""
-	if bar.Ending == 1 || bar.Ending == 2 {
-		ending = fmt.Sprintf("%d.", bar.Ending)
-	}
+	open, close, ending := barMarkers(bar)
 	width := barWidthInLinear(bar, tab)
 	return BarNumberStyle.Render(sectionHeaderFor(tab, barIdx, open, ending, close, width))
 }
 
-// RenderTabWithCursor renders a tab and optionally draws a vertical playhead.
-// It uses a page layout: bars flow left-to-right and wrap into rows that fill
-// the available width (like TuxGuitar's page layout or alphaTab's reflow).
-func RenderTabWithCursor(tab *model.Tab, offset int, cur *TabCursor) string {
-	return RenderTabGrid(tab, defaultGridWidth, offset, cur)
-}
-
-// Default grid layout constants.
 const (
 	defaultGridWidth = 120
 	minBarWidth      = 18
@@ -453,18 +428,7 @@ func renderBarRow(b *strings.Builder, tab *model.Tab, start, end, barWidth, offs
 		// Repeat structure markers: "|:" opens a repeat, ":|" closes one,
 		// "1."/"2." label endings — mirrored on the bar header so the
 		// player sees the same structure the playback follows.
-		open := "│"
-		if bar.RepeatStart {
-			open = "│:"
-		}
-		close := ""
-		if bar.RepeatEnd {
-			close = ":│"
-		}
-		ending := ""
-		if bar.Ending == 1 || bar.Ending == 2 {
-			ending = fmt.Sprintf("%d.", bar.Ending)
-		}
+		open, close, ending := barMarkers(bar)
 		header := sectionHeaderFor(tab, barIdx, open, ending, close, barWidth)
 		headerStyle := MutedStyle
 		switch {
@@ -475,7 +439,6 @@ func renderBarRow(b *strings.Builder, tab *model.Tab, start, end, barWidth, offs
 		case cur.InSearch(barIdx):
 			headerStyle = SearchBarStyle
 		}
-		// pad the header to the bar column width
 		b.WriteString(headerStyle.Render(padToWidth(header, barWidth)))
 	}
 	b.WriteString("\n")

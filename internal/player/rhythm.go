@@ -2,7 +2,6 @@ package player
 
 import (
 	"math"
-	"sort"
 
 	"fretboard/internal/model"
 )
@@ -23,17 +22,12 @@ type PlaybackStep struct {
 // fretted note.
 func NoteColumns(bar model.Bar) []int {
 	cols := maxColumns(bar.Strings)
-	seen := make(map[int]bool)
+	out := make([]int, 0, cols)
 	for col := 0; col < cols; col++ {
 		if len(notesAtColumn(bar.Strings, col)) > 0 {
-			seen[col] = true
+			out = append(out, col)
 		}
 	}
-	out := make([]int, 0, len(seen))
-	for col := range seen {
-		out = append(out, col)
-	}
-	sort.Ints(out)
 	return out
 }
 
@@ -48,9 +42,6 @@ func columnSpacing(bar model.Bar, col, cols int, noteCols []int, idx int) int {
 	if len(bar.Rhythm) > 0 {
 		if ticks := rhythmTicksAt(bar, col); ticks > 0 {
 			step := ticksPerQuarter / 4
-			if step <= 0 {
-				step = 1
-			}
 			return int(math.Max(1, math.Round(float64(ticks)/float64(step))))
 		}
 	}
@@ -100,10 +91,8 @@ func rhythmTicksForNote(bar model.Bar, col int) int {
 // step's advance so notes never bleed past their column.
 func sustainForNote(bar model.Bar, col, advance int) int {
 	sustain := advance
-	if len(bar.Rhythm) > 0 {
-		if rt := rhythmTicksForNote(bar, col); rt > 0 {
-			sustain = rt
-		}
+	if rt := rhythmTicksForNote(bar, col); rt > 0 {
+		sustain = rt
 	}
 	if sustain > advance {
 		sustain = advance
@@ -114,9 +103,6 @@ func sustainForNote(bar model.Bar, col, advance int) int {
 // columnTicks returns the MIDI tick duration for a note starting at col.
 func columnTicks(bar model.Bar, col, cols int, noteCols []int, idx int) int {
 	step := ticksPerQuarter / 4
-	if step <= 0 {
-		step = 1
-	}
 	if ticks := rhythmTicksAt(bar, col); ticks > 0 {
 		return ticks
 	}
@@ -162,9 +148,6 @@ func BuildSchedule(tab *model.Tab) []PlaybackStep {
 		for i, col := range noteCols {
 			width := stepWidth(bar.Strings, col)
 			ticks := columnTicks(bar, col, cols, noteCols, i)
-			if ticks < 1 {
-				ticks = ticksPerQuarter / 4
-			}
 			steps = append(steps, PlaybackStep{
 				Bar:      b,
 				Col:      col,
@@ -309,9 +292,6 @@ func BeatColumns(bar model.Bar) []int {
 	acc := 0
 	for i, c := range cols {
 		ticks := columnTicks(bar, c, maxC, cols, i)
-		if ticks < 1 {
-			ticks = ticksPerQuarter / 4
-		}
 		if acc%ticksPerQuarter == 0 {
 			beats = append(beats, c)
 		}

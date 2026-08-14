@@ -627,7 +627,7 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		// of the step we are about to play. Roll the clock past it (the
 		// advance is by the step being played, so render/processing time
 		// never shifts the beat), then catch up if we are late.
-		next := m.nextStepIndex()
+		next := m.nextStepIndexFrom(m.stepIdx)
 		if next >= len(m.schedule) {
 			m.stopPlayback()
 			m.refresh()
@@ -1071,11 +1071,6 @@ func (m ViewerModel) adjustAudioOffset(key string) (ViewerModel, tea.Cmd) {
 	return m, m.saveTabPrefsCmd()
 }
 
-// audioOffsetDuration converts the calibrated audio offset to a duration.
-func (m ViewerModel) audioOffsetDuration() time.Duration {
-	return time.Duration(m.audioOffset * float64(time.Second))
-}
-
 // parseSyncPoints decodes the persisted [[bar, seconds], ...] metadata.
 func parseSyncPoints(raw string) []player.SyncPoint {
 	raw = strings.TrimSpace(raw)
@@ -1351,13 +1346,6 @@ func (m *ViewerModel) stopPlaybackForNav() {
 	if m.playing {
 		m.stopPlayback()
 	}
-}
-
-// nextStepIndex returns the schedule index to play after the sounding step,
-// applying the A-B loop wrap (and the natural end when the loop region ends
-// on the last bar).
-func (m ViewerModel) nextStepIndex() int {
-	return m.nextStepIndexFrom(m.stepIdx)
 }
 
 // nextStepIndexFrom returns the index to play after the step at idx, with
@@ -1906,7 +1894,7 @@ func (m *ViewerModel) applySelectedSource(deriveBPM bool) {
 		if dur, err := player.ProbeDuration(path); err == nil && dur > 0 {
 			schedule := player.BuildSchedule(m.tab)
 			if meta := m.tab.Metadata; meta == nil || strings.TrimSpace(meta[model.MetaKeyBPM]) == "" {
-				m.bpm = player.DeriveBPMFromAudio(schedule, dur, m.audioOffsetDuration())
+				m.bpm = player.DeriveBPMFromAudio(schedule, dur, m.audioOffsetDur())
 			}
 		}
 	}
@@ -1933,7 +1921,7 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 		m.fetchingCatalog = false
 		return m, nil
 	case "j", "down":
-		if len(m.audioCatalog.Sources) > 0 && m.audioCursor < len(m.audioCatalog.Sources)-1 {
+		if m.audioCursor < len(m.audioCatalog.Sources)-1 {
 			m.audioCursor++
 		}
 		return m, nil

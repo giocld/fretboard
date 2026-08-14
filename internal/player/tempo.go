@@ -2,6 +2,8 @@ package player
 
 import (
 	"encoding/json"
+	"slices"
+	"sort"
 	"time"
 )
 
@@ -28,7 +30,6 @@ func TempoAnchors(expected []ExpectedOnset, onsets []time.Duration, scale float6
 	if tolerance < 60*time.Millisecond {
 		tolerance = 60 * time.Millisecond
 	}
-	// Bar starts of the tab, in order.
 	type barStart struct {
 		bar int
 		t   time.Duration
@@ -64,7 +65,6 @@ func TempoAnchors(expected []ExpectedOnset, onsets []time.Duration, scale float6
 	}
 
 	localInterval := func(after time.Duration) time.Duration {
-		// Median inter-onset interval in the window following after.
 		window := after + 8*globalInterval
 		var gaps []int64
 		prev := time.Duration(0)
@@ -128,11 +128,7 @@ func TempoAnchors(expected []ExpectedOnset, onsets []time.Duration, scale float6
 // medianIntervalsFrom returns the median of pre-collected gaps.
 func medianIntervalsFrom(gaps []int64) time.Duration {
 	sorted := append([]int64(nil), gaps...)
-	for i := 1; i < len(sorted); i++ {
-		for j := i; j > 0 && sorted[j] < sorted[j-1]; j-- {
-			sorted[j], sorted[j-1] = sorted[j-1], sorted[j]
-		}
-	}
+	slices.Sort(sorted)
 	return time.Duration(sorted[len(sorted)/2])
 }
 
@@ -151,11 +147,7 @@ func MergeAnchors(user, auto []SyncPoint) []SyncPoint {
 		out = append(out, a)
 	}
 	// Stable sort by bar (the mapper requires ascending anchors).
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j].Bar < out[j-1].Bar; j-- {
-			out[j], out[j-1] = out[j-1], out[j]
-		}
-	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Bar < out[j].Bar })
 	return out
 }
 
@@ -193,10 +185,8 @@ func MarshalTempoMap(anchors []SyncPoint, onsets []time.Duration) string {
 	for i, o := range onsets {
 		tm.Onsets[i] = o.Seconds()
 	}
-	data, err := json.Marshal(tm)
-	if err != nil {
-		return ""
-	}
+	// json.Marshal cannot fail here: the map holds only numbers and slices.
+	data, _ := json.Marshal(tm)
 	return string(data)
 }
 

@@ -76,11 +76,10 @@ var ErrCorruptConfig = errors.New("config file is unreadable")
 // Load reads the config file or returns defaults if it doesn't exist.
 func Load() (Config, error) {
 	c := Defaults()
-	dir, err := Dir()
+	path, err := Path()
 	if err != nil {
 		return c, err
 	}
-	path := filepath.Join(dir, "config.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -98,11 +97,10 @@ func Load() (Config, error) {
 // is renamed over the target, so a crash mid-write never leaves a corrupt
 // config that Load would refuse.
 func Save(c Config) error {
-	dir, err := Dir()
+	path, err := Path()
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, "config.json")
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)

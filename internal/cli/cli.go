@@ -40,12 +40,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	cfg, err := config.Load()
 	if err != nil {
-		if errors.Is(err, config.ErrCorruptConfig) {
-			// Corrupt config must not lock the user out: warn and continue
-			// with defaults.
-			fmt.Fprintf(stderr, "config: %v\n", err)
-		} else {
-			fmt.Fprintf(stderr, "config: %v\n", err)
+		// Corrupt config must not lock the user out: warn and continue with
+		// defaults; any other load error is fatal.
+		fmt.Fprintf(stderr, "config: %v\n", err)
+		if !errors.Is(err, config.ErrCorruptConfig) {
 			return 1
 		}
 	}
@@ -73,7 +71,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	defer store.Close()
 
-	// Handle the import subcommand non-interactively.
 	if len(rest) >= 1 && rest[0] == "import" {
 		if len(rest) != 2 {
 			fmt.Fprintln(stderr, "usage: fretboard import <file-or-directory>")
@@ -97,17 +94,15 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	client := scraper.NewClient(*ugDelay)
 
-	var app apppkg.AppModel
+	app := apppkg.NewAppWithOptions(store, client, cfg.AutoImportPath, cfg.AudioSearchPaths)
 	if filePath != "" {
 		tab, err := parser.ParsePath(filePath)
 		if err != nil {
 			fmt.Fprintf(stderr, "parse: %v\n", err)
 			return 1
 		}
-		app = apppkg.NewAppWithOptions(store, client, cfg.AutoImportPath, cfg.AudioSearchPaths)
 		app.LoadViewerTab(tab, filePath)
 	} else {
-		app = apppkg.NewAppWithOptions(store, client, cfg.AutoImportPath, cfg.AudioSearchPaths)
 		// Resume the last session (tab, cursor, settings) when no file is
 		// given; the startup command runs on the first Init.
 		if cmd := app.RestoreSession(); cmd != nil {
@@ -116,14 +111,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	app.SetVolume(cfg.VolumePercent)
 	app.SetStrictAudio(cfg.StrictAudioSelection)
-	sf := cfg.Soundfont
-	if sf == "" {
-		sf = os.Getenv("FRETBOARD_SOUNDFONT")
-	}
-	if sf == "" {
-		sf = player.ResolveSoundfont()
-	}
-	if sf != "" {
+	if sf := resolveSoundfont(cfg); sf != "" {
 		app.SetSoundfont(sf)
 	}
 
@@ -151,16 +139,13 @@ func runProgram(app apppkg.AppModel, p *tea.Program) (exitCode int) {
 			exitCode = 1
 		}
 	}()
-	if mFinal, err := p.Run(); err != nil {
-		if appModel, ok := mFinal.(apppkg.AppModel); ok {
-			appModel.Shutdown()
-		}
-		if !errors.Is(err, tea.ErrInterrupted) {
-			fmt.Fprintf(os.Stderr, "tui: %v\n", err)
-			return 1
-		}
-	} else if appModel, ok := mFinal.(apppkg.AppModel); ok {
+	mFinal, err := p.Run()
+	if appModel, ok := mFinal.(apppkg.AppModel); ok {
 		appModel.Shutdown()
+	}
+	if err != nil && !errors.Is(err, tea.ErrInterrupted) {
+		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
+		return 1
 	}
 	return 0
 }
@@ -203,10 +188,9 @@ func openStore() (*library.Store, error) {
 	return library.NewStore(dbPath)
 }
 
-func runTestAudio(cfg config.Config, stdout, stderr io.Writer) error {
-	if !player.SynthAvailable() {
-		return fmt.Errorf("fluidsynth/timidity not found — install fluidsynth (e.g. choco install fluidsynth, apt install fluidsynth)")
-	}
+// resolveSoundfont returns the soundfont path for playback: the config value,
+// then the FRETBOARD_SOUNDFONT override, then the auto-discovered default.
+func resolveSoundfont(cfg config.Config) string {
 	sf := cfg.Soundfont
 	if sf == "" {
 		sf = os.Getenv("FRETBOARD_SOUNDFONT")
@@ -214,6 +198,14 @@ func runTestAudio(cfg config.Config, stdout, stderr io.Writer) error {
 	if sf == "" {
 		sf = player.ResolveSoundfont()
 	}
+	return sf
+}
+
+func runTestAudio(cfg config.Config, stdout, stderr io.Writer) error {
+	if !player.SynthAvailable() {
+		return fmt.Errorf("fluidsynth/timidity not found — install fluidsynth (e.g. choco install fluidsynth, apt install fluidsynth)")
+	}
+	sf := resolveSoundfont(cfg)
 	if sf == "" {
 		return fmt.Errorf("no soundfont found — install a GM soundfont (e.g. soundfont-fluid) or set FRETBOARD_SOUNDFONT")
 	}

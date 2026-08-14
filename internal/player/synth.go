@@ -169,9 +169,6 @@ func (s *Synth) PlaybackEnded() bool {
 }
 
 func summarizeStderr(msg string) string {
-	if msg == "" {
-		return msg
-	}
 	lines := strings.Split(msg, "\n")
 	var useful []string
 	for _, line := range lines {
@@ -240,20 +237,20 @@ func (s *Synth) synthCandidates(midPath string) ([]candidate, error) {
 		gain = "0.0"
 	}
 
-	var candidates []candidate
-	if sf != "" {
-		// Try the auto-detected default driver first: fluidsynth picks a
-		// working backend itself, so a single spawn succeeds without cycling
-		// audio devices. Platform-specific drivers are fallbacks only.
-		for _, driver := range audioDrivers() {
-			candidates = append(candidates, candidate{
-				bin:    "fluidsynth",
-				driver: driver,
-				args:   fluidsynthArgs(driver, gain, sf, midPath),
-			})
-		}
-	} else {
+	if sf == "" {
 		return nil, errors.New(noSoundfontMessage())
+	}
+
+	// Try the auto-detected default driver first: fluidsynth picks a
+	// working backend itself, so a single spawn succeeds without cycling
+	// audio devices. Platform-specific drivers are fallbacks only.
+	var candidates []candidate
+	for _, driver := range audioDrivers() {
+		candidates = append(candidates, candidate{
+			bin:    "fluidsynth",
+			driver: driver,
+			args:   fluidsynthArgs(driver, gain, sf, midPath),
+		})
 	}
 
 	candidates = append(candidates,
@@ -270,7 +267,7 @@ func noSoundfontMessage() string {
 // fluidsynthArgs builds the fluidsynth command line. "default" omits -a so
 // fluidsynth auto-selects a working audio driver.
 func fluidsynthArgs(driver, gain, sf, midPath string) []string {
-	if driver == "default" || driver == "" {
+	if driver == "default" {
 		return []string{"-ni", "-q", "-g", gain, "-r", "44100", sf, midPath}
 	}
 	return []string{"-ni", "-q", "-a", driver, "-g", gain, "-r", "44100", sf, midPath}

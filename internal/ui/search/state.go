@@ -18,7 +18,6 @@ const (
 	maxHistory = 8
 )
 
-// historyPath returns the search-history file path.
 func historyPath() string {
 	if dir, err := config.Dir(); err == nil {
 		return filepath.Join(dir, "search_history.json")
@@ -26,7 +25,6 @@ func historyPath() string {
 	return ""
 }
 
-// loadHistory reads the persisted query history, newest first.
 func loadHistory() []string {
 	path := historyPath()
 	if path == "" {
@@ -43,7 +41,6 @@ func loadHistory() []string {
 	return out
 }
 
-// saveHistory writes the query history, capped at maxHistory entries.
 func saveHistory(history []string) {
 	path := historyPath()
 	if path == "" {
@@ -52,14 +49,10 @@ func saveHistory(history []string) {
 	if len(history) > maxHistory {
 		history = history[:maxHistory]
 	}
-	data, err := json.Marshal(history)
-	if err != nil {
-		return
-	}
+	data, _ := json.Marshal(history)
 	_ = os.WriteFile(path, data, 0o644)
 }
 
-// addHistory records a query, moving it to the front and capping the list.
 func addHistory(history []string, query string) []string {
 	query = trimSpace(query)
 	if query == "" {
@@ -79,14 +72,12 @@ func addHistory(history []string, query string) []string {
 	return out
 }
 
-// cacheEntry is the persisted form of a cached result set.
 type cacheEntry struct {
 	Query   string                 `json:"query"`
 	SavedAt time.Time              `json:"saved_at"`
 	Results []scraper.SearchResult `json:"results"`
 }
 
-// cachePath returns the search-cache file path.
 func cachePath() string {
 	if dir, err := config.Dir(); err == nil {
 		return filepath.Join(dir, "search_cache.json")
@@ -94,20 +85,15 @@ func cachePath() string {
 	return ""
 }
 
-// saveCache persists the last successful results for a query.
 func saveCache(query string, results []scraper.SearchResult) {
 	path := cachePath()
 	if path == "" || len(results) == 0 {
 		return
 	}
-	data, err := json.Marshal(cacheEntry{Query: trimSpace(query), SavedAt: time.Now(), Results: results})
-	if err != nil {
-		return
-	}
+	data, _ := json.Marshal(cacheEntry{Query: trimSpace(query), SavedAt: time.Now(), Results: results})
 	_ = os.WriteFile(path, data, 0o644)
 }
 
-// loadCache returns the cached results for a query, if any.
 func loadCache(query string) ([]scraper.SearchResult, bool) {
 	path := cachePath()
 	if path == "" {

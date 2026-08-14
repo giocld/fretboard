@@ -7,10 +7,6 @@ import (
 )
 
 func extractBars(region []string, stringsPerColumn int) []model.Bar {
-	if stringsPerColumn < 1 {
-		return nil
-	}
-
 	var bars []model.Bar
 	barNum := 1
 	i := 0
@@ -53,7 +49,7 @@ func extractBars(region []string, stringsPerColumn int) []model.Bar {
 		}
 
 		rhythmMarks := parseRhythmMarks(rhythmLine)
-		chunkBars := barsFromColumn(col, stringsPerColumn, barNum, rhythmMarks)
+		chunkBars := barsFromColumn(col, barNum, rhythmMarks)
 		for k := range chunkBars {
 			chunkBars[k].Section = currentSection
 		}
@@ -76,7 +72,7 @@ func parseRhythmMarks(line string) []model.RhythmMark {
 	return out
 }
 
-func barsFromColumn(col []string, stringsPerColumn, startNum int, rhythm []model.RhythmMark) []model.Bar {
+func barsFromColumn(col []string, startNum int, rhythm []model.RhythmMark) []model.Bar {
 	var bars []model.Bar
 	barNum := startNum
 	positions := pipePositions(col[0])
@@ -87,7 +83,7 @@ func barsFromColumn(col []string, stringsPerColumn, startNum int, rhythm []model
 	for j := 0; j < len(positions)-1; j++ {
 		start := positions[j] + 1
 		end := positions[j+1]
-		bar := model.Bar{Number: barNum, Strings: make([]model.StringLine, stringsPerColumn), Rhythm: rhythmForBar(rhythm, start, end)}
+		bar := model.Bar{Number: barNum, Rhythm: rhythmForBar(rhythm, start, end)}
 		sliced := make([]string, len(col))
 		for s, line := range col {
 			if start >= len(line) {
@@ -156,9 +152,6 @@ func leadingEndingNumber(line string, start, end int) int {
 // leadingEndingIndex returns the index of the "N." ending marker within a
 // bar's content slice, or -1 when there is none.
 func leadingEndingIndex(content string) int {
-	if content == "" {
-		return -1
-	}
 	i := 0
 	for i < len(content) && content[i] == ' ' {
 		i++
@@ -211,9 +204,6 @@ func sectionHeader(line string) string {
 // same [start, end) range is used for the marks, whose columns share the
 // string line's origin.
 func rhythmForBar(rhythm []model.RhythmMark, start, end int) []model.RhythmMark {
-	if len(rhythm) == 0 {
-		return nil
-	}
 	var out []model.RhythmMark
 	for _, r := range rhythm {
 		if r.Position >= start && r.Position < end {

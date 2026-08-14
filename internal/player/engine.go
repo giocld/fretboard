@@ -120,10 +120,11 @@ func (e *Engine) Elapsed() time.Duration {
 	// atempo latency, and seek resumption, so the wall-clock estimate is
 	// only used when no feedback has arrived yet.
 	e.posFB.mu.Lock()
-	fb := e.posFB
+	seen := e.posFB.seen
+	pos := e.posFB.pos
 	e.posFB.mu.Unlock()
-	if fb.seen {
-		return fb.pos
+	if seen {
+		return pos
 	}
 	return e.audioBase + time.Duration(float64(time.Since(e.playbackStart))*e.rate)
 }
@@ -173,13 +174,13 @@ func (e *Engine) PlaySource(tab *model.Tab, bpm int, src AudioSource, ctx PlayCo
 	case SourceMIDI:
 		return e.playMIDI(tab, bpm)
 	case SourceLocal:
-		if src.Path == "" || !fileExists(src.Path) {
+		if !fileExists(src.Path) {
 			return e.playMIDI(tab, bpm)
 		}
 		return e.playAudioFile(src.Path)
 	case SourceOnline:
 		path := src.Path
-		if path == "" || !fileExists(path) {
+		if !fileExists(path) {
 			var err error
 			path, err = EnsureAudioSource(tab, src)
 			if err != nil {
@@ -193,21 +194,24 @@ func (e *Engine) PlaySource(tab *model.Tab, bpm int, src AudioSource, ctx PlayCo
 }
 
 func (e *Engine) StartMIDIRealtime() error {
-	e.audioDuration = 0
-	e.playbackStart = time.Time{}
-	e.mode = "midi"
-	e.audioPath = ""
+	e.beginMIDI()
 	return e.Synth.StartRealtime()
 }
 
 func (e *Engine) PlayMIDIStep(tab *model.Tab, step PlaybackStep, bpm int) error {
 	return e.Synth.PlayStep(tab, step, bpm)
 }
-func (e *Engine) playMIDI(tab *model.Tab, bpm int) error {
+
+// beginMIDI resets the engine to MIDI backend state.
+func (e *Engine) beginMIDI() {
 	e.audioDuration = 0
 	e.playbackStart = time.Time{}
 	e.mode = "midi"
 	e.audioPath = ""
+}
+
+func (e *Engine) playMIDI(tab *model.Tab, bpm int) error {
+	e.beginMIDI()
 	if err := e.Synth.Play(tab, bpm); err != nil {
 		e.mode = ""
 		return err

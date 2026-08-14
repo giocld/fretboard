@@ -118,11 +118,12 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 				best = Alignment{BPM: bpm, Offset: time.Duration(offsetMs) * time.Millisecond,
 					Score: score, Confidence: matched, Detected: len(onsets)}
 			}
-			best.Onsets = make([]time.Duration, len(onsets))
-			for i, o := range onsets {
-				best.Onsets[i] = o.Time
-			}
 		}
+	}
+	// The onset times do not depend on the candidate, so fill them once.
+	best.Onsets = make([]time.Duration, len(onsets))
+	for i, o := range onsets {
+		best.Onsets[i] = o.Time
 	}
 	// Refine the offset around the winner at 25 ms resolution.
 	if best.BPM > 0 {
@@ -237,12 +238,7 @@ func verifyStrict(expected []ExpectedOnset, onsets []Onset, scale float64, offse
 		for idx < len(onsets) && onsets[idx].Time < t-tol {
 			idx++
 		}
-		ok := false
-		for j := idx; j < len(onsets) && onsets[j].Time <= t+tol; j++ {
-			ok = true
-			break
-		}
-		if ok {
+		if idx < len(onsets) && onsets[idx].Time <= t+tol {
 			matches++
 		}
 	}
@@ -295,27 +291,9 @@ func medianIntervals(onsets []time.Duration) time.Duration {
 	return time.Duration(gaps[len(gaps)/2])
 }
 
-// absDur returns the absolute value of a duration.
 func absDur(d time.Duration) time.Duration {
 	if d < 0 {
 		return -d
 	}
 	return d
-}
-
-// normStrengths normalizes onset strengths to [0..1] by the max (test/debug helper).
-func normStrengths(onsets []Onset) []float64 {
-	max := 0.0
-	for _, o := range onsets {
-		if o.Strength > max {
-			max = o.Strength
-		}
-	}
-	out := make([]float64, len(onsets))
-	for i, o := range onsets {
-		if max > 0 {
-			out[i] = o.Strength / max
-		}
-	}
-	return out
 }

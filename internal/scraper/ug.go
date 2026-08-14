@@ -38,12 +38,10 @@ func newUGAPIClient(rl *rateLimiter) *ugAPIClient {
 	return &ugAPIClient{scraper: &s, rl: rl}
 }
 
-// Search queries Ultimate Guitar API for tabs matching query.
 func (c *ugAPIClient) Search(query string) ([]SearchResult, error) {
 	return c.SearchPage(query, 1)
 }
 
-// SearchPage queries a specific page of Ultimate Guitar results.
 func (c *ugAPIClient) SearchPage(query string, page int) ([]SearchResult, error) {
 	if page < 1 {
 		page = 1
@@ -128,14 +126,11 @@ func applyUGMetadata(tab *model.Tab, res ugTabMeta) {
 	if len(tab.Tuning) == 0 && res.Tuning != "" {
 		tab.Tuning = model.ParseTuning(strings.ReplaceAll(res.Tuning, " ", ""))
 	}
-	if res.Capo > 0 {
-		if tab.Metadata == nil {
-			tab.Metadata = map[string]string{}
-		}
-		tab.Metadata[model.MetaKeyCapo] = strconv.Itoa(res.Capo)
-	}
 	if tab.Metadata == nil {
 		tab.Metadata = map[string]string{}
+	}
+	if res.Capo > 0 {
+		tab.Metadata[model.MetaKeyCapo] = strconv.Itoa(res.Capo)
 	}
 }
 
@@ -194,7 +189,7 @@ func trimNonTabLines(s string) string {
 
 func hasTabLineContent(line string) bool {
 	for _, r := range line {
-		if r >= '0' && r <= '9' || r == '-' || r == '|' {
+		if (r >= '0' && r <= '9') || r == '-' || r == '|' {
 			return true
 		}
 	}

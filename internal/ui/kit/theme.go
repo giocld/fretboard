@@ -24,7 +24,6 @@ type Theme struct {
 	StringColors []lipgloss.AdaptiveColor
 }
 
-// Built-in themes.
 var (
 	DefaultTheme = Theme{
 		Name:      "default",

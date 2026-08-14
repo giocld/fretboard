@@ -11,8 +11,6 @@ import (
 	"fretboard/internal/scraper"
 )
 
-// Navigation and selection.
-
 // HomeLibraryMsg navigates to the library browser.
 type HomeLibraryMsg struct{}
 
@@ -47,8 +45,6 @@ type TabSelectedMsg struct {
 // SIGINT/SIGTERM run cleanup against the live model, not a stale copy.
 type ShutdownMsg struct{}
 
-// Library data.
-
 // TabsLoadedMsg is sent when the library list has been loaded.
 type TabsLoadedMsg struct {
 	Tabs []library.TabRow
@@ -74,8 +70,6 @@ type AutoImportWarnMsg struct {
 	Msg string
 }
 
-// Online search and import.
-
 // SearchPerformedMsg is sent when a search completes.
 type SearchPerformedMsg struct {
 	Results []scraper.SearchResult
@@ -96,8 +90,6 @@ type TabImportErrorMsg struct {
 	Err error
 	Gen int
 }
-
-// Playback.
 
 // PlaybackTickMsg is sent by the playback goroutine on each step.
 type PlaybackTickMsg struct {
@@ -179,5 +171,3 @@ type AlignmentMsg struct {
 	Onsets     []time.Duration    // detected onsets, for the live drift meter
 	Anchors    []player.SyncPoint // measured bar anchors (auto tempo map)
 }
-
-// AlignmentMsg delivers an automatic audio-alignment result for a source.

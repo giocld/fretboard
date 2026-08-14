@@ -199,7 +199,7 @@ func textTabSiteBySource(s Source) *textTabSite {
 // can push the detected string count from 6 to 7. When the bars' modal string
 // count is 6, the tuning is standard.
 func normalizeFetchedTuning(tab *model.Tab) {
-	if tab == nil || len(tab.Bars) == 0 || len(tab.Tuning) == 0 {
+	if len(tab.Bars) == 0 || len(tab.Tuning) == 0 {
 		return
 	}
 	counts := map[int]int{}
@@ -220,9 +220,10 @@ func normalizeFetchedTuning(tab *model.Tab) {
 }
 
 var (
-	anchorRegex = regexp.MustCompile(`(?is)<a\b[^>]*\bhref="([^"]+)"[^>]*>(.*?)</a>`)
-	titleAttr   = regexp.MustCompile(`(?i)\btitle="([^"]*)"`)
-	tagStrip    = regexp.MustCompile(`(?s)<[^>]*>`)
+	anchorRegex        = regexp.MustCompile(`(?is)<a\b[^>]*\bhref="([^"]+)"[^>]*>(.*?)</a>`)
+	titleAttr          = regexp.MustCompile(`(?i)\btitle="([^"]*)"`)
+	tagStrip           = regexp.MustCompile(`(?s)<[^>]*>`)
+	guitaretabRowRegex = regexp.MustCompile(`(?s)<span[^>]*class="js-tab-row"[^>]*>(.*?)</span>`)
 )
 
 // textTabNavWords are root-level anchors on the search page that must never
@@ -388,8 +389,8 @@ func extractPreTabs(body []byte, site *textTabSite) string {
 	var out []string
 	for _, b := range blocks {
 		// guitaretab wraps rows in spans; unwrap them to plain lines.
-		if site != nil && site.source == SourceGuitareTab {
-			rows := regexp.MustCompile(`(?s)<span[^>]*class="js-tab-row"[^>]*>(.*?)</span>`).FindAllStringSubmatch(b, -1)
+		if site.source == SourceGuitareTab {
+			rows := guitaretabRowRegex.FindAllStringSubmatch(b, -1)
 			var text []string
 			for _, r := range rows {
 				text = append(text, tagStrip.ReplaceAllString(r[1], ""))

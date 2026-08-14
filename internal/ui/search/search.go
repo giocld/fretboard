@@ -176,7 +176,7 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 				gen := m.reqGen
 				return m, m.searchMoreCmd(m.lastQuery, gen)
 			}
-		case "tab":
+		case "tab", "j":
 			if m.inputActive && len(m.results) > 0 {
 				m.focusResults()
 				return m, nil
@@ -211,7 +211,6 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 			}
 		case "down":
 			if m.inputActive {
-				// Walk forward through the recalled history.
 				if m.histIdx > 0 {
 					m.histIdx--
 					if m.histIdx == 0 {
@@ -226,14 +225,6 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 					m.focusResults()
 					return m, nil
 				}
-				return m, nil
-			}
-			if !m.inputActive {
-				m.moveCursor(1)
-			}
-		case "j":
-			if m.inputActive && len(m.results) > 0 {
-				m.focusResults()
 				return m, nil
 			}
 			if !m.inputActive {
@@ -339,9 +330,7 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 	} else if key, ok := msg.(tea.KeyMsg); ok {
 		// Scroll results when not editing the query.
 		switch key.String() {
-		case "pgdown", "ctrl+d":
-			m.viewport, cmd = m.viewport.Update(msg)
-		case "pgup", "ctrl+u":
+		case "pgdown", "ctrl+d", "pgup", "ctrl+u":
 			m.viewport, cmd = m.viewport.Update(msg)
 		}
 	}
@@ -401,9 +390,6 @@ func (m *SearchModel) ensureCursorVisible() {
 
 func (m *SearchModel) importCmd(result scraper.SearchResult, gen int) tea.Cmd {
 	return func() tea.Msg {
-		if m.client == nil {
-			return msgs.TabImportErrorMsg{Err: fmt.Errorf("online search is not configured"), Gen: gen}
-		}
 		tab, err := m.client.Fetch(result)
 		if err != nil {
 			return msgs.TabImportErrorMsg{Err: err, Gen: gen}
@@ -456,7 +442,6 @@ func (m SearchModel) renderResults() string {
 	return m.renderResultList()
 }
 
-// renderResultList renders the ranked result rows.
 func (m SearchModel) renderResultList() string {
 	var b strings.Builder
 	for i, r := range m.results {

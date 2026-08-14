@@ -106,7 +106,7 @@ func (s *Synth) StartRealtime() error {
 // fluidsynthArgsRealtime builds the realtime fluidsynth command line.
 // "default" omits -a so fluidsynth auto-selects a working audio driver.
 func fluidsynthArgsRealtime(driver, gain, sf string) []string {
-	if driver == "default" || driver == "" {
+	if driver == "default" {
 		return []string{"-q", "-g", gain, "-r", "44100", sf}
 	}
 	return []string{"-q", "-a", driver, "-g", gain, "-r", "44100", sf}
@@ -208,7 +208,6 @@ func (s *Synth) CountIn(countInBars, bpm int) {
 	}
 }
 
-// noteActive reports whether the pitch is currently sounding in realtime mode.
 func (s *Synth) noteActive(pitch int) bool {
 	for _, p := range s.activeNotes {
 		if p == pitch {
@@ -268,9 +267,6 @@ func (s *Synth) nextGeneration(pitch int) (int, uint64) {
 // pitch is still the same generation and the same playback epoch is running,
 // so a re-trigger or a restarted synth is never silenced by a stale noteoff.
 func (s *Synth) scheduleNoteOff(pitch, gen int, playGen uint64, sustainMs int64) {
-	if sustainMs <= 0 {
-		return
-	}
 	go func() {
 		time.Sleep(time.Duration(sustainMs) * time.Millisecond)
 		s.mu.Lock()

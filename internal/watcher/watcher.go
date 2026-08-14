@@ -56,8 +56,8 @@ func NewWatcher(dir string) (*Watcher, error) {
 		dir:      dir,
 		done:     make(chan struct{}),
 		debounce: make(map[string]*time.Timer),
+		fw:       fw,
 	}
-	watcher.fw = fw
 	go watcher.loop(fw)
 	return watcher, nil
 }
@@ -145,7 +145,6 @@ func (w *Watcher) scheduleRewalk() {
 			w.rewalkMu.Lock()
 			w.rewalk = nil
 			w.rewalkMu.Unlock()
-			fmt.Fprintf(os.Stderr, "REWALK dir=%s\n", w.dir)
 			_ = addRecursive(w.fw, w.dir)
 		})
 	}
@@ -190,11 +189,10 @@ func (w *Watcher) loop(fw *fsnotify.Watcher) {
 			if ev.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename) != 0 && isTabImportPath(ev.Name) {
 				w.scheduleImport(ev.Name)
 			}
-		case err, ok := <-fw.Errors:
+		case _, ok := <-fw.Errors:
 			if !ok {
 				return
 			}
-			_ = err
 		case <-w.done:
 			return
 		}
