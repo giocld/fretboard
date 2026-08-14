@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"fretboard/internal/model"
 	"fretboard/internal/player"
+	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -163,30 +165,50 @@ func (m ViewerModel) selectedSource() player.AudioSource {
 	return player.AudioSource{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI synthesizer"}
 }
 
-func (m *ViewerModel) applySelectedSource(deriveBPM bool) {
+// applySelectedSourceStateOnly resolves the selected source's audio path into
+// the viewer without deriving a tempo. It returns the command that derives the
+// BPM asynchronously (the ffprobe probe runs in the command's goroutine, never
+// in the Update loop), or nil when no derivation applies: MIDI, no usable
+// file, or a BPM already recorded in the tab's metadata.
+func (m *ViewerModel) applySelectedSourceStateOnly() tea.Cmd {
 	src := m.selectedSource()
 	if src.Kind == player.SourceMIDI {
 		m.resolvedAudio = ""
-		return
+		return nil
 	}
 	path := src.Path
 	if src.Kind == player.SourceOnline && (path == "" || !player.FileExists(path)) {
 		if m.resolvedAudio != "" && player.FileExists(m.resolvedAudio) {
 			path = m.resolvedAudio
 		} else {
-			return
+			return nil
 		}
 	}
 	if path != "" {
 		m.resolvedAudio = path
 	}
-	if deriveBPM && m.tab != nil && path != "" {
-		if dur, err := player.ProbeDuration(path); err == nil && dur > 0 {
-			schedule := player.BuildSchedule(m.tab)
-			if meta := m.tab.Metadata; meta == nil || strings.TrimSpace(meta[model.MetaKeyBPM]) == "" {
-				m.bpm = player.DeriveBPMFromAudio(schedule, dur, m.audioOffsetDur())
-			}
+	return deriveBPMCmd(m.tab, player.BuildSchedule(m.tab), path, m.audioOffsetDur(), m.currentSourceID())
+}
+
+// deriveBPMCmd returns a command that probes the audio file's duration and
+// derives the tempo mapping the tab schedule to it, posting the result as a
+// BPMDerivedMsg. The subprocess probe runs in the command's own goroutine, so
+// it never blocks the Bubble Tea Update loop. Returns nil when there is nothing
+// to derive: no tab, no file, an unknown source, or a BPM already recorded in
+// the tab's metadata (the handler re-checks the same guard before applying).
+func deriveBPMCmd(tab *model.Tab, schedule []player.PlaybackStep, path string, offset time.Duration, srcID string) tea.Cmd {
+	if tab == nil || path == "" || srcID == "" {
+		return nil
+	}
+	if meta := tab.Metadata; meta != nil && strings.TrimSpace(meta[model.MetaKeyBPM]) != "" {
+		return nil
+	}
+	return func() tea.Msg {
+		dur, err := player.ProbeDuration(path)
+		if err != nil || dur <= 0 {
+			return nil
 		}
+		return msgs.BPMDerivedMsg{SourceID: srcID, BPM: player.DeriveBPMFromAudio(schedule, dur, offset)}
 	}
 }
 
@@ -242,14 +264,18 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 			m.pendingPlay = true
 			return m, m.downloadSelectedSourceCmd()
 		}
-		m.applySelectedSource(true)
+		var cmds []tea.Cmd
+		if cmd := m.applySelectedSourceStateOnly(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 		if m.tab != nil {
 			if m.tab.Metadata == nil {
 				m.tab.Metadata = map[string]string{}
 			}
 			m.tab.Metadata["audio_source"] = src.ID
 		}
-		return m, tea.Batch(m.saveTabPrefsCmd(), m.maybeDetectIntroCmd(), m.maybeAlignCmd())
+		cmds = append(cmds, m.saveTabPrefsCmd(), m.maybeDetectIntroCmd(), m.maybeAlignCmd())
+		return m, tea.Batch(cmds...)
 	}
 	return m, nil
 }

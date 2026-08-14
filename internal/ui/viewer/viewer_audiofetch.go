@@ -98,6 +98,7 @@ func (m *ViewerModel) BeginAudioFetch(allowOnline bool) tea.Cmd {
 		return nil
 	}
 	m.resolvedAudio = player.FindAudio(m.tab, m.tabPath, m.audioDirs)
+	var cmds []tea.Cmd
 	cat, err := player.BuildAudioCatalog(m.tab, m.tabPath, m.audioDirs, false)
 	if err == nil && len(cat.Sources) > 0 {
 		m.audioCatalog = cat
@@ -107,11 +108,15 @@ func (m *ViewerModel) BeginAudioFetch(allowOnline bool) tea.Cmd {
 		}
 		m.audioCursor = m.selectedSourceIdx
 		m.restoreCalibrationForSource()
-		m.applySelectedSource(true)
+		if cmd := m.applySelectedSourceStateOnly(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 	if !allowOnline || !player.OnlineAudioAvailable() || player.AudioSearchQuery(m.tab) == "" {
-		return tea.Batch(m.maybeDetectIntroCmd(), m.maybeAlignCmd())
+		cmds = append(cmds, m.maybeDetectIntroCmd(), m.maybeAlignCmd())
+		return tea.Batch(cmds...)
 	}
 	m.fetchingCatalog = true
-	return tea.Batch(fetchAudioCatalogCmd(m.tab, m.tabPath, m.tabID, m.audioDirs, allowOnline), m.maybeDetectIntroCmd())
+	cmds = append(cmds, fetchAudioCatalogCmd(m.tab, m.tabPath, m.tabID, m.audioDirs, allowOnline), m.maybeDetectIntroCmd())
+	return tea.Batch(cmds...)
 }

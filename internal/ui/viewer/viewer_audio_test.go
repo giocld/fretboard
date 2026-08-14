@@ -476,3 +476,94 @@ func TestAutoAlignmentApplied(t *testing.T) {
 		t.Fatalf("stale source must be ignored, bpm=%d", m.bpm)
 	}
 }
+
+// bpmTestViewer returns a viewer with a ready local source selected and its
+// calibration restored, matching the fixture used by the alignment tests.
+func bpmTestViewer(t *testing.T) (ViewerModel, string) {
+	t.Helper()
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Artist: "Y", Tuning: model.Standard,
+		Metadata: map[string]string{},
+		Bars:     []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	audio := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(audio, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.audioCatalog = player.AudioCatalog{Sources: []player.AudioSource{
+		{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI"},
+		{ID: "local:" + audio, Kind: player.SourceLocal, Label: "song.mp3", Path: audio, Category: player.CatLocal, StrictOK: true},
+	}}
+	m.selectedSourceIdx = 1
+	m.restoreCalibrationForSource()
+	return m, audio
+}
+
+// TestApplySelectedSourceDeferredProbe guards the async BPM split: the
+// state-only apply resolves the source's audio path and returns the command
+// that derives the tempo in the background — it must never probe synchronously,
+// so the viewer's tempo stays untouched until the BPMDerivedMsg is handled.
+func TestApplySelectedSourceDeferredProbe(t *testing.T) {
+	m, audio := bpmTestViewer(t)
+	before := m.bpm
+
+	cmd := m.applySelectedSourceStateOnly()
+	if m.resolvedAudio != audio {
+		t.Fatalf("resolvedAudio = %q, want %q", m.resolvedAudio, audio)
+	}
+	if cmd == nil {
+		t.Fatal("state-only apply must return the async BPM derive command")
+	}
+	if m.bpm != before {
+		t.Fatalf("bpm must stay untouched until the derived message is handled, got %d, want %d", m.bpm, before)
+	}
+}
+
+// TestApplySelectedSourceSkipsProbeWhenBPMKnown guards the command-creation
+// guard: a tab that already records a tempo gets no probe command at all.
+func TestApplySelectedSourceSkipsProbeWhenBPMKnown(t *testing.T) {
+	m, _ := bpmTestViewer(t)
+	m.tab.Metadata[model.MetaKeyBPM] = "140"
+
+	if cmd := m.applySelectedSourceStateOnly(); cmd != nil {
+		t.Fatal("no probe command when BPM metadata is already set")
+	}
+}
+
+// TestHandleBPMDerivedAppliesWhenCurrent guards the async apply: a derived
+// tempo for the still-current source is applied and clamped.
+func TestHandleBPMDerivedAppliesWhenCurrent(t *testing.T) {
+	m, audio := bpmTestViewer(t)
+
+	updated, _ := m.Update(msgs.BPMDerivedMsg{SourceID: "local:" + audio, BPM: 132})
+	m = updated
+	if m.bpm != 132 {
+		t.Fatalf("bpm should be derived to 132, got %d", m.bpm)
+	}
+}
+
+// TestHandleBPMDerivedIgnoresWhenStale guards the stale-source check: a probe
+// that finished after the user switched sources must not change the tempo.
+func TestHandleBPMDerivedIgnoresWhenStale(t *testing.T) {
+	m, _ := bpmTestViewer(t)
+
+	updated, _ := m.Update(msgs.BPMDerivedMsg{SourceID: "yt:other", BPM: 132})
+	m = updated
+	if m.bpm != 120 {
+		t.Fatalf("stale source must be ignored, bpm=%d", m.bpm)
+	}
+}
+
+// TestHandleBPMDerivedRespectsMetaBPM guards the apply-site guard: a tempo
+// already recorded in the tab's metadata wins over the derived value.
+func TestHandleBPMDerivedRespectsMetaBPM(t *testing.T) {
+	m, audio := bpmTestViewer(t)
+	m.bpm = 140 // the tempo the recorded metadata is in effect at
+	m.tab.Metadata[model.MetaKeyBPM] = "140"
+
+	updated, _ := m.Update(msgs.BPMDerivedMsg{SourceID: "local:" + audio, BPM: 99})
+	m = updated
+	if m.bpm != 140 {
+		t.Fatalf("recorded BPM metadata must win, got %d, want 140", m.bpm)
+	}
+}

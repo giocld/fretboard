@@ -3,6 +3,7 @@ package viewer
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"fretboard/internal/model"
 	"fretboard/internal/player"
@@ -19,7 +20,10 @@ func (m ViewerModel) handleAudioFetched(msg msgs.AudioFetchedMsg) (ViewerModel, 
 		if msg.Err == nil && msg.Path != "" {
 			m.audioCatalog.SetSourcePath(m.selectedSourceIdx, msg.Path)
 			m.resolvedAudio = msg.Path
-			m.applySelectedSource(true)
+			var cmds []tea.Cmd
+			if cmd := m.applySelectedSourceStateOnly(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 			src := m.selectedSource()
 			if src.ID != "" {
 				if m.tab.Metadata == nil {
@@ -28,7 +32,6 @@ func (m ViewerModel) handleAudioFetched(msg msgs.AudioFetchedMsg) (ViewerModel, 
 				m.tab.Metadata["audio_source"] = src.ID
 			}
 			m.restoreCalibrationForSource()
-			var cmds []tea.Cmd
 			if wantPlay {
 				cmds = append(cmds, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts()))
 			}
@@ -61,6 +64,7 @@ func (m ViewerModel) handleAudioCatalog(msg msgs.AudioCatalogMsg) (ViewerModel, 
 		if msg.Err != nil {
 			m.errMsg = msg.Err.Error()
 		}
+		var cmds []tea.Cmd
 		if len(msg.Catalog.Sources) > 0 {
 			prevPick := m.selectedSourceIdx
 			prevCursor := m.audioCursor
@@ -91,13 +95,16 @@ func (m ViewerModel) handleAudioCatalog(msg msgs.AudioCatalogMsg) (ViewerModel, 
 				// Restore the source's calibration before deriving BPM so
 				// the intro offset is excluded from the tempo math.
 				m.restoreCalibrationForSource()
-				m.applySelectedSource(true)
+				if cmd := m.applySelectedSourceStateOnly(); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
 			} else if prevPick < len(m.audioCatalog.Sources) {
 				m.selectedSourceIdx = prevPick
 			}
 		}
 		m.refresh()
-		return m, tea.Batch(m.maybeDetectIntroCmd(), m.maybeAlignCmd())
+		cmds = append(cmds, m.maybeDetectIntroCmd(), m.maybeAlignCmd())
+		return m, tea.Batch(cmds...)
 	}
 	var cmd tea.Cmd
 	m.viewport, cmd = m.viewport.Update(msg)
@@ -128,6 +135,25 @@ func (m ViewerModel) handleIntroDetected(msg msgs.IntroDetectedMsg) (ViewerModel
 		m.refresh()
 		return m, m.saveTabPrefsCmd()
 	}
+	return m, nil
+}
+
+// handleBPMDerived applies an asynchronously derived audio tempo. The probe
+// ran in a background command, so the source may have changed while it was in
+// flight: apply only when the source is still current and the tab does not
+// already record a tempo (belt and suspenders with the command-creation guard).
+func (m ViewerModel) handleBPMDerived(msg msgs.BPMDerivedMsg) (ViewerModel, tea.Cmd) {
+	if msg.SourceID == "" || msg.SourceID != m.currentSourceID() {
+		return m, nil // the user switched sources while the probe ran
+	}
+	if m.tab != nil && m.tab.Metadata != nil && strings.TrimSpace(m.tab.Metadata[model.MetaKeyBPM]) != "" {
+		return m, nil // a recorded tempo wins over the derived one
+	}
+	if msg.BPM <= 0 {
+		return m, nil
+	}
+	m.bpm = player.ClampBPM(msg.BPM)
+	m.refresh()
 	return m, nil
 }
 

@@ -158,6 +158,14 @@ type OpenSettingsMsg struct{}
 // HomeSettingsMsg opens the settings screen from the home page.
 type HomeSettingsMsg struct{}
 
+// BPMDerivedMsg delivers an audio-derived tempo for a source. The derivation
+// runs in a background command (ffprobe never blocks the Update loop); the
+// viewer applies it only if the source is still selected.
+type BPMDerivedMsg struct {
+	SourceID string
+	BPM      int
+}
+
 // AlignmentMsg delivers an automatic audio-alignment result for a source.
 type AlignmentMsg struct {
 	SourceID       string

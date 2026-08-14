@@ -175,6 +175,8 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		return m.handleAudioCatalog(msg)
 	case msgs.IntroDetectedMsg:
 		return m.handleIntroDetected(msg)
+	case msgs.BPMDerivedMsg:
+		return m.handleBPMDerived(msg)
 	case msgs.AlignmentMsg:
 		return m.handleAlignment(msg)
 	case msgs.PlaybackStartedMsg:
