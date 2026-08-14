@@ -263,6 +263,60 @@ func TestMidiTickLoopDeadlines(t *testing.T) {
 	}
 }
 
+// TestSyncedFor guards the flagship sync predicate: audio mode alone must
+// arm audio sync. The old predicate (`Mode()=="audio" && AudioDuration()>0`)
+// fell back to the tab deadline clock when the duration was unknown, silently
+// desyncing the cursor from the recording.
+func TestSyncedFor(t *testing.T) {
+	cases := []struct {
+		mode string
+		want bool
+	}{
+		{"audio", true},
+		{"midi", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := syncedFor(tc.mode); got != tc.want {
+			t.Fatalf("syncedFor(%q) = %v, want %v", tc.mode, got, tc.want)
+		}
+	}
+}
+
+// TestStartPlaybackSyncIgnoresUnknownDuration guards the flagship fix through
+// the real playback-start handler: an audio-mode start arms audio sync even
+// when the engine reports no duration yet (AudioDuration()==0, e.g. ffprobe
+// absent). The handler must keep the cursor on the Elapsed() monitor path and
+// never arm the tab deadline clock.
+func TestStartPlaybackSyncIgnoresUnknownDuration(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(sampleTab(), "", 0)
+	if dur := m.engine.AudioDuration(); dur != 0 {
+		t.Fatalf("precondition: duration must be unknown (0), got %v", dur)
+	}
+	schedule := player.BuildSchedule(m.tab)
+	if len(schedule) == 0 {
+		t.Fatal("precondition: sample tab must produce a schedule")
+	}
+	// This is the exact PlaybackStartedMsg startPlaybackCmd now emits for
+	// audio mode: AudioSync=true regardless of the reported duration.
+	updated, _ := m.Update(msgs.PlaybackStartedMsg{
+		Schedule: schedule, StepIdx: 0, Duration: time.Millisecond, AudioSync: true,
+	})
+	m = updated
+	if !m.audioSync {
+		t.Fatal("audio mode with unknown duration must arm audio sync")
+	}
+	if !m.playing {
+		t.Fatal("playback must be running after start")
+	}
+	// The cursor is driven by handlePlaybackMonitor/Elapsed: the step
+	// deadline clock is only armed for the non-synced MIDI path.
+	if !m.stepClock.Deadline().IsZero() {
+		t.Fatalf("audio-synced playback must not arm the step deadline clock, got %v", m.stepClock.Deadline())
+	}
+}
+
 // TestBpmChangeRebasesClockWithoutRestart guards the BPM re-base: in MIDI
 // mode, + re-bases the clock and keeps the session (no stop/start).
 func TestBpmChangeRebasesClockWithoutRestart(t *testing.T) {

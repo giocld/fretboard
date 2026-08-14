@@ -55,7 +55,7 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 			_ = engine.Stop()
 			return msgs.PlaybackErrorMsg{Err: errPlaybackStopped}
 		}
-		synced := engine.Mode() == "audio" && engine.AudioDuration() > 0
+		synced := syncedFor(engine.Mode())
 		if synced {
 			dur = 80 * time.Millisecond
 		}
@@ -67,6 +67,12 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 		}
 	}
 }
+
+// syncedFor reports whether the engine mode drives the playhead from the
+// actual audio (Elapsed()) instead of the tab deadline clock. Audio mode
+// alone decides: the duration may be unknown at start (no ffprobe, duration
+// not yet reported) and must not fall back to the deadline clock.
+func syncedFor(mode string) bool { return mode == "audio" }
 
 // playbackOpts carries the practice-tool settings applied at playback start.
 type playbackOpts struct {
