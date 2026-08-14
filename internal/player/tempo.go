@@ -19,6 +19,9 @@ import (
 // beat interval, then confirmed against a nearby onset. Anchors therefore
 // follow the recording's tempo changes instead of locking the tab's grid
 // onto sloppy matches. Bars are 1-based to match the viewer's sync points.
+// Every anchor carries Pos = its own Seconds (the anchor time IS the cached
+// audio position), so the TimeMapper can seed its per-bar memo cache from
+// the map without recomputation.
 func TempoAnchors(expected []ExpectedOnset, onsets []time.Duration, scale float64, offset time.Duration, bpm int, anchorEvery int) []SyncPoint {
 	if anchorEvery < 1 {
 		anchorEvery = 4
@@ -92,7 +95,7 @@ func TempoAnchors(expected []ExpectedOnset, onsets []time.Duration, scale float6
 	haveLast := false
 	for _, s := range starts {
 		if n, ok := NearestOnset(onsets, s.t, tolerance); ok {
-			anchors = append(anchors, SyncPoint{Bar: s.bar + 1, Seconds: n.Seconds()})
+			anchors = append(anchors, SyncPoint{Bar: s.bar + 1, Seconds: n.Seconds(), Pos: n.Seconds()})
 			lastBar, lastTime = s.bar, n
 			haveLast = true
 			break
@@ -113,12 +116,12 @@ func TempoAnchors(expected []ExpectedOnset, onsets []time.Duration, scale float6
 		ratio := float64(interval) / float64(globalInterval)
 		predicted := lastTime + time.Duration(float64(s.bar-lastBar)*tabBarSecs*ratio*float64(time.Second))
 		if n, ok := NearestOnset(onsets, predicted, tolerance); ok {
-			anchors = append(anchors, SyncPoint{Bar: s.bar + 1, Seconds: n.Seconds()})
+			anchors = append(anchors, SyncPoint{Bar: s.bar + 1, Seconds: n.Seconds(), Pos: n.Seconds()})
 			lastBar, lastTime = s.bar, n
 		} else {
 			// No confirmation: keep the prediction as a soft anchor anyway so
 			// the map stays continuous (the drift meter corrects residuals).
-			anchors = append(anchors, SyncPoint{Bar: s.bar + 1, Seconds: predicted.Seconds()})
+			anchors = append(anchors, SyncPoint{Bar: s.bar + 1, Seconds: predicted.Seconds(), Pos: predicted.Seconds()})
 			lastBar, lastTime = s.bar, predicted
 		}
 	}

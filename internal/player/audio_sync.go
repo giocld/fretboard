@@ -85,10 +85,14 @@ func ProbeDuration(path string) (time.Duration, error) {
 }
 
 // SyncPoint anchors a bar to an audio time (seconds since playback start),
-// Guitar Pro sync-point style.
+// Guitar Pro sync-point style. Pos, when non-zero, is a cached audio-seconds
+// position for the TimeMapper's per-bar memo cache (a hint only; mapping
+// math never depends on it). It is omitempty so payloads persisted before
+// the field existed stay backward compatible (Pos unmarshals to 0).
 type SyncPoint struct {
 	Bar     int     `json:"bar"`
 	Seconds float64 `json:"seconds"`
+	Pos     float64 `json:"pos,omitempty"`
 }
 
 // stepIndexAtBar returns the first schedule step belonging to bar. When no

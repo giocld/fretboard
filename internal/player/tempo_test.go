@@ -153,11 +153,12 @@ func absInt(v int) int {
 	return v
 }
 
-// TestMarshalTempoMapRoundTrip guards the per-source persistence: anchors,
-// onsets, and (new) strengths all round-trip, and a payload persisted before
-// strengths existed unmarshals to nil strengths (backward compatible).
+// TestMarshalTempoMapRoundTrip guards the per-source persistence: anchors
+// (including the cached Pos), onsets, and (new) strengths all round-trip, and
+// a payload persisted before strengths/pos existed unmarshals to nil
+// strengths and Pos=0 (backward compatible).
 func TestMarshalTempoMapRoundTrip(t *testing.T) {
-	anchors := []SyncPoint{{Bar: 1, Seconds: 1.0}, {Bar: 5, Seconds: 5.0}}
+	anchors := []SyncPoint{{Bar: 1, Seconds: 1.0, Pos: 1.0}, {Bar: 5, Seconds: 5.0, Pos: 4.8}}
 	onsets := []time.Duration{1 * time.Second, 1*time.Second + 250*time.Millisecond}
 	strengths := []float64{1.0, 0.5}
 	raw := MarshalTempoMap(anchors, onsets, strengths)
@@ -168,10 +169,14 @@ func TestMarshalTempoMapRoundTrip(t *testing.T) {
 	if len(gotA) != 2 || gotA[1].Bar != 5 || len(gotO) != 2 || gotO[1] != 1250*time.Millisecond {
 		t.Fatalf("round-trip mismatch: %+v %+v", gotA, gotO)
 	}
+	if gotA[0].Pos != 1.0 || gotA[1].Pos != 4.8 {
+		t.Fatalf("Pos round-trip mismatch: %+v", gotA)
+	}
 	if len(gotS) != 2 || gotS[0] != 1.0 || gotS[1] != 0.5 {
 		t.Fatalf("strengths round-trip mismatch: %+v", gotS)
 	}
-	// An OLD payload (no "strengths" key) must restore with nil strengths.
+	// An OLD payload (no "strengths" key, no "pos") must restore with nil
+	// strengths and Pos=0.
 	oldRaw := `{"anchors":[{"bar":1,"seconds":1.0},{"bar":5,"seconds":5.0}],"onsets":[1.0,1.25]}`
 	gotA2, gotO2, gotS2 := UnmarshalTempoMap(oldRaw)
 	if len(gotA2) != 2 || len(gotO2) != 2 || gotO2[1] != 1250*time.Millisecond {
@@ -179,6 +184,35 @@ func TestMarshalTempoMapRoundTrip(t *testing.T) {
 	}
 	if gotS2 != nil {
 		t.Fatalf("old payload without strengths must unmarshal to nil, got %+v", gotS2)
+	}
+	if gotA2[0].Pos != 0 || gotA2[1].Pos != 0 {
+		t.Fatalf("old payload without pos must unmarshal to Pos=0, got %+v", gotA2)
+	}
+}
+
+// TestTempoAnchorsPopulatePos guards the cached-Pos wiring: every anchor
+// produced by TempoAnchors carries Pos equal to its own Seconds (the anchor
+// time IS the cached audio position), so the TimeMapper can seed its per-bar
+// memo cache from the map without recomputation.
+func TestTempoAnchorsPopulatePos(t *testing.T) {
+	// Tab bar starts every 2s (bar i at i*2s), quarters detected every 0.5s:
+	// every bar start lands exactly on a detected onset.
+	var expected []ExpectedOnset
+	for i := 0; i <= 10; i++ {
+		expected = append(expected, ExpectedOnset{Time: time.Duration(i) * 2 * time.Second, BarStart: true, Bar: i})
+	}
+	var onsets []time.Duration
+	for i := 0; i < 41; i++ {
+		onsets = append(onsets, time.Duration(i)*500*time.Millisecond)
+	}
+	anchors := TempoAnchors(expected, onsets, 1.0, 0, 120, 2)
+	if len(anchors) < 3 {
+		t.Fatalf("expected several anchors, got %d", len(anchors))
+	}
+	for i, a := range anchors {
+		if a.Pos != a.Seconds {
+			t.Fatalf("anchor %d: Pos %v != Seconds %v (want Pos = Seconds)", i, a.Pos, a.Seconds)
+		}
 	}
 }
 

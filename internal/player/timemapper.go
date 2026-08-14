@@ -22,20 +22,37 @@ type TimeMapper struct {
 // NewTimeMapper builds a TimeMapper over a playback schedule. points are
 // 0-based bar anchors; an empty schedule or nil points are handled
 // gracefully (the map degenerates to the naive schedule-at-BPM line).
+// Anchors carrying a cached Pos seed the per-bar memo cache (see
+// seedCacheFromPos).
 func NewTimeMapper(schedule []PlaybackStep, points []SyncPoint, bpm int) *TimeMapper {
-	return &TimeMapper{
+	tm := &TimeMapper{
 		schedule: schedule,
 		bpm:      bpm,
-		anchors:  sortAnchors(points),
 		cache:    make(map[int]time.Duration),
 	}
+	tm.SetAnchors(points)
+	return tm
 }
 
 // SetAnchors replaces the sync anchors (0-based bars) and invalidates the
-// memoized per-bar audio cache.
+// memoized per-bar audio cache, then re-seeds it from the new anchors'
+// cached Pos values.
 func (tm *TimeMapper) SetAnchors(points []SyncPoint) {
 	tm.anchors = sortAnchors(points)
 	clear(tm.cache)
+	tm.seedCacheFromPos()
+}
+
+// seedCacheFromPos pre-populates the per-bar memo cache from anchors that
+// carry a cached audio position: bar -> fromSeconds(Pos). The cache is a
+// memoization hint only — correctness never depends on it, warp recomputes
+// on a miss — so a missing or zero Pos simply leaves the entry to warp.
+func (tm *TimeMapper) seedCacheFromPos() {
+	for _, a := range tm.anchors {
+		if a.Pos > 0 {
+			tm.cache[a.Bar] = fromSeconds(a.Pos)
+		}
+	}
 }
 
 // SetAudioOffset sets the audio offset used by the naive (unanchored) region:

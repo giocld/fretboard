@@ -137,6 +137,48 @@ func TestSetAnchorsInvalidatesCache(t *testing.T) {
 	}
 }
 
+// TestTimeMapperCacheSeededFromPos guards the Pos wiring: when an anchor
+// carries a cached audio Pos, the anchored bar's audio start must be the Pos
+// value (the memoized hint) even when warp would compute a different one
+// from Seconds. The cache is a hint — correctness never depends on it — but
+// when present it must win.
+func TestTimeMapperCacheSeededFromPos(t *testing.T) {
+	schedule := quarterBarSchedule(8)
+	// Single anchor at bar 1 (500ms of score): warp would compute 10s
+	// (Seconds); the cached Pos says 7s and must win at the bar start.
+	tm := NewTimeMapper(schedule, []SyncPoint{{Bar: 1, Seconds: 10, Pos: 7}}, 120)
+	if got := tm.AudioAtScore(500 * time.Millisecond); got != 7*time.Second {
+		t.Fatalf("AudioAtScore at anchored bar start = %v, want 7s (seeded Pos)", got)
+	}
+	// Without Pos the same anchor warps to Seconds (10s): the seed is what
+	// differs, not the anchor math.
+	tm2 := NewTimeMapper(schedule, []SyncPoint{{Bar: 1, Seconds: 10}}, 120)
+	if got := tm2.AudioAtScore(500 * time.Millisecond); got != 10*time.Second {
+		t.Fatalf("AudioAtScore without Pos = %v, want 10s (warp)", got)
+	}
+}
+
+// TestTimeMapperSetAnchorsClearsAndReseeds guards the SetAnchors contract:
+// replacing anchors clears the old memoized entries and re-seeds the cache
+// from the new anchors' Pos values.
+func TestTimeMapperSetAnchorsClearsAndReseeds(t *testing.T) {
+	schedule := quarterBarSchedule(8)
+	tm := NewTimeMapper(schedule, []SyncPoint{{Bar: 1, Seconds: 10, Pos: 7}}, 120)
+	if got := tm.AudioAtScore(500 * time.Millisecond); got != 7*time.Second {
+		t.Fatalf("seeded Pos before SetAnchors: got %v, want 7s", got)
+	}
+	// New anchors with a new Pos must replace the seeded value.
+	tm.SetAnchors([]SyncPoint{{Bar: 1, Seconds: 12, Pos: 9}})
+	if got := tm.AudioAtScore(500 * time.Millisecond); got != 9*time.Second {
+		t.Fatalf("after SetAnchors with new Pos: got %v, want 9s", got)
+	}
+	// An anchor without Pos (Pos=0) must not seed: warp computes from Seconds.
+	tm.SetAnchors([]SyncPoint{{Bar: 1, Seconds: 12}})
+	if got := tm.AudioAtScore(500 * time.Millisecond); got != 12*time.Second {
+		t.Fatalf("after SetAnchors without Pos: got %v, want 12s (warp)", got)
+	}
+}
+
 // TestScoreAtAudioRoundTrip maps audio inside a segment to score time and back.
 func TestScoreAtAudioRoundTrip(t *testing.T) {
 	schedule := quarterBarSchedule(8)
