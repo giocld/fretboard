@@ -91,9 +91,7 @@ func countStrings(lines []string, start, end int) int {
 			count++
 			i++
 		}
-		if count > best {
-			best = count
-		}
+		best = max(best, count)
 		if count == 0 {
 			i++
 		}

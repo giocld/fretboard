@@ -3,6 +3,7 @@ package player
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -30,12 +31,7 @@ func (w *recordingSynthIn) String() string {
 }
 
 func containsPitch(pitches []int, p int) bool {
-	for _, x := range pitches {
-		if x == p {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(pitches, p)
 }
 
 func TestPlayStepSustainsNotesUntilStop(t *testing.T) {

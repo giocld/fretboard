@@ -89,9 +89,7 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 	// Normalize onset strengths so weighting is comparable.
 	maxStr := 0.0
 	for _, o := range onsets {
-		if o.Strength > maxStr {
-			maxStr = o.Strength
-		}
+		maxStr = max(maxStr, o.Strength)
 	}
 	if maxStr <= 0 {
 		return zero
@@ -101,14 +99,8 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 		strengths[i] = o.Strength / maxStr
 	}
 
-	lo := baseBPM - baseBPM/4
-	hi := baseBPM + baseBPM/4
-	if lo < 60 {
-		lo = 60
-	}
-	if hi > 220 {
-		hi = 220
-	}
+	lo := max(baseBPM-baseBPM/4, 60)
+	hi := min(baseBPM+baseBPM/4, 220)
 	best := zero
 	for bpm := lo; bpm <= hi; bpm++ {
 		scale := float64(baseBPM) / float64(bpm)
@@ -150,79 +142,6 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 	return best
 }
 
-// scoreAlignment scores one (bpm, offset) hypothesis. Matches are weighted
-// by the detected onset's normalized strength (accented onsets count more),
-// and bar-start expectations must land on above-median onsets — that is how
-// the offset gets pinned when the recording subdivides the tab's grid. The
-// opening onsets gate the hypothesis entirely; the hint (leading silence)
-// acts as an offset prior. Returns (score, wide-confidence).
-func scoreAlignment(expected []ExpectedOnset, onsets []Onset, strengths []float64, scale float64, offset time.Duration, bpm int, hint time.Duration) (float64, float64) {
-	tolerance := time.Duration(60000/bpm/4) * time.Millisecond // one quarter beat
-	if tolerance > 150*time.Millisecond {
-		tolerance = 150 * time.Millisecond
-	}
-	if tolerance < 60*time.Millisecond {
-		tolerance = 60 * time.Millisecond
-	}
-	// Median onset strength: bar starts must land on the accent grid.
-	med := medianStrength(strengths)
-	idx := 0
-	matches := 0
-	var score float64
-	var residSum float64
-	total := 0
-	opening := 0
-	for i, want := range expected {
-		t := time.Duration(float64(want.Time) * scale)
-		t += offset
-		if t < 0 {
-			continue
-		}
-		total++
-		for idx < len(onsets) && onsets[idx].Time < t-tolerance {
-			idx++
-		}
-		best := -1
-		for j := idx; j < len(onsets) && onsets[j].Time <= t+tolerance; j++ {
-			if best < 0 || absDur(onsets[j].Time-t) < absDur(onsets[best].Time-t) {
-				best = j
-			}
-		}
-		matched := best >= 0
-		if matched && want.BarStart && strengths[best] < med {
-			matched = false // a downbeat on a weak onset is a misalignment
-		}
-		if matched {
-			matches++
-			residSum += float64(absDur(onsets[best].Time-t)) / float64(time.Millisecond)
-			score += strengths[best]
-			if i < 10 {
-				opening++
-			}
-		} else {
-			score -= 1.0
-			if i < 10 {
-				return -1e9, 0 // a wrong tempo cannot fake the opening
-			}
-		}
-	}
-	if opening < 5 || total == 0 {
-		return -1e9, 0 // require the first beats to line up
-	}
-	// Residual penalty: sloppy aliased alignments lose to tight ones.
-	if matches > 0 {
-		score -= 0.02 * residSum / float64(matches)
-	}
-	// Offset prior: the leading-silence estimate anchors the search.
-	if hint > 0 {
-		d := absDur(offset - hint)
-		if d < 2*time.Second {
-			score += 8 * (1 - float64(d)/float64(2*time.Second))
-		}
-	}
-	return score, float64(matches) / float64(total)
-}
-
 // verifyStrict re-scores a hypothesis with a tight 60 ms tolerance: the true
 // alignment keeps most matches, harmonic aliases collapse.
 func verifyStrict(expected []ExpectedOnset, onsets []Onset, scale float64, offset time.Duration) float64 {
@@ -248,35 +167,6 @@ func verifyStrict(expected []ExpectedOnset, onsets []Onset, scale float64, offse
 	return float64(matches) / float64(total)
 }
 
-func medianStrength(strengths []float64) float64 {
-	if len(strengths) == 0 {
-		return 0
-	}
-	sorted := append([]float64(nil), strengths...)
-	sort.Float64s(sorted)
-	return sorted[len(sorted)/2]
-}
-
-// NearestOnset returns the detected onset closest to t, or false when there
-// is none within maxGap.
-func NearestOnset(onsets []time.Duration, t time.Duration, maxGap time.Duration) (time.Duration, bool) {
-	i := sort.Search(len(onsets), func(i int) bool { return onsets[i] >= t })
-	best, found := time.Duration(0), false
-	if i < len(onsets) {
-		best, found = onsets[i], true
-	}
-	if i > 0 {
-		d := t - onsets[i-1]
-		if !found || d < best-t {
-			best, found = onsets[i-1], true
-		}
-	}
-	if found && absDur(best-t) <= maxGap {
-		return best, true
-	}
-	return 0, false
-}
-
 // medianIntervals returns the median inter-onset interval of the detected
 // onsets (the beat period), or 0 when there are too few.
 func medianIntervals(onsets []time.Duration) time.Duration {
@@ -289,11 +179,4 @@ func medianIntervals(onsets []time.Duration) time.Duration {
 	}
 	sort.Slice(gaps, func(i, j int) bool { return gaps[i] < gaps[j] })
 	return time.Duration(gaps[len(gaps)/2])
-}
-
-func absDur(d time.Duration) time.Duration {
-	if d < 0 {
-		return -d
-	}
-	return d
 }

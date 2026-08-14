@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -79,12 +80,7 @@ func TestBuildAudioCandidates(t *testing.T) {
 }
 
 func containsArg(args []string, want string) bool {
-	for _, a := range args {
-		if a == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(args, want)
 }
 
 // TestFindAudioRelaxedPairing guards S4.4: files whose names merely contain

@@ -154,9 +154,7 @@ func segmentStep(schedule []PlaybackStep, a, b SyncPoint, audioSeconds float64) 
 	if endStep <= startStep {
 		endStep = startStep + 1
 	}
-	if endStep > len(schedule) {
-		endStep = len(schedule)
-	}
+	endStep = min(endStep, len(schedule))
 	span := b.Seconds - a.Seconds
 	if span <= 0 {
 		return startStep
@@ -188,18 +186,13 @@ func extendLastSegment(schedule []PlaybackStep, a, b SyncPoint, audioSeconds flo
 	if endStep <= startStep {
 		endStep = startStep + 1
 	}
-	if endStep > len(schedule) {
-		endStep = len(schedule)
-	}
+	endStep = min(endStep, len(schedule))
 	span := b.Seconds - a.Seconds
 	if span <= 0 {
 		return endStep
 	}
 	rate := float64(endStep-startStep) / span
-	step := endStep + int((audioSeconds-b.Seconds)*rate)
-	if step >= len(schedule) {
-		step = len(schedule) - 1
-	}
+	step := min(endStep+int((audioSeconds-b.Seconds)*rate), len(schedule)-1)
 	return step
 }
 

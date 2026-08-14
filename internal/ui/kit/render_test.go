@@ -202,11 +202,11 @@ func TestLinearRulerAlignsWithStringPlayhead(t *testing.T) {
 // in s, or -1. Column math must use display width (marker may sit after styled
 // multibyte runes).
 func displayColumnOf(s, marker string) int {
-	idx := strings.Index(s, marker)
-	if idx < 0 {
+	before, _, found := strings.Cut(s, marker)
+	if !found {
 		return -1
 	}
-	return lipgloss.Width(s[:idx])
+	return lipgloss.Width(before)
 }
 
 // TestBarHeaderShowsRepeatMarkers guards S2.3: repeat structure is visible on

@@ -43,10 +43,7 @@ func FormatBreadcrumb(parts ...string) string {
 func RenderAppHeader(width int, breadcrumb string) string {
 	logo := LogoStyle.Render("fretboard")
 	crumb := BreadcrumbStyle.Render(breadcrumb)
-	gap := width - lipgloss.Width(logo) - lipgloss.Width(crumb) - 4
-	if gap < 1 {
-		gap = 1
-	}
+	gap := max(width-lipgloss.Width(logo)-lipgloss.Width(crumb)-4, 1)
 	line := logo + strings.Repeat(" ", gap) + crumb
 	return HeaderStyle.Render(line)
 }
@@ -107,10 +104,7 @@ func RenderFooterWithStatus(width int, status string, hints []KeyHint) string {
 // header gets a dim rule underneath; an empty title renders just the border
 // and content (used when the caller supplies its own header/table structure).
 func RenderPanel(width int, title, content string) string {
-	innerW := width - 4
-	if innerW < 10 {
-		innerW = 10
-	}
+	innerW := max(width-4, 10)
 	body := lipgloss.NewStyle().MaxWidth(innerW).Render(content)
 	if title == "" {
 		return PanelStyle.Width(width).Render(body)

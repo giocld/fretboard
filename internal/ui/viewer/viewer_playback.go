@@ -20,12 +20,7 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 		if len(schedule) == 0 {
 			return msgs.PlaybackErrorMsg{Err: errNoPlaybackSteps}
 		}
-		if startIdx < 0 {
-			startIdx = 0
-		}
-		if startIdx >= len(schedule) {
-			startIdx = len(schedule) - 1
-		}
+		startIdx = min(max(startIdx, 0), len(schedule)-1)
 		if src.Kind == player.SourceOnline && (src.Path == "" || !player.FileExists(src.Path)) {
 			path, err := player.EnsureAudioSource(tab, src)
 			if err != nil {

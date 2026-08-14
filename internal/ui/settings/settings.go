@@ -81,12 +81,7 @@ func (m *SettingsModel) adjust(row int, key string) {
 				m.cfg.VolumePercent = 0
 			}
 		}
-		if m.cfg.VolumePercent < 0 {
-			m.cfg.VolumePercent = 0
-		}
-		if m.cfg.VolumePercent > 100 {
-			m.cfg.VolumePercent = 100
-		}
+		m.cfg.VolumePercent = min(max(m.cfg.VolumePercent, 0), 100)
 	case 1: // strict audio selection
 		if key == "enter" || key == "left" || key == "right" {
 			m.cfg.StrictAudioSelection = !m.cfg.StrictAudioSelection

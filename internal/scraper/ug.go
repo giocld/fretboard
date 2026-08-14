@@ -141,10 +141,7 @@ func isAlbumTab(res ultimateguitar.TabResult) bool {
 	if res.Part == "album" {
 		return true
 	}
-	content := res.Content
-	if len(content) > 400 {
-		content = content[:400]
-	}
+	content := res.Content[:min(len(res.Content), 400)]
 	for _, line := range strings.Split(content, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "Track ") && (strings.Contains(trimmed, "Included") || strings.Contains(trimmed, "Not Included")) {

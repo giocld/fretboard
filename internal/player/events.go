@@ -85,9 +85,7 @@ func collectNotesAt(tuning model.Tuning, strings []model.StringLine, col int) ([
 				if midi > 0 {
 					notes = append(notes, note{String: s, Fret: seg.Value, Note: midi})
 				}
-				if seg.Width > width {
-					width = seg.Width
-				}
+				width = max(width, seg.Width)
 			}
 		}
 	}
@@ -108,8 +106,8 @@ func stepWidth(strings []model.StringLine, col int) int {
 	w := 1
 	for _, str := range strings {
 		for _, seg := range str.Segments {
-			if seg.Position == col && seg.Width > w {
-				w = seg.Width
+			if seg.Position == col {
+				w = max(w, seg.Width)
 			}
 		}
 	}
@@ -117,13 +115,11 @@ func stepWidth(strings []model.StringLine, col int) int {
 }
 
 func maxColumns(strings []model.StringLine) int {
-	max := 0
+	m := 0
 	for _, str := range strings {
 		for _, seg := range str.Segments {
-			if seg.Position > max {
-				max = seg.Position
-			}
+			m = max(m, seg.Position)
 		}
 	}
-	return max + 1
+	return m + 1
 }

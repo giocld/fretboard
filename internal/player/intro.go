@@ -46,15 +46,15 @@ func introOffsetFromSilenceLog(log string) (time.Duration, error) {
 		cur = nil
 	}
 	for _, line := range strings.Split(log, "\n") {
-		if i := strings.Index(line, "silence_start:"); i >= 0 {
+		if _, after, found := strings.Cut(line, "silence_start:"); found {
 			flush()
-			if v, err := parseFirstFloat(line[i+len("silence_start:"):]); err == nil {
+			if v, err := parseFirstFloat(after); err == nil {
 				cur = &seg{start: v, end: -1}
 			}
 			continue
 		}
-		if i := strings.Index(line, "silence_end:"); i >= 0 {
-			if v, err := parseFirstFloat(line[i+len("silence_end:"):]); err == nil {
+		if _, after, found := strings.Cut(line, "silence_end:"); found {
+			if v, err := parseFirstFloat(after); err == nil {
 				if cur != nil {
 					cur.end = v
 				} else {

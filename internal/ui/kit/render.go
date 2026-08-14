@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"fretboard/internal/model"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // TabCursor marks the playhead position in the viewer.
@@ -132,127 +131,6 @@ func RenderTabLinearBody(tab *model.Tab, offset int, cur *TabCursor) string {
 	return renderTabLinear(tab, offset, cur, false)
 }
 
-func renderTabLinear(tab *model.Tab, offset int, cur *TabCursor, withHeader bool) string {
-	if tab == nil {
-		return ""
-	}
-	var sb strings.Builder
-	if withHeader && tab.Title != "" {
-		sb.WriteString(PanelTitleStyle.Render(tab.Title))
-		sb.WriteString("\n")
-		if tab.Tuning != nil {
-			sb.WriteString(PanelTitleStyle.Render(tab.Tuning.Label()))
-			sb.WriteString("\n")
-		}
-	}
-	for i, bar := range tab.Bars {
-		if i > 0 {
-			sb.WriteString("\n")
-		}
-		highlight := cur != nil && cur.Bar == i
-		header := barHeaderWithMarkers(tab, i)
-		if cur.InSearch(i) {
-			header = SearchBarStyle.Render(header)
-		}
-		sb.WriteString(header)
-		sb.WriteString("\n")
-		// String rows prefix their content with a 3-wide right-aligned label
-		// plus 2 spaces; the ruler must use the same 5-column prefix or the
-		// playhead floats left of the notes' own ┊ markers.
-		ruler := strings.Repeat(" ", 5)
-		column := 0
-		if highlight && cur != nil && cur.Col >= offset {
-			column = cur.Col - offset
-		}
-		ruler += strings.Repeat(" ", column) + CursorStyle.Render("┊")
-		sb.WriteString(ruler)
-		sb.WriteString("\n")
-		for si := 0; si < len(bar.Strings); si++ {
-			label := ""
-			if tab.Tuning != nil {
-				label = tab.Tuning.NoteName(si)
-			}
-			sb.WriteString(StringLabel.Render(label))
-			sb.WriteString(strings.Repeat(" ", 2))
-			sb.WriteString(renderStringContent(bar.Strings[si], si, offset, curCol(cur, highlight), highlight, tab, cur))
-			sb.WriteString("\n")
-		}
-	}
-	return sb.String()
-}
-
-// barWidthInLinear returns a bar's natural content width in the linear layout.
-func barWidthInLinear(bar model.Bar, tab *model.Tab) int {
-	return maxBarCols(bar) + 4
-}
-
-// sectionLabel returns the section name for a bar when it starts a new
-// section (the previous bar belongs to a different or no section).
-func sectionLabel(tab *model.Tab, barIdx int) string {
-	if tab == nil || barIdx < 0 || barIdx >= len(tab.Bars) {
-		return ""
-	}
-	s := strings.TrimSpace(tab.Bars[barIdx].Section)
-	if s == "" {
-		return ""
-	}
-	if barIdx > 0 && tab.Bars[barIdx-1].Section == s {
-		return ""
-	}
-	return s
-}
-
-// sectionHeaderFor renders a bar header that fits the section name (when
-// the bar starts a section) inside the bar column width, with the dash fill
-// after it and the repeat-close marker at the end.
-func sectionHeaderFor(tab *model.Tab, barIdx int, open, ending, close string, barWidth int) string {
-	name := sectionLabel(tab, barIdx)
-	num := barIdx + 1 // display bar number (1-based, mirrors Bar.Number)
-	if barIdx >= 0 && barIdx < len(tab.Bars) {
-		num = tab.Bars[barIdx].Number
-	}
-	head := fmt.Sprintf("%s %d %s", open, num, ending)
-	if name != "" {
-		head += " "
-		room := barWidth - lipgloss.Width(head) - lipgloss.Width(close) - 1
-		if room < 2 {
-			room = 2
-		}
-		head += Truncate(name, room)
-	}
-	fill := barWidth - lipgloss.Width(head) - lipgloss.Width(close)
-	if fill < 1 {
-		fill = 1
-	}
-	return head + strings.Repeat("─", fill) + close
-}
-
-// barMarkers computes a bar's repeat-open, repeat-close, and ending header
-// markers from its structure.
-func barMarkers(bar model.Bar) (open, close, ending string) {
-	open = "│"
-	if bar.RepeatStart {
-		open = "│:"
-	}
-	if bar.RepeatEnd {
-		close = ":│"
-	}
-	if bar.Ending == 1 || bar.Ending == 2 {
-		ending = fmt.Sprintf("%d.", bar.Ending)
-	}
-	return open, close, ending
-}
-
-// barHeaderWithMarkers renders the linear-layout bar header including repeat
-// structure markers ("|:", ":|", "1."/"2.") and the section name when the
-// bar starts a new section.
-func barHeaderWithMarkers(tab *model.Tab, barIdx int) string {
-	bar := tab.Bars[barIdx]
-	open, close, ending := barMarkers(bar)
-	width := barWidthInLinear(bar, tab)
-	return BarNumberStyle.Render(sectionHeaderFor(tab, barIdx, open, ending, close, width))
-}
-
 const (
 	defaultGridWidth = 120
 	minBarWidth      = 18
@@ -274,44 +152,33 @@ func BarGridLayout(tab *model.Tab, availWidth int) BarGridMetrics {
 		return BarGridMetrics{BarsPerRow: 1, RowHeight: 3}
 	}
 	if availWidth < minBarWidth+4 {
-		availWidth = minBarWidth + 4
+		availWidth = max(availWidth, minBarWidth+4)
 	}
 	natural := maxNaturalBarWidth(tab)
 	barsPerRow := availWidth / minBarWidth
-	if barsPerRow < 1 {
-		barsPerRow = 1
-	}
-	if barsPerRow > maxBarsPerRow {
-		barsPerRow = maxBarsPerRow
-	}
+	barsPerRow = min(max(barsPerRow, 1), maxBarsPerRow)
 	barWidth := availWidth / barsPerRow
 	if natural > barWidth {
 		barWidth = natural
 		barsPerRow = availWidth / barWidth
-		if barsPerRow < 1 {
-			barsPerRow = 1
-		}
+		barsPerRow = max(barsPerRow, 1)
 	}
 	rows := (len(tab.Bars) + barsPerRow - 1) / barsPerRow
 	rowHeight := 3 // header + blank
 	for r := 0; r < rows; r++ {
 		for b := r * barsPerRow; b < (r+1)*barsPerRow && b < len(tab.Bars); b++ {
-			if h := len(tab.Bars[b].Strings) + 2; h > rowHeight {
-				rowHeight = h
-			}
+			rowHeight = max(rowHeight, len(tab.Bars[b].Strings)+2)
 		}
 	}
 	return BarGridMetrics{BarsPerRow: barsPerRow, BarWidth: barWidth, RowHeight: rowHeight}
 }
 
 func maxNaturalBarWidth(tab *model.Tab) int {
-	max := 0
+	m := 0
 	for _, bar := range tab.Bars {
-		if c := maxBarCols(bar); c > max {
-			max = c
-		}
+		m = max(m, maxBarCols(bar))
 	}
-	return max
+	return m
 }
 
 // GridBarLineOffsets returns the content line where each bar's row begins in
@@ -361,18 +228,6 @@ func LinearBarLineOffsets(tab *model.Tab) []int {
 	return out
 }
 
-func maxBarCols(bar model.Bar) int {
-	max := 0
-	for _, str := range bar.Strings {
-		for _, seg := range str.Segments {
-			if end := seg.Position + seg.Width; end > max {
-				max = end
-			}
-		}
-	}
-	return max
-}
-
 // RenderTabGrid renders a tab in a page layout at the given width, starting at
 // the given horizontal column offset, optionally highlighting the playhead bar.
 // The tab's own header (title/artist/tuning) is included.
@@ -384,240 +239,4 @@ func RenderTabGrid(tab *model.Tab, width int, offset int, cur *TabCursor) string
 // the viewer, which draws its own title/status chrome above the panel.
 func RenderTabGridBody(tab *model.Tab, width int, offset int, cur *TabCursor) string {
 	return renderTabGrid(tab, width, offset, cur, false)
-}
-
-func renderTabGrid(tab *model.Tab, width int, offset int, cur *TabCursor, withHeader bool) string {
-	if tab == nil || len(tab.Bars) == 0 {
-		return "No tab loaded."
-	}
-
-	var b strings.Builder
-	if withHeader && tab.Title != "" {
-		b.WriteString(FretDigitStyle.Render(tab.Title))
-		if tab.Artist != "" {
-			b.WriteString("  " + RestStyle.Render(tab.Artist))
-		}
-		if tab.Tuning.Label() != "" {
-			b.WriteString("  " + InfoStyle.Render(tab.Tuning.Label()))
-		}
-		if bpm := tab.Metadata[model.MetaKeyBPM]; bpm != "" {
-			b.WriteString("  " + MutedStyle.Render(bpm+" BPM"))
-		}
-		b.WriteString("\n\n")
-	}
-
-	metrics := BarGridLayout(tab, width)
-	barWidth := metrics.BarWidth
-
-	for rowStart := 0; rowStart < len(tab.Bars); rowStart += metrics.BarsPerRow {
-		rowEnd := rowStart + metrics.BarsPerRow
-		if rowEnd > len(tab.Bars) {
-			rowEnd = len(tab.Bars)
-		}
-		renderBarRow(&b, tab, rowStart, rowEnd, barWidth, offset, cur)
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-func renderBarRow(b *strings.Builder, tab *model.Tab, start, end, barWidth, offset int, cur *TabCursor) {
-	for barIdx := start; barIdx < end; barIdx++ {
-		bar := tab.Bars[barIdx]
-		highlight := cur != nil && barIdx == cur.Bar
-
-		// Repeat structure markers: "|:" opens a repeat, ":|" closes one,
-		// "1."/"2." label endings — mirrored on the bar header so the
-		// player sees the same structure the playback follows.
-		open, close, ending := barMarkers(bar)
-		header := sectionHeaderFor(tab, barIdx, open, ending, close, barWidth)
-		headerStyle := MutedStyle
-		switch {
-		case highlight:
-			headerStyle = CursorStyle
-		case cur.InLoop(barIdx):
-			headerStyle = LoopBarStyle
-		case cur.InSearch(barIdx):
-			headerStyle = SearchBarStyle
-		}
-		b.WriteString(headerStyle.Render(padToWidth(header, barWidth)))
-	}
-	b.WriteString("\n")
-
-	for s := 0; s < stringsPerRow(tab, start, end); s++ {
-		for barIdx := start; barIdx < end; barIdx++ {
-			bar := tab.Bars[barIdx]
-			label := tab.Tuning.NoteName(s)
-			if label == "" {
-				label = "?"
-			}
-			style := StringLabel.Copy().Foreground(StringColor(s))
-			prefix := MutedStyle.Render("│") + style.Render(label[:1]) + MutedStyle.Render("│")
-			var line model.StringLine
-			if s < len(bar.Strings) {
-				line = bar.Strings[s]
-			}
-			highlight := cur != nil && barIdx == cur.Bar
-			content := renderStringContent(line, s, offset, curCol(cur, highlight), highlight, tab, cur)
-			// Pad the content to the bar column width so string rows line up
-			// under the bar headers; the prefix width is measured because the
-			// string label style has its own fixed width.
-			b.WriteString(prefix + padToWidth(content, barWidth-lipgloss.Width(prefix)))
-		}
-		b.WriteString("\n")
-	}
-}
-
-func stringsPerRow(tab *model.Tab, start, end int) int {
-	max := 0
-	for i := start; i < end && i < len(tab.Bars); i++ {
-		if n := len(tab.Bars[i].Strings); n > max {
-			max = n
-		}
-	}
-	if max == 0 {
-		return 6
-	}
-	return max
-}
-
-func padToWidth(s string, width int) string {
-	pad := width - lipgloss.Width(s)
-	if pad <= 0 {
-		return s
-	}
-	return s + strings.Repeat(" ", pad)
-}
-
-func curCol(cur *TabCursor, highlight bool) int {
-	if !highlight || cur == nil {
-		return -1
-	}
-	return cur.Col
-}
-
-func renderStringContent(line model.StringLine, stringIdx, offset, cursorCol int, highlight bool, tab *model.Tab, cur *TabCursor) string {
-	maxCol := 0
-	for _, seg := range line.Segments {
-		if end := seg.Position + seg.Width; end > maxCol {
-			maxCol = end
-		}
-	}
-	// The vertical playhead must appear on every string of the highlighted
-	// bar, even rows whose content ends before the cursor column — a line
-	// with a short rest still crosses the current beat.
-	if highlight && cursorCol+1 > maxCol {
-		maxCol = cursorCol + 1
-	}
-
-	var b strings.Builder
-	for col := offset; col < maxCol; {
-		if highlight && col == cursorCol {
-			b.WriteString(PlayheadStyle.Render("┊"))
-			col++
-			continue
-		}
-		seg, ok := segmentAt(line, col)
-		if !ok {
-			b.WriteString(" ")
-			col++
-			continue
-		}
-		rendered := renderSegment(seg, stringIdx, tab, cur)
-		if highlight && cursorCol >= seg.Position && cursorCol < seg.Position+seg.Width {
-			rendered = CursorStyle.Render(rendered)
-		}
-		b.WriteString(rendered)
-		col = seg.Position + seg.Width
-	}
-	return b.String()
-}
-
-func segmentAt(line model.StringLine, col int) (model.Segment, bool) {
-	for _, seg := range line.Segments {
-		if col >= seg.Position && col < seg.Position+seg.Width {
-			return seg, true
-		}
-	}
-	return model.Segment{}, false
-}
-
-func renderSegment(seg model.Segment, stringIdx int, tab *model.Tab, cur *TabCursor) string {
-	str := string(seg.Char)
-	if seg.Char >= '0' && seg.Char <= '9' {
-		// Note-name view: show the pitch instead of the fret number, using
-		// the same column width so the grid stays aligned.
-		if cur != nil && cur.ShowNotes && tab != nil && tab.Tuning != nil && seg.Value >= 0 {
-			name := tab.Tuning.NoteNameAt(stringIdx, seg.Value)
-			if name != "" {
-				str = fmt.Sprintf("%-*s", seg.Width, name)
-			} else {
-				str = fmt.Sprintf("%-*d", seg.Width, seg.Value)
-			}
-		} else {
-			str = fmt.Sprintf("%-*d", seg.Width, seg.Value)
-		}
-	} else if seg.Width > 1 {
-		str = fmt.Sprintf("%-*s", seg.Width, str)
-	}
-	base := lipgloss.NewStyle().Foreground(StringColor(stringIdx))
-	switch {
-	case seg.Char >= '0' && seg.Char <= '9':
-		return FretDigitStyle.Render(str)
-	case seg.Char == '-':
-		return base.Render(str)
-	case seg.Char == 'h', seg.Char == 'p', seg.Char == 'b', seg.Char == '/', seg.Char == '\\', seg.Char == '~', seg.Char == 'x', seg.Char == 's', seg.Char == 'u':
-		return TechniqueStyle.Render(str)
-	default:
-		return base.Render(str)
-	}
-}
-
-// StatusInfo is the metadata shown in the status bar.
-type StatusInfo struct {
-	Filename  string
-	Tuning    string
-	BPM       int
-	Playing   bool
-	LoopStart int
-	LoopEnd   int
-}
-
-// RenderStatusBar renders a full-width status bar.
-func RenderStatusBar(width int, info StatusInfo) string {
-	if info.BPM <= 0 {
-		info.BPM = 120
-	}
-	left := fmt.Sprintf("%s  │  %s  │  BPM: %d", info.Filename, info.Tuning, info.BPM)
-	if info.Playing {
-		left += "  │  "
-	}
-	playStr := "Space:play"
-	if info.Playing {
-		playStr = "Space:pause"
-	}
-	right := fmt.Sprintf("j/k:scroll  %s  /:search  q:quit", playStr)
-	fill := width - lipgloss.Width(left) - lipgloss.Width(right) - 2
-	if fill < 0 {
-		fill = 0
-	}
-	content := left + strings.Repeat(" ", fill) + right
-	return StatusBarStyle.Width(width).Render(content)
-}
-
-// Truncate shortens s to fit max display columns, appending an ellipsis.
-func Truncate(s string, max int) string {
-	if max < 4 || lipgloss.Width(s) <= max {
-		return s
-	}
-	limit := max - 1
-	var b strings.Builder
-	for _, r := range s {
-		w := lipgloss.Width(string(r))
-		if w > limit {
-			break
-		}
-		b.WriteRune(r)
-		limit -= w
-	}
-	return b.String() + "..."
 }

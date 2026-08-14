@@ -46,9 +46,7 @@ func saveHistory(history []string) {
 	if path == "" {
 		return
 	}
-	if len(history) > maxHistory {
-		history = history[:maxHistory]
-	}
+	history = history[:min(len(history), maxHistory)]
 	data, _ := json.Marshal(history)
 	_ = os.WriteFile(path, data, 0o644)
 }
@@ -66,9 +64,7 @@ func addHistory(history []string, query string) []string {
 		out = append(out, h)
 	}
 	out = append([]string{query}, out...)
-	if len(out) > maxHistory {
-		out = out[:maxHistory]
-	}
+	out = out[:min(len(out), maxHistory)]
 	return out
 }
 

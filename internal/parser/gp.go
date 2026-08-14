@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"fretboard/internal/model"
@@ -16,12 +17,7 @@ var gpExtensions = []string{".gp3", ".gp4", ".gp5", ".gpx", ".gp"}
 // IsGpFile reports whether path looks like a Guitar Pro file.
 func IsGpFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
-	for _, e := range gpExtensions {
-		if ext == e {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(gpExtensions, ext)
 }
 
 // ParseGPFile converts a Guitar Pro file to a model.Tab using the gp-parser
