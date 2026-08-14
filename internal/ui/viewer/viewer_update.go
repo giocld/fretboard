@@ -139,6 +139,12 @@ func (m ViewerModel) handleAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cm
 	if msg.SourceID != "" && msg.SourceID != m.currentSourceID() {
 		return m, nil // the user switched sources while the analysis ran
 	}
+	if msg.Err != nil {
+		// F3: an analysis failure must surface, never apply partial state.
+		m.errMsg = fmt.Sprintf("Audio analysis failed: %v", msg.Err)
+		m.refresh()
+		return m, nil
+	}
 	if msg.BPM <= 0 || msg.Confidence < 0.6 {
 		if msg.BPM > 0 && msg.Confidence >= 0.4 {
 			m.infoMsg = "Audio alignment is weak — press s at a recognizable bar to anchor"

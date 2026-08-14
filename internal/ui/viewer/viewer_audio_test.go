@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -151,6 +152,47 @@ func TestAudioCatalogMsgErrorWithoutSourcesDoesNotCrash(t *testing.T) {
 	m = updated
 	if m.errMsg == "" {
 		t.Fatal("error must surface")
+	}
+}
+
+// TestHandleAlignmentSurfacesErr guards F3: an analysis failure (e.g. no
+// audio decoder) must surface as an error message and must never apply
+// partial alignment state (tempo, offset, auto tempo map).
+func TestHandleAlignmentSurfacesErr(t *testing.T) {
+	m := NewViewerModel()
+	tab := &model.Tab{Title: "X", Artist: "Y", Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{{Char: '0', Value: 0, Position: 0, Width: 1}}}}}}}
+	m.LoadTab(tab, "x.txt", 0)
+	audio := filepath.Join(t.TempDir(), "song.mp3")
+	if err := os.WriteFile(audio, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.audioCatalog = player.AudioCatalog{Sources: []player.AudioSource{
+		{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI"},
+		{ID: "local:" + audio, Kind: player.SourceLocal, Label: "song.mp3", Path: audio, Category: player.CatLocal, StrictOK: true},
+	}}
+	m.selectedSourceIdx = 1
+
+	m, _ = m.Update(msgs.AlignmentMsg{
+		SourceID: "local:" + audio, BPM: 118, Offset: 3200 * time.Millisecond, Confidence: 0.85,
+		Artist: "Y", Title: "X", TabID: 0, TabPath: "x.txt",
+		Anchors: []player.SyncPoint{{Bar: 1, Seconds: 1}, {Bar: 2, Seconds: 3}},
+		Err:     errors.New("no audio decoder available (ffmpeg or mpg123)"),
+	})
+	if m.errMsg == "" || !strings.Contains(m.errMsg, "Audio analysis failed") {
+		t.Fatalf("analysis failure must surface in errMsg, got %q", m.errMsg)
+	}
+	if m.bpm != 120 {
+		t.Fatalf("failed analysis must not change the tempo, got %d", m.bpm)
+	}
+	if m.audioOffset != 0 {
+		t.Fatalf("failed analysis must not apply an offset, got %v", m.audioOffset)
+	}
+	if m.autoAnchors != nil || m.autoActive {
+		t.Fatal("failed analysis must not apply the auto tempo map")
+	}
+	if strings.Contains(m.infoMsg, "Auto-aligned") {
+		t.Fatalf("failed analysis must not announce success, got %q", m.infoMsg)
 	}
 }
 

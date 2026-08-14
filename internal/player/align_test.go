@@ -208,3 +208,37 @@ func TestNearestOnset(t *testing.T) {
 		t.Fatal("out-of-gap must not match")
 	}
 }
+
+// TestAlignAudioErrPropagated guards F3: when the analysis itself fails (no
+// decoder available), AlignAudio must surface the error in the alignment
+// instead of returning a silent zero result.
+func TestAlignAudioErrPropagated(t *testing.T) {
+	orig := findDecoder
+	findDecoder = func() string { return "" }
+	defer func() { findDecoder = orig }()
+
+	path := filepath.Join(t.TempDir(), "song.wav")
+	if err := writeSyntheticWAV(path, 8000, []time.Duration{time.Second}, 30*time.Millisecond); err != nil {
+		t.Fatal(err)
+	}
+	a := AlignAudio(testTab(), path, 0)
+	if a.Err == nil {
+		t.Fatal("an analysis failure must propagate through AlignAudio")
+	}
+	if a.BPM != 0 || a.Confidence != 0 {
+		t.Fatalf("a failed analysis must stay zero-confidence, got BPM=%d conf=%.2f", a.BPM, a.Confidence)
+	}
+}
+
+// TestAlignAudioTooFewOnsetsNoErr guards F3's boundary: a usable-but-weak
+// analysis (empty path decodes to no onsets) returns a zero-confidence
+// alignment, not an error — only real analysis failures populate Err.
+func TestAlignAudioTooFewOnsetsNoErr(t *testing.T) {
+	a := AlignAudio(testTab(), "", 0)
+	if a.Err != nil {
+		t.Fatalf("too few onsets must not carry an error, got %v", a.Err)
+	}
+	if a.BPM != 0 || a.Confidence != 0 {
+		t.Fatalf("too few onsets must stay zero-confidence, got BPM=%d conf=%.2f", a.BPM, a.Confidence)
+	}
+}

@@ -171,4 +171,5 @@ type AlignmentMsg struct {
 	Onsets         []time.Duration    // detected onsets, for the live drift meter
 	OnsetStrengths []float64          // normalized onset strengths, aligned with Onsets
 	Anchors        []player.SyncPoint // measured bar anchors (auto tempo map)
+	Err            error              // analysis failure (no decoder, decode error)
 }

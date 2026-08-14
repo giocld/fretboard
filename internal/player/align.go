@@ -32,6 +32,7 @@ type Alignment struct {
 	Detected   int             // how many onsets the analysis found
 	Onsets     []time.Duration // the detected onset times (for the drift meter)
 	Strengths  []float64       // normalized onset strengths, aligned with Onsets
+	Err        error           // analysis failure (no decoder, decode error); nil when usable
 }
 
 // ExpectedOnset is one expected note time with its bar-start flag and bar.
@@ -91,12 +92,17 @@ func ExpectedOnsets(tab *model.Tab, bpm int) []ExpectedOnset {
 
 // AlignAudio finds the tempo and tab-start offset that best match the
 // recording's detected onsets. hint is the leading-silence estimate used as
-// an offset prior (0 = none). Returns a zero-confidence alignment when the
-// analysis can't produce anything usable (no ffmpeg, too few onsets).
+// an offset prior (0 = none). An analysis failure (no decoder, decode error)
+// is surfaced in the returned alignment's Err — never swallowed. A
+// usable-but-weak analysis (too few onsets, thin tab) returns a
+// zero-confidence alignment with Err == nil.
 func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 	var zero Alignment
 	onsets, err := DetectOnsetsWithStrength(path)
-	if err != nil || len(onsets) < 10 {
+	if err != nil {
+		return Alignment{Err: err} // explicit degradation: surface the failure
+	}
+	if len(onsets) < 10 {
 		return zero
 	}
 	// The detector emits the strong-pass onsets first and appends the
