@@ -61,21 +61,21 @@ func TestBuildAudioCandidates(t *testing.T) {
 	if len(cands) != 3 {
 		t.Fatalf("expected 3 candidates, got %d", len(cands))
 	}
-	if cands[0].bin != "ffplay" || !containsArg(cands[0].args, "-volume") || containsArg(cands[0].args, "-ss") {
-		t.Fatalf("ffplay baseline args wrong: %v", cands[0].args)
+	if cands[1].bin != "ffplay" || !containsArg(cands[1].args, "-volume") || containsArg(cands[1].args, "-ss") {
+		t.Fatalf("ffplay baseline args wrong: %v", cands[1].args)
 	}
 	if cands[2].bin != "mpg123" || len(cands[2].args) != 2 {
 		t.Fatalf("mpg123 should stay plain: %v", cands[2].args)
 	}
 
 	cands = buildAudioCandidates("/tmp/song.mp3", 90*time.Second, 1.25, 60)
-	ff := cands[0].args
-	if !containsArg(ff, "-ss") || !containsArg(ff, "90.0") || !containsArg(ff, "-af") || !containsArg(ff, "atempo=1.250") || !containsArg(ff, "-volume") || !containsArg(ff, "60") {
-		t.Fatalf("ffplay seek+rate args wrong: %v", ff)
-	}
-	mv := cands[1].args
+	mv := cands[0].args
 	if !containsArg(mv, "--start=90.0") || !containsArg(mv, "--speed=1.250") || !containsArg(mv, "--volume=60") {
 		t.Fatalf("mpv seek+rate args wrong: %v", mv)
+	}
+	ff := cands[1].args
+	if !containsArg(ff, "-ss") || !containsArg(ff, "90.0") || !containsArg(ff, "-af") || !containsArg(ff, "atempo=1.250") || !containsArg(ff, "-volume") || !containsArg(ff, "60") {
+		t.Fatalf("ffplay seek+rate args wrong: %v", ff)
 	}
 }
 

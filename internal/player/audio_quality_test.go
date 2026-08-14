@@ -3,6 +3,7 @@ package player
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -142,6 +143,48 @@ func TestBuildAudioCandidatesExcludesMpg123(t *testing.T) {
 	if hasMpg123(buildAudioCandidates("x.mp3", 0, 1.5, 80)) {
 		t.Fatal("rate change must exclude mpg123")
 	}
+}
+
+// TestBuildAudioCandidatesMpvFirst guards the candidate priority: mpv is the
+// first choice because its --term-status-msg position feedback drives sync
+// (Elapsed() follows the player's true output position); ffplay is the
+// fallback and mpg123 stays last.
+func TestBuildAudioCandidatesMpvFirst(t *testing.T) {
+	writeFakePlayers(t, "mpv", "ffplay", "mpg123")
+	cands := buildAudioCandidates("x.mp3", 0, 1, 80)
+	if len(cands) != 3 {
+		t.Fatalf("plain playback should offer 3 candidates, got %d: %+v", len(cands), cands)
+	}
+	if cands[0].bin != "mpv" {
+		t.Fatalf("mpv must be the first candidate, got %+v", cands)
+	}
+	if cands[1].bin != "ffplay" || cands[2].bin != "mpg123" {
+		t.Fatalf("expected order [mpv ffplay mpg123], got %+v", cands)
+	}
+}
+
+// writeFakePlayers writes executable shims for the given player names into a
+// fresh temp dir prepended to PATH, mirroring the fakebin_* helpers (a .cmd
+// loop on Windows, an executable shell script elsewhere). The shims are never
+// spawned by buildAudioCandidates itself; they exist so lookPath would find
+// every player when the ordering logic is exercised with all of them present.
+func writeFakePlayers(t *testing.T, names ...string) {
+	t.Helper()
+	dir := t.TempDir()
+	for _, name := range names {
+		path := filepath.Join(dir, name)
+		if runtime.GOOS == "windows" {
+			path += ".cmd"
+			if err := os.WriteFile(path, []byte("@echo off\r\n:loop\r\ngoto loop\r\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 // TestEngineMPVPositionFeedback guards the timing refactor: with mpv

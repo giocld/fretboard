@@ -15,8 +15,10 @@ import (
 
 // buildAudioCandidates returns the player subprocess candidates for the given
 // file, seek position (file time), playback rate (1 = normal), and volume.
-// ffplay and mpv support seeking and pitch-preserving rate control; mpg123 is
-// a plain fallback.
+// mpv is tried first: its --term-status-msg position feedback drives sync
+// (Elapsed() follows the player's true output position), which no other
+// candidate provides. ffplay also supports seeking and pitch-preserving rate
+// control and is the fallback; mpg123 is a plain last resort.
 // mpvStatusMsg is the --term-status-msg format the engine parses for
 // position feedback: the player reports its true output position and the
 // file duration, which makes Elapsed() correct including startup latency,
@@ -39,8 +41,8 @@ func buildAudioCandidates(path string, seek time.Duration, rate float64, vol int
 	// ffprobe is missing). The status line replaces the default one.
 	mpvArgs = append(mpvArgs, "--no-video", "--term-status-msg="+mpvStatusMsg, fmt.Sprintf("--volume=%d", vol), path)
 	candidates := []candidate{
-		{bin: "ffplay", driver: filepath.Base(path), args: ffplayArgs},
 		{bin: "mpv", driver: filepath.Base(path), args: mpvArgs},
+		{bin: "ffplay", driver: filepath.Base(path), args: ffplayArgs},
 	}
 	// mpg123 cannot seek or change speed: offering it for those cases would
 	// silently play the wrong part of the file at the wrong tempo.
