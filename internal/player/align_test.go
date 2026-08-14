@@ -3,6 +3,7 @@ package player
 import (
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -23,6 +24,15 @@ func testTab() *model.Tab {
 		bars[i] = bar
 	}
 	return &model.Tab{Title: "Test", Artist: "Synthetic", Bars: bars}
+}
+
+// testTabAt builds the standard test tab with an explicit tempo so a test
+// can force the primary (tab-derived) BPM window into a regime the old
+// 60-BPM lower clamp could not reach.
+func testTabAt(bpm int) *model.Tab {
+	tab := testTab()
+	tab.Metadata = map[string]string{model.MetaKeyBPM: strconv.Itoa(bpm)}
+	return tab
 }
 
 // TestAlignAudioRecoversTempoAndIntro guards the automatic alignment on a
@@ -88,12 +98,86 @@ func TestAlignAudioNoHintStillFindsOffset(t *testing.T) {
 	// accent grid is periodic); congruence within a beat is the guarantee.
 	// The drift meter (S3) resolves the residual during playback.
 	period := time.Duration(60000/a.BPM) * time.Millisecond
-	resid := absDur(a.Offset - intro) % period
+	resid := absDur(a.Offset-intro) % period
 	if resid > period/2 {
 		resid = period - resid
 	}
 	if resid > 200*time.Millisecond {
 		t.Fatalf("offset = %v, want congruent to ~3.2s mod %v (strength cue only)", a.Offset, period)
+	}
+}
+
+// TestAlignAudioSecondBPMWindow guards the ratio-gated second BPM window: a
+// tab whose tempo is off (45 BPM) from a recording that is slower still
+// (33 BPM) would invert the old primary window to empty (clamped to
+// [60,56]) and return nothing. The window derived from the audio's own
+// median inter-onset interval must rescue the tempo and the offset. The
+// clicks are accented every two beats so the bar-start strength cue is
+// present; AlignAudio sorts the two-pass onset list into time order so the
+// median interval is the single-beat period.
+func TestAlignAudioSecondBPMWindow(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not available")
+	}
+	path := filepath.Join(t.TempDir(), "slow.wav")
+	audioBPM := 33
+	beat := time.Duration(60000/audioBPM) * time.Millisecond // quarters: 1818 ms
+	intro := 1000 * time.Millisecond
+	var clicks []time.Duration
+	for i := 0; i < 48; i++ {
+		clicks = append(clicks, intro+time.Duration(i)*beat)
+	}
+	if err := writeSyntheticWAVAlt(path, 8000, clicks, 30*time.Millisecond, 2); err != nil {
+		t.Fatal(err)
+	}
+	a := AlignAudio(testTabAt(45), path, intro)
+	if a.BPM == 0 {
+		t.Fatal("alignment returned nothing")
+	}
+	if a.BPM < 31 || a.BPM > 35 {
+		t.Fatalf("BPM = %d, want ~33 (audio-derived window)", a.BPM)
+	}
+	if d := absDur(a.Offset - intro); d > 250*time.Millisecond {
+		t.Fatalf("offset = %v, want ~1s", a.Offset)
+	}
+	if a.Confidence < 0.5 {
+		t.Fatalf("confidence = %.2f, want >= 0.5", a.Confidence)
+	}
+}
+
+// TestAlignAudioOnsetSeededOffset guards the onset-seeded offset search: a
+// recording whose opening silence lies beyond the old blind 0..15 s scan can
+// only be aligned because each early detected onset seeds a candidate
+// offset. Same fixture as the intro tests (118 BPM, accented eighth clicks)
+// but a 16 s intro and no hint — the seeded search alone must recover both
+// tempo and offset.
+func TestAlignAudioOnsetSeededOffset(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not available")
+	}
+	path := filepath.Join(t.TempDir(), "long_intro.wav")
+	bpm := 118
+	beat := time.Duration(60000/bpm/2) * time.Millisecond // eighths: 254 ms
+	intro := 16 * time.Second
+	var clicks []time.Duration
+	for i := 0; i < 480; i++ {
+		clicks = append(clicks, intro+time.Duration(i)*beat)
+	}
+	if err := writeSyntheticWAVAlt(path, 8000, clicks, 30*time.Millisecond, 2); err != nil {
+		t.Fatal(err)
+	}
+	a := AlignAudio(testTab(), path, 0)
+	if a.BPM == 0 {
+		t.Fatal("alignment returned nothing")
+	}
+	if a.BPM < 117 || a.BPM > 119 {
+		t.Fatalf("BPM = %d, want ~118", a.BPM)
+	}
+	if d := absDur(a.Offset - intro); d > 150*time.Millisecond {
+		t.Fatalf("offset = %v, want ~16s (seeded search, no hint)", a.Offset)
+	}
+	if a.Confidence < 0.6 {
+		t.Fatalf("confidence = %.2f, want >= 0.6", a.Confidence)
 	}
 }
 

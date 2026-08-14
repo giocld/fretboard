@@ -17,7 +17,11 @@ import (
 // with the tab's bar starts) and the leading-silence estimate as an offset
 // prior. A pure onset-time match is ambiguous when the recording has more
 // onsets than the tab (a 2:1 or 3:1 subdivision aliases at many offsets);
-// strength and the prior break the tie.
+// strength and the prior break the tie. The offset search is seeded from
+// the recording's own early onsets (each "onset i is the tab's first note"
+// is a hypothesis), and the tempo search runs a second window around the
+// tempo the audio itself implies, so a recording slower than the tab's BPM
+// still aligns.
 
 // Alignment is the result of aligning a recording to a tab.
 type Alignment struct {
@@ -40,6 +44,23 @@ type ExpectedOnset struct {
 // enough to be robust, short enough to be fast and to weight the part the
 // user hears first.
 const alignWindow = 90 * time.Second
+
+// The tempo search windows are bounded by bpmWindowMin/bpmWindowMax. The
+// lower bound is 30, not 60: a slow tab (say 45 BPM) whose ±25% window is
+// [34,56] would otherwise clamp to [60,56] and invert into an empty window.
+// The scoring gates (the opening notes must line up, bar starts must land
+// on accented onsets) reject the wrong slow tempos such a wide window
+// admits.
+const (
+	bpmWindowMin = 30
+	bpmWindowMax = 220
+)
+
+// offsetTieEps is the score band within which two offsets are considered
+// equivalent: congruent alternatives (whole beats apart) differ only by
+// onset jitter, so the earliest is preferred (see the near-tie pass in
+// AlignAudio).
+const offsetTieEps = 0.5
 
 // ExpectedOnsets returns the wall-clock times of the schedule's first notes
 // at the given BPM, from the tab start, flagging bar starts.
@@ -77,6 +98,11 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 	if err != nil || len(onsets) < 10 {
 		return zero
 	}
+	// The detector emits the strong-pass onsets first and appends the
+	// weak-pass onsets after, so the combined list can be out of time
+	// order. The scorers walk it monotonically and the tempo window reads
+	// its intervals, so sort it into a proper grid.
+	sort.Slice(onsets, func(i, j int) bool { return onsets[i].Time < onsets[j].Time })
 	baseBPM := TabBPM(tab)
 	if baseBPM <= 0 {
 		baseBPM = 120
@@ -99,23 +125,78 @@ func AlignAudio(tab *model.Tab, path string, hint time.Duration) Alignment {
 		strengths[i] = o.Strength / maxStr
 	}
 
-	lo := max(baseBPM-baseBPM/4, 60)
-	hi := min(baseBPM+baseBPM/4, 220)
+	// The onset times do not depend on the candidate BPM, so collect them
+	// once: they feed both the audio-derived tempo window and the result.
+	times := make([]time.Duration, len(onsets))
+	for i, o := range onsets {
+		times[i] = o.Time
+	}
+
+	// Primary window: the tab's tempo plus/minus 25%, clamped to the shared
+	// bounds. When the clamp inverts it (tab slower than bpmWindowMin*4/3),
+	// the window is empty and the audio-derived window carries the search.
+	lo := max(baseBPM-baseBPM/4, bpmWindowMin)
+	hi := min(baseBPM+baseBPM/4, bpmWindowMax)
+	if lo > hi {
+		lo, hi = 1, 0
+	}
+	// Second window: the tempo the recording itself implies, from the
+	// median inter-onset interval. This rescues recordings whose tempo
+	// differs from the tab by more than the primary window tolerates —
+	// a 45 BPM tab over 33 BPM audio inverts the primary window entirely.
+	// Skipped when no stable interval can be measured.
+	dlo, dhi := 1, 0
+	if interval := medianIntervals(times); interval > 0 {
+		detected := int(60000 / interval.Milliseconds())
+		dlo = max(detected-detected/4, bpmWindowMin)
+		dhi = min(detected+detected/4, bpmWindowMax)
+		if dlo > dhi {
+			dlo, dhi = 1, 0
+		}
+	}
+
+	// Candidate offsets are seeded from the recording's own early onsets
+	// instead of a blind 0..15 s scan: the true offset is always within one
+	// 250 ms neighborhood of some early onset when the recording's opening
+	// is the tab's opening, and the search is unbounded for longer intros.
+	offsets := onsetSeedOffsets(onsets)
 	best := zero
-	for bpm := lo; bpm <= hi; bpm++ {
+	for bpm := max(min(lo, dlo), bpmWindowMin); bpm <= max(hi, dhi); bpm++ {
+		inPrimary := lo <= hi && bpm >= lo && bpm <= hi
+		inDetected := dlo <= dhi && bpm >= dlo && bpm <= dhi
+		if !inPrimary && !inDetected {
+			continue
+		}
 		scale := float64(baseBPM) / float64(bpm)
-		for offsetMs := 0; offsetMs <= 15000; offsetMs += 100 {
-			score, matched := scoreAlignment(expected, onsets, strengths, scale, time.Duration(offsetMs)*time.Millisecond, bpm, hint)
+		for _, off := range offsets {
+			score, matched := scoreAlignment(expected, onsets, strengths, scale, off, bpm, hint)
 			if score > best.Score {
-				best = Alignment{BPM: bpm, Offset: time.Duration(offsetMs) * time.Millisecond,
+				best = Alignment{BPM: bpm, Offset: off,
 					Score: score, Confidence: matched, Detected: len(onsets)}
 			}
 		}
 	}
-	// The onset times do not depend on the candidate, so fill them once.
-	best.Onsets = make([]time.Duration, len(onsets))
-	for i, o := range onsets {
-		best.Onsets[i] = o.Time
+	if best.BPM > 0 {
+		best.Onsets = times
+	}
+	// Congruent offsets — whole beats apart — score identically up to onset
+	// jitter and floating-point noise, and any offset more than a beat below
+	// the first onset fails the opening gate. So among the near-ties, the
+	// earliest is the true one: the recording's first note is the tab's
+	// first note. Prefer it explicitly instead of whichever noise won.
+	if best.BPM > 0 {
+		scale := float64(baseBPM) / float64(best.BPM)
+		for _, off := range offsets {
+			if off >= best.Offset {
+				continue
+			}
+			score, matched := scoreAlignment(expected, onsets, strengths, scale, off, best.BPM, hint)
+			if score > best.Score-offsetTieEps {
+				best.Offset = off
+				best.Score = score
+				best.Confidence = matched
+			}
+		}
 	}
 	// Refine the offset around the winner at 25 ms resolution.
 	if best.BPM > 0 {
@@ -165,6 +246,32 @@ func verifyStrict(expected []ExpectedOnset, onsets []Onset, scale float64, offse
 		return 0
 	}
 	return float64(matches) / float64(total)
+}
+
+// onsetSeedOffsets proposes candidate offsets from the detected onsets. For
+// each of the first few onsets, hypothesize that onset is the tab's first
+// note — expected[0].Time is always zero (the tab's first note is the time
+// reference), so that offset is just the onset time under every candidate
+// BPM — and scan a 250 ms neighborhood at 25 ms. This replaces a blind
+// 0..15 s scan at 100 ms: the offset is found whenever the recording's
+// opening matches the tab's opening (or is preceded only by silence), and
+// the finer grid needs no separate coarse pass.
+func onsetSeedOffsets(onsets []Onset) []time.Duration {
+	n := min(20, len(onsets))
+	offsets := make([]time.Duration, 0, 21*n)
+	seen := make(map[time.Duration]bool, 21*n)
+	for i := 0; i < n; i++ {
+		base := onsets[i].Time
+		for off := -250 * time.Millisecond; off <= 250*time.Millisecond; off += 25 * time.Millisecond {
+			o := base + off
+			if o < 0 || seen[o] {
+				continue
+			}
+			seen[o] = true
+			offsets = append(offsets, o)
+		}
+	}
+	return offsets
 }
 
 // medianIntervals returns the median inter-onset interval of the detected
