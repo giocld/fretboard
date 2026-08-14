@@ -3,6 +3,7 @@ package viewer
 import (
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"fretboard/internal/model"
@@ -55,6 +56,98 @@ func syncPointsZeroBased(points []player.SyncPoint) []player.SyncPoint {
 		out = append(out, p)
 	}
 	return out
+}
+
+// refineSyncPoints drops outlier anchors with a robust median/MAD fit on the
+// adjacent segment tempi. Each anchor is judged by the tempo evidence of the
+// segment leading into it (the first anchor by the segment leading out): its
+// deviation is how far that segment's BPM sits from the median segment BPM.
+// Anchors deviating more than 2*MAD are removed and the fit is recomputed on
+// the survivors, iterating until stable. Fewer than 4 anchors are left
+// unchanged (too few for robust statistics). Segments whose BPM cannot be
+// derived (SegmentBPM returns 0 for zero spans, repeated bars, or a bar past
+// the schedule end) carry no information and never count as outliers.
+func refineSyncPoints(schedule []player.PlaybackStep, points []player.SyncPoint) []player.SyncPoint {
+	cur := points
+	for len(cur) >= 4 {
+		pts := syncPointsZeroBased(cur)
+		segBPM := make([]int, len(pts)-1)
+		usable := 0
+		for i := 0; i < len(pts)-1; i++ {
+			segBPM[i] = player.SegmentBPM(schedule, pts[i], pts[i+1])
+			if segBPM[i] > 0 {
+				usable++
+			}
+		}
+		if usable < 2 {
+			return cur // too few derivable segments for a robust median
+		}
+		median := medianBPM(segBPM)
+		dev := make([]float64, len(cur))
+		dev[0] = segDev(segBPM[0], median)
+		for i := 1; i < len(cur); i++ {
+			dev[i] = segDev(segBPM[i-1], median)
+		}
+		mad := madDeviation(dev)
+		if mad < 0 {
+			return cur
+		}
+		limit := 2 * mad
+		kept := make([]player.SyncPoint, 0, len(cur))
+		dropped := false
+		for i, p := range cur {
+			if dev[i] < 0 || dev[i] <= limit {
+				kept = append(kept, p)
+			} else {
+				dropped = true
+			}
+		}
+		if !dropped {
+			return cur // no outliers: the fit is stable
+		}
+		cur = kept
+	}
+	return cur
+}
+
+// medianBPM returns the median of the derivable segment tempi.
+func medianBPM(segBPM []int) int {
+	var vals []int
+	for _, b := range segBPM {
+		if b > 0 {
+			vals = append(vals, b)
+		}
+	}
+	if len(vals) == 0 {
+		return 0
+	}
+	sort.Ints(vals)
+	return vals[len(vals)/2]
+}
+
+// segDev is the absolute distance of a segment tempo from the median, or -1
+// when the segment BPM is 0 (no information).
+func segDev(bpm, median int) float64 {
+	if bpm <= 0 {
+		return -1
+	}
+	return math.Abs(float64(bpm) - float64(median))
+}
+
+// madDeviation is the median absolute deviation of the known per-anchor
+// deviations, or -1 when none exist.
+func madDeviation(dev []float64) float64 {
+	var vals []float64
+	for _, d := range dev {
+		if d >= 0 {
+			vals = append(vals, d)
+		}
+	}
+	if len(vals) == 0 {
+		return -1
+	}
+	sort.Float64s(vals)
+	return vals[len(vals)/2]
 }
 
 // tempoMap returns the low->high BPM range spanned by the per-segment tempi

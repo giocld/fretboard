@@ -159,14 +159,61 @@ func parseSyncPoints(raw string) []player.SyncPoint {
 	return clean
 }
 
-// setSyncPoint anchors the current bar to the current audio position.
+// syncSnapWindow is the reflex-latency window: the user hears a beat and
+// taps ~200-400ms late, so the true beat is searched in the window that
+// ends at the tap.
+const syncSnapWindow = 400 * time.Millisecond
+
+// syncElapsed snaps the tap moment to the strongest onset in the 400ms
+// window BEFORE the tap (the user reacts to the beat they heard). With
+// per-onset strengths available the strongest onset in the window wins;
+// without them the nearest onset in the window does. No onset in the
+// window (or no onsets at all): the raw tap moment stands, so a tap in
+// a silence gap is never yanked sideways.
+func syncElapsed(elapsed time.Duration, onsets []time.Duration, strengths []float64) time.Duration {
+	if len(onsets) == 0 {
+		return elapsed
+	}
+	windowStart := elapsed - syncSnapWindow
+	haveStrengths := len(strengths) == len(onsets)
+	best := -1
+	for i, o := range onsets {
+		if o < windowStart || o > elapsed {
+			continue
+		}
+		if best < 0 {
+			best = i
+			continue
+		}
+		if haveStrengths {
+			if strengths[i] > strengths[best] {
+				best = i
+			}
+		} else if elapsed-o < elapsed-onsets[best] {
+			best = i
+		}
+	}
+	if best < 0 {
+		return elapsed
+	}
+	return onsets[best]
+}
+
+// setSyncPoint anchors the current bar to the current audio position. The
+// tap snaps to the strongest onset in the 400ms window before it (reflex
+// latency), and once enough anchors exist, confirmed outliers are dropped by
+// median/MAD refinement (refineSyncPoints).
 func (m ViewerModel) setSyncPoint() (ViewerModel, tea.Cmd) {
 	elapsed := m.engine.Elapsed()
+	snapped := syncElapsed(elapsed, m.autoOnsets, m.autoStrengths)
 	bar := m.cursorBar + 1
 	if bar == 1 {
-		m.audioOffset = elapsed.Seconds()
+		m.audioOffset = snapped.Seconds()
 	}
-	m.syncPoints = append(m.syncPoints, player.SyncPoint{Bar: bar, Seconds: elapsed.Seconds()})
+	m.syncPoints = append(m.syncPoints, player.SyncPoint{Bar: bar, Seconds: snapped.Seconds()})
+	if m.tab != nil {
+		m.syncPoints = refineSyncPoints(player.BuildSchedule(m.tab), m.syncPoints)
+	}
 	m.saveSyncPoints()
 	if m.tab != nil && m.tab.Metadata != nil {
 		m.tab.Metadata[m.audioOffsetKey()] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
