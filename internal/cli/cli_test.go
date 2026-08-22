@@ -78,11 +78,8 @@ func TestRunHelpExitsZero(t *testing.T) {
 	}
 }
 
-// TestWriteCrashLog guards S6.4: a panic writes a stack report into the
-// config dir and returns its path.
 func TestWriteCrashLog(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("APPDATA", dir) // Windows config dir; other OSes ignore it
+	testutil.RedirectConfigDir(t)
 	path := writeCrashLog("boom", []byte("goroutine 1 [running]:\nmain.fail()\n"))
 	if path == "" {
 		t.Skip("config dir not resolvable in this environment")

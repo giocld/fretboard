@@ -12,22 +12,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// writeFakeFluidsynthTest writes a fake fluidsynth.cmd that logs stdin
-// commands to synth.log (hermetic copy of the player-package fake so the
-// viewer can drive the real engine end to end).
-func writeFakeFluidsynthTest(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "fluidsynth.cmd")
-	log := filepath.Join(dir, "synth.log")
-	script := "@echo off\r\nsetlocal enabledelayedexpansion\r\n:loop\r\nset \"line=\"\r\nset /p line=\r\nif not defined line goto loop\r\necho !line!>> \"" + log + "\"\r\ngoto loop\r\n"
-	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return log
-}
-
 // TestPracticeKeysDriveEndToEndPlayback guards S3: pressing m (metronome),
 // C (count-in) and y (instrument) through the real key handlers produces a
 // MIDI playback session in which the fake fluidsynth receives the selected

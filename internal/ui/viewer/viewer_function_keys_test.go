@@ -11,20 +11,6 @@ import (
 	"fretboard/internal/player"
 )
 
-// writeFakeMPVTest writes a fake mpv.cmd that prints mpv-style status lines
-// (position feedback) in a loop, then prepends its directory to PATH. status
-// is the JSON-ish line, e.g. {"pos": 1.5, "dur": 100}.
-func writeFakeMPVTest(t *testing.T, status string) {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "mpv.cmd")
-	script := "@echo off\r\n:loop\r\necho " + status + "\r\nping -n 2 127.0.0.1 >nul\r\ngoto loop\r\n"
-	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-}
-
 // audioSeekingModel returns a viewer whose engine plays a local file in
 // audio mode, with the fake mpv reporting the given position/duration. The
 // fake reports the duration asynchronously, so the test waits for it.

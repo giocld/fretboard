@@ -25,16 +25,6 @@ func TestIsTabImportPath(t *testing.T) {
 	}
 }
 
-func TestIsWatchedPath(t *testing.T) {
-	dir := "/watch"
-	if !isWatchedPath(dir, "/watch/new.txt") {
-		t.Fatal("expected txt under watch dir")
-	}
-	if isWatchedPath(dir, "/other/new.txt") {
-		t.Fatal("expected path outside watch dir to be ignored")
-	}
-}
-
 // TestWatcherCloseIsIdempotent guards against the quit-path panic: the TUI
 // shuts the watcher down on q/ctrl+c and the CLI cleanup calls Shutdown on the
 // same model afterwards, which used to double-close the done channel.

@@ -7,6 +7,7 @@ import (
 	"fretboard/internal/config"
 	"fretboard/internal/library"
 	"fretboard/internal/model"
+	"fretboard/internal/testutil"
 	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -90,7 +91,7 @@ func TestAppQuestionMarkTypesInSearchQuery(t *testing.T) {
 // TestRestoreSessionOpensLastTab guards G4.1: a persisted session reopens
 // the tab at the saved cursor bar with the saved settings.
 func TestRestoreSessionOpensLastTab(t *testing.T) {
-	t.Setenv("APPDATA", t.TempDir())
+	testutil.RedirectConfigDir(t)
 	st, err := library.NewStore(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +128,7 @@ func TestRestoreSessionOpensLastTab(t *testing.T) {
 // TestShutdownSavesSession guards G4.1: quitting persists the open tab and
 // its cursor position.
 func TestShutdownSavesSession(t *testing.T) {
-	t.Setenv("APPDATA", t.TempDir())
+	testutil.RedirectConfigDir(t)
 	st, err := library.NewStore(filepath.Join(t.TempDir(), "test.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +156,7 @@ func TestShutdownSavesSession(t *testing.T) {
 // TestSettingsScreenRoundTrip guards G6: opening settings from home, changing
 // values, and going back applies them live and persists the config.
 func TestSettingsScreenRoundTrip(t *testing.T) {
-	t.Setenv("APPDATA", t.TempDir())
+	testutil.RedirectConfigDir(t)
 	a := NewApp()
 	a.view = viewHome
 

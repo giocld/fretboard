@@ -128,7 +128,7 @@ func TestSaveIsAtomicAndRoundTrips(t *testing.T) {
 // TestSessionRoundTrip guards G4.1: the session persists through the config
 // dir and restores with a zero session when absent.
 func TestSessionRoundTrip(t *testing.T) {
-	t.Setenv("APPDATA", t.TempDir())
+	withTempConfigDir(t)
 	if s := LoadSession(); s.TabID != 0 {
 		t.Fatalf("no session file should load a zero session, got %+v", s)
 	}

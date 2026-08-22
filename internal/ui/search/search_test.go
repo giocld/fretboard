@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"fretboard/internal/scraper"
+	"fretboard/internal/testutil"
 	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -161,7 +162,7 @@ func TestSearchJKMovesResultsWhileTyping(t *testing.T) {
 }
 
 func TestSearchUpMovesResultsWhileTyping(t *testing.T) {
-	t.Setenv("APPDATA", t.TempDir()) // no real search history in tests
+	testutil.RedirectConfigDir(t) // no real search history in tests
 	m := NewSearchModel(nil)
 	m.results = []scraper.SearchResult{{SongName: "A", ArtistName: "B"}, {SongName: "C", ArtistName: "D"}}
 	m.cursor = 1

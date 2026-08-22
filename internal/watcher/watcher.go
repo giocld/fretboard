@@ -199,15 +199,6 @@ func (w *Watcher) loop(fw *fsnotify.Watcher) {
 	}
 }
 
-// isWatchedPath returns true if path is a .txt file under dir.
-func isWatchedPath(dir, path string) bool {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
-		return false
-	}
-	return !strings.HasPrefix(rel, "..") && isTabImportPath(path)
-}
-
 func isTabImportPath(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"fretboard/internal/scraper"
+	"fretboard/internal/testutil"
 	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -38,7 +39,7 @@ func TestAddHistory(t *testing.T) {
 // TestHistoryPersistsRoundTrip guards G1.1 persistence: save then reload
 // through the config dir.
 func TestHistoryPersistsRoundTrip(t *testing.T) {
-	t.Setenv("APPDATA", t.TempDir())
+	testutil.RedirectConfigDir(t)
 	h := addHistory(nil, "sultans of swing")
 	h = addHistory(h, "layla")
 	saveHistory(h)
@@ -52,7 +53,7 @@ func TestHistoryPersistsRoundTrip(t *testing.T) {
 // TestCacheRoundTrip guards G1.2: results persist for their query and are
 // not served for a different query.
 func TestCacheRoundTrip(t *testing.T) {
-	t.Setenv("APPDATA", t.TempDir())
+	testutil.RedirectConfigDir(t)
 	results := []scraper.SearchResult{
 		{Source: scraper.SourceUG, SongName: "Sultans", ArtistName: "Dire Straits", Type: "Tabs", Rating: 4.9},
 	}
@@ -70,7 +71,7 @@ func TestCacheRoundTrip(t *testing.T) {
 // TestSearchOfflineCacheRestore guards G1.2: when a search fails and a cache
 // exists, the screen serves the cached list with an explanatory note.
 func TestSearchOfflineCacheRestore(t *testing.T) {
-	t.Setenv("APPDATA", t.TempDir())
+	testutil.RedirectConfigDir(t)
 	saveCache("sultans of swing", []scraper.SearchResult{
 		{Source: scraper.SourceUG, SongName: "Sultans", ArtistName: "Dire Straits", Type: "Tabs", Rating: 4.9},
 	})
