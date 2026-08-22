@@ -11,3 +11,9 @@ path = "src/main.rs"
 guitarpro = "0.4.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[profile.release]
+# Release binaries ship standalone (see .github/workflows/release.yml):
+# drop debug symbols and enable full LTO for a smaller, faster artifact.
+strip = true
+lto = true

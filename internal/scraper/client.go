@@ -110,6 +110,52 @@ func (c *Client) Fetch(result SearchResult) (*model.Tab, error) {
 	}
 }
 
+// pickReasonProFallback explains why a different result than the one the
+// user selected was opened.
+const pickReasonProFallback = "official version requires UG Pro — opened top community version instead"
+
+// FetchBest retrieves a tab, falling back to the best community version when
+// the requested result is UG Pro/official-only and its direct fetch fails
+// (the full tab sits behind the UG Pro paywall). The fallback re-searches
+// the query and walks the ranked non-Pro results for the same artist,
+// returning the first one that fetches; reason carries the fallback
+// explanation and is empty when the requested result itself was fetched. An
+// error is returned only when no community version can be fetched either.
+func (c *Client) FetchBest(result SearchResult, query string) (*model.Tab, string, error) {
+	tab, err := c.Fetch(result)
+	if err == nil {
+		return tab, "", nil
+	}
+	if !result.Pro {
+		return nil, "", err
+	}
+	candidates, searchErr := c.Search(query)
+	if searchErr != nil {
+		return nil, "", fmt.Errorf("fetch pro tab %d: %w; fallback search failed: %v", result.ID, err, searchErr)
+	}
+	candidates = mergeSearchResults(nil, candidates) // ranked best-first, deduped
+	key := resultKey(result)
+	artist := strings.ToLower(strings.TrimSpace(result.ArtistName))
+	var lastErr error
+	for _, cand := range candidates {
+		if cand.Pro || resultKey(cand) == key {
+			continue
+		}
+		if artist != "" && strings.ToLower(strings.TrimSpace(cand.ArtistName)) != artist {
+			continue
+		}
+		tab, fetchErr := c.Fetch(cand)
+		if fetchErr == nil {
+			return tab, pickReasonProFallback, nil
+		}
+		lastErr = fetchErr
+	}
+	if lastErr != nil {
+		return nil, "", fmt.Errorf("fetch pro tab %d: %w; community fallback: %v", result.ID, err, lastErr)
+	}
+	return nil, "", fmt.Errorf("fetch pro tab %d: %w; no community version available", result.ID, err)
+}
+
 // resultScore ranks a search result for display: tabs beat chord sheets,
 // high ratings and vote counts beat anonymous uploads, and well-known
 // sources beat obscure archives. Higher is better. The score drives the
@@ -142,6 +188,13 @@ func resultScore(r SearchResult) int {
 		score += 20
 	case SourceGuitareTab:
 		score += 10
+	}
+	// Pro/official-only rows rank below every fetchable tab: the paywalled
+	// copy cannot be imported, so community tabs and chord sheets surface
+	// first. Dividing keeps the relative order of Pro copies intact, so in
+	// an all-Pro pool the best one still surfaces first.
+	if r.Pro {
+		score /= 10
 	}
 	return score
 }
@@ -187,3 +240,8 @@ func resultKey(r SearchResult) string {
 	// type still collapse onto one row.
 	return string(r.Source) + "|" + r.ArtistName + "|" + r.SongName + "|" + r.Type
 }
+
+// ResultKey returns the dedup key for a search result (source + artist +
+// song + type). Exported so callers outside the package apply the same dedup
+// semantics (e.g. cache merges in the search UI).
+func ResultKey(r SearchResult) string { return resultKey(r) }

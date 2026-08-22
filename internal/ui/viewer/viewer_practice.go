@@ -161,6 +161,11 @@ func (m *ViewerModel) stopPlayback() {
 	if m.playing && !m.practiceStart.IsZero() {
 		m.practiceSecs += int64(time.Since(m.practiceStart) / time.Second)
 	}
+	if m.playing && m.tab != nil && m.tempoSrcSet {
+		// S2.1: the tempo this session actually played at is the value the
+		// next session should remember.
+		player.RecordTempoUsage(m.tab, m.bpm)
+	}
 	m.practiceStart = time.Time{}
 	m.resetPlayback()
 	_ = m.engine.Stop()
@@ -232,6 +237,12 @@ func (m *ViewerModel) togglePlayback() tea.Cmd {
 	if m.tab == nil {
 		return nil
 	}
+	if m.chordSheet {
+		// S1.2: a chord sheet has no playable bars — say so honestly.
+		m.errMsg = "chord sheet — playback unavailable"
+		m.refresh()
+		return nil
+	}
 	if m.playing {
 		// Bank the cursor's mapped audio position before stopping so a
 		// later Space resumes mid-song instead of restarting the file.
@@ -245,6 +256,13 @@ func (m *ViewerModel) togglePlayback() tea.Cmd {
 	}
 	m.errMsg = ""
 	m.infoMsg = ""
+	// S2.1: resolve the playback tempo through the provenance chain. An
+	// audio-synced BPM (if any) wins over remembered/guessed values; a
+	// manual +/- nudge keeps the user's choice. The session mode drives its
+	// own base/target tempo, so the chain is skipped there.
+	if !m.sessionMode {
+		m.resolvePlaybackTempo()
+	}
 	src := m.selectedSource()
 	if src.Kind == player.SourceOnline && (src.Path == "" || !player.FileExists(src.Path)) {
 		if m.resolvedAudio != "" && player.FileExists(m.resolvedAudio) {

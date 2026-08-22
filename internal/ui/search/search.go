@@ -2,6 +2,7 @@ package search
 
 import (
 	"fmt"
+	"time"
 
 	"fretboard/internal/scraper"
 	"fretboard/internal/ui/msgs"
@@ -28,6 +29,10 @@ type SearchModel struct {
 	histIdx     int      // position while recalling history with up/down
 	cacheNote   string   // "offline cache" note when results came from cache
 	lastQuery   string   // the query of the current result set
+	// cacheSavedAt + cacheStale drive the offline banner: the date the
+	// cached results were saved, and whether they are past the TTL.
+	cacheSavedAt time.Time
+	cacheStale   bool
 }
 
 // NewSearchModel creates an online search view.
@@ -54,6 +59,8 @@ func (m *SearchModel) Reset() {
 	m.cursor = 0
 	m.errMsg = ""
 	m.cacheNote = ""
+	m.cacheSavedAt = time.Time{}
+	m.cacheStale = false
 	m.loading = false
 	m.importing = false
 	m.reqGen++
@@ -121,11 +128,13 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 		if msg.Err != nil {
 			m.errMsg = msg.Err.Error()
 			// Offline fallback: serve the cached result set for this query
-			// instead of an empty dead end.
-			if cached, ok := loadCache(m.lastQuery); ok {
+			// instead of an empty dead end, with a dated banner.
+			if cached, savedAt, ok := loadCacheEntry(m.lastQuery); ok {
 				m.results = cached
 				m.cursor = 0
 				m.cacheNote = "offline cache — " + msg.Err.Error()
+				m.cacheSavedAt = savedAt
+				m.cacheStale = isCacheStale(savedAt)
 				m.errMsg = ""
 				m.focusResults()
 				m.viewport.SetYOffset(0)
@@ -133,12 +142,24 @@ func (m SearchModel) Update(msg tea.Msg) (SearchModel, tea.Cmd) {
 				m.focusQuery()
 			}
 		} else {
-			m.results = msg.Results
+			// Back online: merge the fresh results with any cached set for
+			// this query (fresh wins per result key) so the list the user
+			// saw offline is upgraded instead of truncated by a partial
+			// fetch, then persist the merged set as the new cache.
+			fresh := msg.Results
+			if m.lastQuery != "" {
+				if cached, _, ok := loadCacheEntry(m.lastQuery); ok {
+					fresh = MergeCacheFresh(cached, msg.Results)
+				}
+			}
+			m.results = fresh
 			m.cursor = 0
 			m.cacheNote = ""
+			m.cacheSavedAt = time.Time{}
+			m.cacheStale = false
 			m.history = addHistory(m.history, m.lastQuery)
 			saveHistory(m.history)
-			saveCache(m.lastQuery, msg.Results)
+			saveCache(m.lastQuery, fresh)
 			if len(m.results) == 0 {
 				m.errMsg = "No results — try a different query"
 				m.focusQuery()

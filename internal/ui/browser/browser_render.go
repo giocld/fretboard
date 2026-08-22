@@ -160,13 +160,6 @@ func (m BrowserModel) View() string {
 		{Key: "Enter", Label: "open"},
 		{Key: "/", Label: "filter"},
 		{Key: "s", Label: "sort"},
-		{Key: "f", Label: "fav"},
-		{Key: "F", Label: "favs"},
-		{Key: "e", Label: "edit"},
-		{Key: "x", Label: "export"},
-		{Key: "d", Label: "delete"},
-		{Key: "o", Label: "online"},
-		{Key: "Esc", Label: "home"},
 		{Key: "q", Label: "quit"},
 	}
 	if m.confirmDelete != nil {

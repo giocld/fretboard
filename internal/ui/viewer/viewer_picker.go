@@ -27,6 +27,15 @@ func (m ViewerModel) matchesAudioTab(tabID int64, tabPath, artist, title string)
 
 func pickAudioSourceIndex(tab *model.Tab, cat player.AudioCatalog) int {
 	rejected := rejectedSources(tab)
+	// S3.2: a pinned video outranks every heuristic — the user's permanent
+	// choice wins forever, even when the search stops surfacing it.
+	if pinned, ok := player.PinnedVideoFor(tab); ok {
+		for i, src := range cat.Sources {
+			if src.Kind == player.SourceOnline && src.VideoID == pinned && !rejected[src.ID] {
+				return i
+			}
+		}
+	}
 	if tab != nil && tab.Metadata != nil {
 		if srcID := strings.TrimSpace(tab.Metadata["audio_source"]); srcID != "" && !rejected[srcID] {
 			if found := cat.FindByID(srcID); found >= 0 {
@@ -259,6 +268,21 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 		// Switching recordings means switching calibration: restore the new
 		// source's intro offset and sync anchors.
 		m.restoreCalibrationForSource()
+		if m.tab != nil {
+			if m.tab.Metadata == nil {
+				m.tab.Metadata = map[string]string{}
+			}
+			m.tab.Metadata["audio_source"] = src.ID
+			// S3.2: confirming a YouTube source pins its video so it wins
+			// forever, even when the search stops surfacing it. The pin
+			// lands before the download branch so an online source that
+			// needs fetching is pinned too.
+			if src.Kind == player.SourceOnline && src.VideoID != "" {
+				if err := player.PinVideoFor(m.tab, src.VideoID); err == nil {
+					m.infoMsg = fmt.Sprintf("pinned %s — this recording wins for this tab", src.Label)
+				}
+			}
+		}
 		if src.Kind == player.SourceOnline && (src.Path == "" || !player.FileExists(src.Path)) {
 			m.fetchingAudio = true
 			m.pendingPlay = true
@@ -267,12 +291,6 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 		var cmds []tea.Cmd
 		if cmd := m.applySelectedSourceStateOnly(); cmd != nil {
 			cmds = append(cmds, cmd)
-		}
-		if m.tab != nil {
-			if m.tab.Metadata == nil {
-				m.tab.Metadata = map[string]string{}
-			}
-			m.tab.Metadata["audio_source"] = src.ID
 		}
 		cmds = append(cmds, m.saveTabPrefsCmd(), m.maybeDetectIntroCmd(), m.maybeAlignCmd())
 		return m, tea.Batch(cmds...)

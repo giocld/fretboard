@@ -78,6 +78,15 @@ func (m ViewerModel) handlePlaybackMonitor(msg msgs.PlaybackMonitorMsg) (ViewerM
 					m.refresh()
 					return m, nil
 				}
+				m.noteLoopPass() // S8.1: a completed A-B loop pass
+				if m.sessionRamp {
+					// The session's tempo ramped: audio cannot re-time
+					// mid-file, so restart the player at the new BPM (the
+					// same path the +/- keys take).
+					m.sessionRamp = false
+					m.refresh()
+					return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+				}
 				elapsed = m.engine.Elapsed()
 			}
 		}
@@ -166,6 +175,11 @@ func (m ViewerModel) handlePlaybackTick(msg msgs.PlaybackTickMsg) (ViewerModel, 
 	// advance is by the step being played, so render/processing time
 	// never shifts the beat), then catch up if we are late.
 	next := m.nextStepIndexFrom(m.stepIdx)
+	if m.sessionMode && m.loopEndBar > 0 && next < len(m.schedule) && m.schedule[next].Bar < m.schedule[m.stepIdx].Bar {
+		// S8.1: the A-B loop wrapped — count the pass (and ramp the tempo
+		// when the session configured one).
+		m.noteLoopPass()
+	}
 	if next >= len(m.schedule) {
 		m.stopPlayback()
 		m.refresh()

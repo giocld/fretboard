@@ -108,6 +108,9 @@ func (c *ugHTMLClient) parseSearch(body []byte) ([]SearchResult, error) {
 			TabURL:     t.TabURL,
 			Rating:     t.Rating,
 			Votes:      t.Votes,
+			// Tabs/Chords rows can still be Pro-gated via tab_access_type
+			// ("pro"/"official"); flag them for ranking + FetchBest.
+			Pro: isProAccess(t.TabAccessType),
 		})
 	}
 	return out, nil

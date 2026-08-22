@@ -127,6 +127,11 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 			line = kit.ListNormal.Render(line)
 		}
 		lines = append(lines, line)
+		// S3.2: the one-liner explaining why the selected source won the
+		// ranking renders directly under it (e.g. a UG Pro fallback).
+		if i == cursor && src.PickReason != "" {
+			lines = append(lines, kit.WarningStyle.Render("    · "+src.PickReason))
+		}
 	}
 	lines = append(lines, "")
 	lines = append(lines, kit.MutedStyle.Render("j/k move  Enter select  r refresh  Esc cancel"))

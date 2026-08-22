@@ -1,7 +1,9 @@
 // Package app implements the top-level Bubble Tea router that switches
 // between the home, library browser, tab viewer, online search, and help
 // screens, and owns the cross-screen state: the library store, the
-// auto-import watcher, and the active theme.
+// auto-import watcher, and the active theme. It also hosts the router-level
+// overlays: the first-run tour, the one-time online-audio consent, and the
+// multi-track Guitar Pro import picker.
 package app
 
 import (
@@ -45,12 +47,33 @@ type AppModel struct {
 	watcher        *watcher.Watcher
 	autoImportPath string
 	startupCmd     tea.Cmd
+	width          int
+	height         int
+
+	// First-run tour overlay (8.3): three cards walked with Enter, skipped
+	// with Esc. Passive — other keys pass through to the underlying screen.
+	tourPending bool
+	tourCard    int
+
+	// One-time online-audio consent overlay (3.4). consentDeclined is
+	// session-scoped: decline never re-prompts this run.
+	consentPending  bool
+	consentDeclined bool
+
+	// Multi-track Guitar Pro import picker (5.3b), non-nil while the user
+	// chooses which track of a watched-in GP file to import.
+	gpPicker *gpPickerState
+
+	// Missing critical playback deps reported by the async diag probe (8.2);
+	// the home screen surfaces them as a banner + footer marker.
+	missingDeps []string
 }
 
-// Init returns the initial command.
+// Init returns the initial command: every screen's init, the auto-import
+// watcher, the queued startup command (session restore / file open), the
+// first-run tour check, and the asynchronous dependency probe.
 func (m AppModel) Init() tea.Cmd {
-	var cmds []tea.Cmd
-	cmds = append(cmds, m.home.Init())
+	cmds := []tea.Cmd{m.home.Init()}
 	if m.store != nil {
 		cmds = append(cmds, m.library.Init())
 	}
@@ -63,20 +86,63 @@ func (m AppModel) Init() tea.Cmd {
 	if m.startupCmd != nil {
 		cmds = append(cmds, m.startupCmd)
 	}
-	if len(cmds) == 0 {
-		return nil
-	}
+	// The tour and the diag probe are queued here — not in the constructors —
+	// so unit tests that drive Update directly never see them.
+	cmds = append(cmds, m.tourCheckCmd(), m.diagProbeCmd())
 	return tea.Batch(cmds...)
 }
 
 // Update handles top-level routing and global keys.
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Modal overlays decide keys before the router: the consent screen and
+	// the GP track picker swallow every key until decided; the tour only
+	// takes Enter/Esc (advance/skip) and passes everything else through so
+	// the underlying screen stays usable.
+	if key, ok := msg.(tea.KeyMsg); ok {
+		if m.consentPending {
+			return m.consentKey(key)
+		}
+		if m.gpPicker != nil {
+			return m.gpPickerKey(key)
+		}
+		if m.tourPending {
+			switch key.String() {
+			case "enter", " ":
+				return m.tourAdvance()
+			case "esc":
+				return m.tourSkip()
+			}
+		}
+	}
+
 	switch msg := msg.(type) {
 	case msgs.ShutdownMsg:
 		m.Shutdown()
 		return m, tea.Quit
 
+	case tourStartMsg:
+		cfg, _ := config.Load()
+		if cfg.TourSeen {
+			return m, nil
+		}
+		m.tourPending = true
+		m.tourCard = 0
+		return m, nil
+
+	case diagProbeMsg:
+		m.missingDeps = msg.missing
+		m.home.SetMissingDeps(msg.missing)
+		return m, nil
+
+	case msgs.EditPersistMsg:
+		return m, m.handleEditPersist(msg)
+
+	case msgs.PracticeSessionMsg:
+		return m, m.handlePracticeSession(msg)
+
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 		m.home, _ = m.home.Update(msg)
 		m.library, _ = m.library.Update(msg)
 		m.viewer, _ = m.viewer.Update(msg)
@@ -112,6 +178,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.stopPlayback()
 			m.prev = m.view
+			// The help reference is filtered to the screen that was active
+			// (8.3).
+			m.help.SetSection(sectionForView(m.view))
 			m.view = viewHelp
 			return m, nil
 		}
@@ -257,21 +326,51 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View returns the current view.
+// View returns the current view; modal overlays (consent, GP picker, tour)
+// render on top when active.
 func (m AppModel) View() string {
+	var base string
 	switch m.view {
 	case viewHome:
-		return m.home.View()
+		base = m.home.View()
 	case viewLibrary:
-		return m.library.View()
+		base = m.library.View()
 	case viewSearch:
-		return m.search.View()
+		base = m.search.View()
 	case viewSettings:
-		return m.settings.View()
+		base = m.settings.View()
 	case viewViewer:
-		return m.viewer.View()
+		base = m.viewer.View()
 	case viewHelp:
-		return m.help.View()
+		base = m.help.View()
+	default:
+		base = "loading..."
 	}
-	return "loading..."
+	switch {
+	case m.consentPending:
+		return m.consentView()
+	case m.gpPicker != nil:
+		return m.gpPickerView()
+	case m.tourPending:
+		return m.tourView()
+	}
+	return base
+}
+
+// sectionForView maps the active screen to the help keymap section shown
+// when ? opens the reference.
+func sectionForView(v viewType) help.Section {
+	switch v {
+	case viewHome:
+		return help.SectionHome
+	case viewLibrary:
+		return help.SectionLibrary
+	case viewViewer:
+		return help.SectionViewer
+	case viewSearch:
+		return help.SectionSearch
+	case viewSettings:
+		return help.SectionSettings
+	}
+	return help.SectionHome
 }

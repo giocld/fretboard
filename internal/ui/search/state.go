@@ -16,6 +16,9 @@ import (
 
 const (
 	maxHistory = 8
+	// cacheTTL is how long a cached result set is considered fresh. Older
+	// caches are still served offline but flagged "(stale)" in the banner.
+	cacheTTL = 7 * 24 * time.Hour
 )
 
 func historyPath() string {
@@ -91,22 +94,62 @@ func saveCache(query string, results []scraper.SearchResult) {
 }
 
 func loadCache(query string) ([]scraper.SearchResult, bool) {
+	res, _, ok := loadCacheEntry(query)
+	return res, ok
+}
+
+// loadCacheEntry returns the cached result set for a query together with the
+// time it was saved, so offline fallback can date the banner and age the
+// cache. Caches written before the saved_at field existed load with a zero
+// SavedAt (backward compatible).
+func loadCacheEntry(query string) ([]scraper.SearchResult, time.Time, bool) {
 	path := cachePath()
 	if path == "" {
-		return nil, false
+		return nil, time.Time{}, false
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false
+		return nil, time.Time{}, false
 	}
 	var entry cacheEntry
 	if err := json.Unmarshal(data, &entry); err != nil {
-		return nil, false
+		return nil, time.Time{}, false
 	}
 	if trimSpace(entry.Query) != trimSpace(query) || len(entry.Results) == 0 {
-		return nil, false
+		return nil, time.Time{}, false
 	}
-	return entry.Results, true
+	return entry.Results, entry.SavedAt, true
+}
+
+// isCacheStale reports whether a cached result set is older than the TTL.
+// Zero (unknown) saved times are treated as fresh rather than flagged.
+func isCacheStale(savedAt time.Time) bool {
+	return !savedAt.IsZero() && time.Since(savedAt) > cacheTTL
+}
+
+// MergeCacheFresh combines a cached result set for a query with a freshly
+// fetched one, deduplicating by result key and preferring the fresh copy of
+// any duplicate. Rows only the cache knows about are preserved so a partial
+// or page-shifted fetch does not truncate the earlier set.
+func MergeCacheFresh(cached, fresh []scraper.SearchResult) []scraper.SearchResult {
+	best := make(map[string]int, len(cached)+len(fresh))
+	out := make([]scraper.SearchResult, 0, len(cached)+len(fresh))
+	keep := func(r scraper.SearchResult) {
+		key := scraper.ResultKey(r)
+		if idx, ok := best[key]; ok {
+			out[idx] = r // fresh wins: later writes replace earlier
+			return
+		}
+		best[key] = len(out)
+		out = append(out, r)
+	}
+	for _, r := range cached {
+		keep(r)
+	}
+	for _, r := range fresh {
+		keep(r)
+	}
+	return out
 }
 
 // trimSpace is a tiny helper so this file has no surprises.

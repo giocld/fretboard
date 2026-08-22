@@ -16,6 +16,12 @@ func (m *ViewerModel) refresh() {
 		m.viewport.SetContent(kit.MutedStyle.Render("No tab loaded."))
 		return
 	}
+	if m.chordSheet {
+		// S1.2: a chord sheet renders its raw text verbatim (transposed by
+		// the T/Z keys) instead of the bar grid; its bars are empty.
+		m.viewport.SetContent(m.chordText())
+		return
+	}
 	cur := &kit.TabCursor{Bar: m.cursorBar, Col: m.cursorCol, Playing: m.playing, ShowNotes: m.showNotes, SearchBar: -1, SearchCol: -1}
 	if m.searchIdx >= 0 && m.searchIdx < len(m.searchMatches) {
 		cur.SearchBar = m.searchMatches[m.searchIdx].bar

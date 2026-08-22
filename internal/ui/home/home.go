@@ -21,6 +21,7 @@ type HomeModel struct {
 	preview        string
 	errMsg         string
 	autoImportWarn string
+	missingDeps    []string // critical missing playback deps (diag probe)
 	width          int
 	height         int
 }
@@ -184,4 +185,11 @@ func (m *HomeModel) loadPreview() string {
 // SetAutoImportWarn updates the auto-import warning banner shown on home.
 func (m *HomeModel) SetAutoImportWarn(msg string) {
 	m.autoImportWarn = msg
+}
+
+// SetMissingDeps records critical playback dependencies that the startup
+// diag probe found missing (e.g. "fluidsynth/timidity", "mpv/ffplay"); the
+// home banner and footer marker surface them (8.2).
+func (m *HomeModel) SetMissingDeps(missing []string) {
+	m.missingDeps = append([]string(nil), missing...)
 }

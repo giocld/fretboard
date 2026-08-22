@@ -97,6 +97,7 @@ func (e *Engine) playAudio(path string, seek time.Duration) error {
 		e.mode = "audio"
 		e.audioPath = path
 		e.ActiveDriver = c.driver
+		e.audioBackend = c.bin
 		e.LastError = ""
 		e.posFB.mu.Lock()
 		e.posFB.pos = 0
@@ -126,6 +127,12 @@ func (e *Engine) tryAudioCandidate(c candidate, binPath, path string) (*exec.Cmd
 	cmd.Stderr = &stderr
 	cmd.Stdout = io.Discard
 	if c.bin == "mpv" {
+		// Live rate changes over IPC: point mpv at a per-engine unix
+		// socket. When the socket cannot be created the arg is simply
+		// omitted and SetRate keeps using the restart path.
+		if sock := e.mpvSocketPath(); sock != "" {
+			c.args = append(c.args, "--input-ipc-server="+sock)
+		}
 		// Position feedback: pipe the status line into a scanner that
 		// feeds e.posFB (tee'd into the collector for error summaries).
 		pr, pw := io.Pipe()
@@ -218,6 +225,8 @@ func (e *Engine) stopAudio() {
 	e.posFB.dur = 0
 	e.posFB.seen = false
 	e.posFB.mu.Unlock()
+	e.audioBackend = ""
+	e.cleanupMPVSocket()
 	if e.audioCmd == nil || e.audioCmd.Process == nil {
 		e.audioCmd = nil
 		return
@@ -236,6 +245,8 @@ func (e *Engine) audioRunning() bool {
 			e.LastError = "audio stopped unexpectedly"
 		}
 		e.audioCmd = nil
+		e.audioBackend = ""
+		e.cleanupMPVSocket()
 		e.mode = ""
 		e.audioPath = ""
 		e.playbackStart = time.Time{}

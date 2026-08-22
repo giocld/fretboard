@@ -1,5 +1,6 @@
 // Package cli implements the fretboard command-line entrypoint: flag
-// parsing, config loading, the non-interactive import subcommand, the
+// parsing, config loading, the non-interactive subcommands (import,
+// doctor, scan, export, setup gp, and --print/--html rendering), the
 // test-audio subcommand, and the interactive TUI. It is separated from
 // cmd/fretboard so the whole surface is testable without a main package.
 package cli
@@ -28,8 +29,18 @@ import (
 
 // Run executes the CLI and returns the process exit code.
 func Run(args []string, stdout, stderr io.Writer) int {
+	// --print/--html render a file to stdout. They take flags of their own
+	// (--width, --theme, -o) that may follow the file path, which the flag
+	// package cannot express, so the whole arg list is handled separately.
+	for _, a := range args {
+		if a == "--print" || a == "--html" {
+			return runRender(args, stdout, stderr)
+		}
+	}
+
 	fs := flag.NewFlagSet("fretboard", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() { printUsage(stderr, fs) }
 	ugDelay := fs.Duration("ug-delay", 0, "delay between Ultimate Guitar requests")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -49,11 +60,43 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	}
 	kit.SetTheme(cfg.ThemeName)
 
+	// Wire player behavior from config: MIDI humanization and the audio
+	// cache cap. The cap is a raw GB count; the player converts to bytes
+	// internally (AudioCacheMaxGB << 30), so pass it through unchanged.
+	player.HumanizeMIDI = cfg.HumanizeMIDI
+	player.AudioCacheMaxGB = int64(cfg.AudioCacheMaxGB)
+
 	if *ugDelay == 0 {
 		*ugDelay = time.Duration(cfg.UGDelayMs) * time.Millisecond
 	}
 
 	rest := fs.Args()
+
+	// Subcommands that need no library store.
+	if len(rest) >= 1 && rest[0] == "doctor" {
+		if len(rest) > 2 {
+			fmt.Fprintln(stderr, "usage: fretboard doctor [check-name]")
+			return 1
+		}
+		filter := ""
+		if len(rest) == 2 {
+			filter = rest[1]
+		}
+		return runDoctor(filter, stdout, stderr)
+	}
+
+	if len(rest) >= 1 && rest[0] == "setup" {
+		if len(rest) < 2 || rest[1] != "gp" {
+			fmt.Fprintln(stderr, "usage: fretboard setup gp [--version X]")
+			return 1
+		}
+		version, err := parseSetupGPArgs(rest[2:])
+		if err != nil {
+			fmt.Fprintf(stderr, "setup gp: %v\n", err)
+			return 1
+		}
+		return runSetupGP(version, stdout, stderr)
+	}
 
 	if len(rest) >= 1 && rest[0] == "test-audio" {
 		if err := runTestAudio(cfg, stdout, stderr); err != nil {
@@ -73,14 +116,28 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	if len(rest) >= 1 && rest[0] == "import" {
 		if len(rest) != 2 {
-			fmt.Fprintln(stderr, "usage: fretboard import <file-or-directory>")
+			fmt.Fprintln(stderr, "usage: fretboard import <file-or-directory|archive.json>")
 			return 1
 		}
-		if err := importPath(store, rest[1]); err != nil {
+		arg := rest[1]
+		// A .json path is a library archive (ExportArchive output); anything
+		// else is a tab file or a directory of tabs.
+		if strings.EqualFold(filepath.Ext(arg), ".json") {
+			return runImportArchive(store, arg, stdout, stderr)
+		}
+		if err := importPath(store, arg); err != nil {
 			fmt.Fprintf(stderr, "import: %v\n", err)
 			return 1
 		}
 		return 0
+	}
+
+	if len(rest) >= 1 && rest[0] == "scan" {
+		return runScan(cfg, store, rest[1:], stdout, stderr)
+	}
+
+	if len(rest) >= 1 && rest[0] == "export" {
+		return runExport(store, rest[1:], stdout, stderr)
 	}
 
 	if len(rest) > 1 {

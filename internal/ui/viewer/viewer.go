@@ -92,6 +92,31 @@ type ViewerModel struct {
 	width      int
 	height     int
 	errMsg     string
+	warnMsg    string // inline amber warning line (anchor sanity, S4.2)
+	// Wave-2 workon features.
+	chordSheet       bool           // kind=="chords": render raw text, no playback (S1.2)
+	editing          bool           // quick-edit editor session in flight (S1.3)
+	editPath         string         // temp file the quick-edit editor is editing
+	drums            bool           // player-detected drum tab (S5.3a)
+	download         *downloadState // S3.3 shared download progress (goroutine-safe)
+	showCache        bool           // K: audio cache screen open (S3.3)
+	cacheRows        []cacheEntry
+	cacheCur         int
+	tempoSrc         player.TempoSource // S2.1 provenance of the playing tempo
+	tempoSrcSet      bool
+	derivedBPM       int                   // BPM measured from the selected source (alignment/probe)
+	manualBPM        bool                  // user nudged the tempo; keep it across plays
+	verify           *player.VerifySession // S4.1 passive alignment verification
+	gpTracks         []gpTrackMeta         // S5.3b parsed "tracks" metadata
+	gpTrackIdx       int
+	sessionMode      bool // S8.1 practice session
+	sessionLoops     int
+	sessionClean     int
+	sessionBaseBPM   int
+	sessionTargetBPM int
+	sessionStart     time.Time
+	sessionRamp      bool   // audio ramp: monitor restarts playback at the new BPM
+	sessionCard      string // summary card shown after the session exits
 }
 
 // NewViewerModel creates a viewer with default size.
@@ -150,11 +175,28 @@ func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
 	m.autoStrengths = nil
 	m.autoActive = false
 	m.syncDrift = 0
-	m.alignmentCandidates = nil
-	m.showAlignmentConfirm = false
-	m.alignmentPick = -1
-	m.calibrating = false
-	m.endBanner = false
+	m.chordSheet = tab != nil && tab.Metadata != nil && tab.Metadata["kind"] == "chords"
+	m.editing = false
+	m.editPath = ""
+	m.drums = tab != nil && player.DetectDrumTab(tab)
+	m.download = nil
+	m.showCache = false
+	m.cacheRows = nil
+	m.cacheCur = 0
+	m.tempoSrcSet = false
+	m.derivedBPM = 0
+	m.manualBPM = false
+	m.verify = nil
+	m.warnMsg = ""
+	m.sessionMode = false
+	m.sessionLoops = 0
+	m.sessionClean = 0
+	m.sessionBaseBPM = 0
+	m.sessionTargetBPM = 0
+	m.sessionStart = time.Time{}
+	m.sessionRamp = false
+	m.sessionCard = ""
+	m.loadGPTrackMeta()
 	m.restoreCalibrationForSource()
 	_ = m.engine.Stop()
 	m.engine.SetLoop(0, 0)
@@ -201,12 +243,16 @@ func (m ViewerModel) Update(msg tea.Msg) (ViewerModel, tea.Cmd) {
 		return m.handleAlignmentCandidates(msg)
 	case msgs.PlaybackStartedMsg:
 		return m.handlePlaybackStarted(msg)
-	case msgs.PlaybackErrorMsg:
-		return m.handlePlaybackError(msg)
 	case msgs.PlaybackMonitorMsg:
 		return m.handlePlaybackMonitor(msg)
 	case msgs.PlaybackTickMsg:
 		return m.handlePlaybackTick(msg)
+	case verifyTickMsg:
+		return m.handleVerifyTick(msg)
+	case editDoneMsg:
+		return m.handleEditDone(msg)
+	case browserOpenMsg:
+		return m.handleBrowserOpen(msg)
 	case tea.KeyMsg:
 		if m.showAlignmentConfirm {
 			return m.handleAlignmentConfirmKey(msg)

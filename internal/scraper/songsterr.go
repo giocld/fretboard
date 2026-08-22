@@ -74,14 +74,21 @@ func (c *songsterrClient) SearchPage(query string, page int) ([]SearchResult, er
 	for _, s := range songs {
 		inst := pickSongsterrInstrument(s.Tracks)
 		out = append(out, SearchResult{
-			ID:         s.SongID,
-			Source:     SourceSongsterr,
-			SongName:   s.Title,
-			ArtistName: s.Artist,
-			Type:       inst,
+			ID:            s.SongID,
+			Source:        SourceSongsterr,
+			SongName:      s.Title,
+			ArtistName:    s.Artist,
+			Type:          inst,
+			Reconstructed: true, // Songsterr serves no tab text; Fetch rebuilds it via UG
+			SourceURL:     songsterrSongURL(s.SongID),
 		})
 	}
 	return out, nil
+}
+
+// songsterrSongURL returns the canonical Songsterr page for a song id.
+func songsterrSongURL(id int64) string {
+	return fmt.Sprintf("https://www.songsterr.com/a/wsa/%d", id)
 }
 
 func pickSongsterrInstrument(tracks []songsterrTrack) string {

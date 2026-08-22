@@ -56,10 +56,17 @@ func (s *Synth) Play(tab *model.Tab, bpm int) error {
 	if err != nil {
 		return fmt.Errorf("generate events: %w", err)
 	}
+	// Earliest shared point before SMF serialization: fluidsynth and
+	// timidity both read the same .mid file, so humanizing here covers
+	// every external synth path (realtime mode drives fluidsynth from
+	// tab notes directly and stays untouched). No-op unless HumanizeMIDI.
+	evts = HumanizeEvents(evts)
 	if len(evts) == 0 {
 		return errors.New("no MIDI notes in tab — nothing to play")
 	}
-	data, err := WriteSMF(evts, bpm)
+	// Drum tabs route to GM channel 10 (WriteTabSMF maps string indices to
+	// percussion pitches); anything else is byte-identical to WriteSMF.
+	data, err := WriteTabSMF(evts, bpm, tab)
 	if err != nil {
 		return fmt.Errorf("write smf: %w", err)
 	}

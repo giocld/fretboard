@@ -19,7 +19,7 @@ func (m SearchModel) renderResults() string {
 		return kit.ErrorStyle.Render(m.errMsg)
 	}
 	if m.cacheNote != "" {
-		return kit.WarningStyle.Render(m.cacheNote) + "\n\n" + m.renderResultList()
+		return kit.WarningStyle.Render(m.offlineBanner()) + "\n\n" + m.renderResultList()
 	}
 	if len(m.results) == 0 {
 		hint := "Type a query and press Enter to search."
@@ -29,6 +29,19 @@ func (m SearchModel) renderResults() string {
 		return kit.MutedStyle.Render(hint)
 	}
 	return m.renderResultList()
+}
+
+// offlineBanner renders the prominent offline-fallback notice: cached
+// results are shown with their save date, flagged stale past the TTL.
+func (m SearchModel) offlineBanner() string {
+	b := "offline — showing cached results"
+	if !m.cacheSavedAt.IsZero() {
+		b += " from " + m.cacheSavedAt.Format("Jan 2, 2006")
+	}
+	if m.cacheStale {
+		b += " (stale)"
+	}
+	return b
 }
 
 func (m SearchModel) renderResultList() string {
@@ -113,13 +126,25 @@ func (m SearchModel) View() string {
 	innerW := m.width - 6
 	content := queryLine + "\n" + kit.RenderDivider(innerW) + "\n" + m.viewport.View()
 	panel := kit.RenderPanel(m.width-2, "", content)
-	footer := kit.RenderFooter(m.width, []kit.KeyHint{
-		{Key: "Enter", Label: "search/open"},
-		{Key: "Tab", Label: "results"},
-		{Key: "/", Label: "query"},
-		{Key: "j/k", Label: "move"},
-		{Key: "Esc", Label: "back"},
-		{Key: "q", Label: "quit"},
-	})
+	// The footer mirrors the mode the screen is in: typing a query vs.
+	// navigating results — 4-5 keys for the current state (8.3).
+	var hints []kit.KeyHint
+	if m.inputActive {
+		hints = []kit.KeyHint{
+			{Key: "Enter", Label: "search"},
+			{Key: "Tab/j/k", Label: "results"},
+			{Key: "Esc", Label: "clear"},
+			{Key: "q", Label: "quit"},
+		}
+	} else {
+		hints = []kit.KeyHint{
+			{Key: "Enter", Label: "open"},
+			{Key: "/", Label: "edit query"},
+			{Key: "j/k", Label: "move"},
+			{Key: "m", Label: "more"},
+			{Key: "Esc", Label: "back"},
+		}
+	}
+	footer := kit.RenderFooter(m.width, hints)
 	return kit.LayoutScreen(m.width, m.height, kit.FormatBreadcrumb("home", "search"), "\n"+panel, footer)
 }

@@ -32,7 +32,12 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		return m, cmd
 	case "+", "=":
 		m.bpm = player.ClampBPM(m.bpm + 5)
+		m.manualBPM = true // a user nudge wins over the provenance chain
 		m.jumpBuffer = ""
+		if m.sessionMode && !m.playing {
+			// While paused, +/- set the session's ramp target.
+			m.sessionTargetBPM = m.bpm
+		}
 		if m.playing && m.tab != nil {
 			if m.audioSync {
 				// Audio: restart the player so the mapping matches the new tempo.
@@ -48,7 +53,11 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		m.refresh()
 	case "-", "_":
 		m.bpm = player.ClampBPM(m.bpm - 5)
+		m.manualBPM = true
 		m.jumpBuffer = ""
+		if m.sessionMode && !m.playing {
+			m.sessionTargetBPM = m.bpm
+		}
 		if m.playing && m.tab != nil {
 			if m.audioSync {
 				_ = m.engine.Stop()
@@ -63,13 +72,66 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		m.perfMode = !m.perfMode
 		m.jumpBuffer = ""
 		m.refresh()
+	case "M":
+		// S8.1 practice session: M toggles session mode (paused + loop set
+		// to enter), exits with a summary card and a PracticeSessionMsg.
+		m.jumpBuffer = ""
+		if m.sessionMode {
+			m.sessionCard = ""
+			return m.endSessionCmd()
+		}
+		if m.playing {
+			m.errMsg = "Pause playback before entering session mode"
+			m.refresh()
+			return m, nil
+		}
+		if m.loopStartBar <= 0 || m.loopEndBar <= 0 {
+			m.errMsg = "Set a loop first (i start / u end), then press M"
+			m.refresh()
+			return m, nil
+		}
+		m.startSession()
+		return m, nil
 	case "s":
-		if m.audioSync && m.playing && m.tab != nil {
+		if m.tab == nil {
+			break
+		}
+		if m.verify != nil && m.verify.State == player.VerifyPending {
+			// S4.1: a manual anchor during the verification window cancels
+			// the passive keep — the user is calibrating by hand now.
+			m.verify.Refine()
+			m.verify = nil
+			m.errMsg = ""
+			m.infoMsg = "Alignment verification skipped — sync anchors are manual now"
+			m.refresh()
+			return m, nil
+		}
+		if m.playing && m.audioSync {
 			m.errMsg = ""
 			return m.setSyncPoint()
 		}
+		if !m.playing && m.calibrationAudioLoaded() {
+			// S4.2: paused calibration — jump to a bar and anchor it to the
+			// audio position the cursor maps to; the anchor is sanity-checked.
+			return m.setPausedSyncPoint()
+		}
 		m.errMsg = "Sync bar needs a real recording: play with an audio source (a + Space), then press s here"
 		m.refresh()
+	case "U":
+		// S4.2 one-key undo of the last sync anchor (u is the loop end key).
+		m.jumpBuffer = ""
+		if len(m.syncPoints) > 0 {
+			last := m.syncPoints[len(m.syncPoints)-1]
+			m.syncPoints = m.syncPoints[:len(m.syncPoints)-1]
+			m.saveSyncPoints()
+			m.errMsg = ""
+			m.warnMsg = ""
+			m.infoMsg = fmt.Sprintf("Undid sync anchor at bar %d", last.Bar)
+			m.refresh()
+		} else {
+			m.errMsg = "No sync anchors to undo"
+			m.refresh()
+		}
 	case "S":
 		if len(m.syncPoints) > 0 {
 			last := m.syncPoints[len(m.syncPoints)-1]
@@ -82,6 +144,19 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.errMsg = "No sync points to remove"
 			m.refresh()
 		}
+	case "E", "$":
+		// S1.3 quick edit: spawn $EDITOR on the raw text, re-parse on exit.
+		return m.startQuickEdit()
+	case "ctrl+p":
+		// S1.4 print: write the HTML export next to the tab file.
+		return m.printHTML()
+	case "K":
+		// S3.3 cache screen: list entries, delete one or all.
+		m.openCacheScreen()
+		return m, nil
+	case "t":
+		// S5.3b: cycle the Guitar Pro track (multi-track files only).
+		return m.cycleGPTrack()
 	case "i":
 		if m.tab != nil {
 			return m.setLoopPoint(true)
@@ -189,9 +264,15 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.jumpBuffer = ""
 			return m, nil
 		}
-		if m.errMsg != "" || m.infoMsg != "" {
+		if m.errMsg != "" || m.infoMsg != "" || m.warnMsg != "" {
 			m.errMsg = ""
 			m.infoMsg = ""
+			m.warnMsg = ""
+			m.refresh()
+			return m, nil
+		}
+		if m.sessionCard != "" {
+			m.sessionCard = ""
 			m.refresh()
 			return m, nil
 		}

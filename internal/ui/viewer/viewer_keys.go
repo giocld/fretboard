@@ -64,9 +64,12 @@ func (m *ViewerModel) jumpToMatch(delta int) {
 	m.refresh()
 }
 
-// handleKey routes keys to the audio picker, the search box, or the practice
-// and navigation key handlers.
+// handleKey routes keys to the audio picker, the cache screen, the search
+// box, or the practice and navigation key handlers.
 func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
+	if m.showCache {
+		return m.handleCacheKey(msg)
+	}
 	if m.showAudioPicker {
 		return m.handleAudioPickerKey(msg)
 	}
@@ -78,7 +81,7 @@ func (m ViewerModel) handleKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		return m, nil
 	}
 	switch msg.String() {
-	case kit.KeyQuit, kit.KeyQuit2, "b", "H", "a", " ", "p", "+", "=", "-", "_", "P", "y", "m", "C", "s", "S", "i", "u", "x", ">", "<", "r", "w", "W", "f7", "f8", "f9", "f12", "[", "{", "]", "}", ",", ".", "o", "esc":
+	case kit.KeyQuit, kit.KeyQuit2, "b", "H", "a", " ", "p", "+", "=", "-", "_", "P", "y", "m", "C", "s", "S", "i", "u", "x", ">", "<", "r", "w", "W", "f7", "f8", "f9", "f12", "[", "{", "]", "}", ",", ".", "o", "esc", "E", "$", "ctrl+p", "K", "U", "M", "t":
 		return m.handleKeyPractice(msg)
 	default:
 		return m.handleKeyNav(msg)

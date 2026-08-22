@@ -23,10 +23,21 @@ func (m ViewerModel) handleKeyNav(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 	case "N":
 		m.jumpToMatch(-1)
 	case "T":
+		if m.isDrums() {
+			// S5.3a: drum tabs carry no frets to transpose.
+			m.errMsg = "Transpose is disabled for drum tabs"
+			m.refresh()
+			return m, nil
+		}
 		m.transpose = clampTranspose(m.transpose + 1)
 		m.jumpBuffer = ""
 		m.refresh()
 	case "Z":
+		if m.isDrums() {
+			m.errMsg = "Transpose is disabled for drum tabs"
+			m.refresh()
+			return m, nil
+		}
 		m.transpose = clampTranspose(m.transpose - 1)
 		m.jumpBuffer = ""
 		m.refresh()
@@ -48,6 +59,12 @@ func (m ViewerModel) handleKeyNav(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.ensureCursorVisible()
 			m.lastKey = ""
 			m.refresh()
+		} else if url := m.sourceURL(); url != "" {
+			// S5.2: a single g on a tab with a canonical source page opens
+			// it in the browser (gg still jumps to the top).
+			m.lastKey = ""
+			m.infoMsg = "Opening " + url
+			return m, openBrowserCmd(url)
 		} else {
 			m.lastKey = "g"
 			m.lastKeyAt = time.Now()

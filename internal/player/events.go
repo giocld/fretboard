@@ -20,6 +20,7 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 		return nil, errors.New("tab has no tuning")
 	}
 
+	drum := DetectDrumTab(tab)
 	var events []Event
 	currentTick := int64(0)
 
@@ -30,14 +31,24 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 		}
 		cols := maxColumns(bar.Strings)
 		noteCols := NoteColumns(bar)
+		if drum {
+			// A drum tab's hits are x/o chars, which NoteColumns ignores
+			// (it only counts fretted digits); without this the Events
+			// loop would visit no columns and the tab would play silence.
+			noteCols = drumNoteColumns(bar)
+		}
 		if len(noteCols) == 0 {
 			continue
 		}
 		for i, col := range noteCols {
 			notes, _ := collectNotesAt(tab.Tuning, bar.Strings, col)
+			var drumHits []int
+			if drum {
+				drumHits = drumHitsAt(bar.Strings, col)
+			}
 			advance := columnTicks(bar, col, cols, noteCols, i)
 			sustain := sustainForNote(bar, col, advance)
-			if len(notes) > 0 {
+			if len(notes) > 0 || len(drumHits) > 0 {
 				for _, n := range notes {
 					events = append(events, Event{
 						Type:   NoteOn,
@@ -45,6 +56,18 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 						String: n.String,
 						Fret:   n.Fret,
 						Note:   n.Note,
+						Vel:    100,
+					})
+				}
+				for _, s := range drumHits {
+					// String index carries the drum sound: WriteTabSMF
+					// maps it to a GM percussion pitch (channel 9).
+					events = append(events, Event{
+						Type:   NoteOn,
+						Tick:   currentTick,
+						String: s,
+						Fret:   0,
+						Note:   0,
 						Vel:    100,
 					})
 				}
@@ -59,11 +82,51 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 						Vel:    0,
 					})
 				}
+				for _, s := range drumHits {
+					events = append(events, Event{
+						Type:   NoteOff,
+						Tick:   offTick,
+						String: s,
+						Fret:   0,
+						Note:   0,
+						Vel:    0,
+					})
+				}
 			}
 			currentTick += int64(advance)
 		}
 	}
 	return events, nil
+}
+
+// drumNoteColumns returns every column holding a fretted note or an x/o
+// drum hit, so a drum tab's hits become timing steps. Non-drum tabs keep
+// using NoteColumns (x columns are not steps for fretted guitar).
+func drumNoteColumns(bar model.Bar) []int {
+	cols := maxColumns(bar.Strings)
+	var out []int
+	for col := range cols {
+		if len(notesAtColumn(bar.Strings, col)) > 0 || len(drumHitsAt(bar.Strings, col)) > 0 {
+			out = append(out, col)
+		}
+	}
+	return out
+}
+
+// drumHitsAt returns the string indices with an x/o hit segment at col.
+// The parser keeps 'x' as a segment; 'o' is dropped at parse time, so open
+// hi-hat hits do not surface here (they are absent from the parsed bar).
+func drumHitsAt(strings []model.StringLine, col int) []int {
+	var out []int
+	for s, str := range strings {
+		for _, seg := range str.Segments {
+			if seg.Position == col && (seg.Char == 'x' || seg.Char == 'o') {
+				out = append(out, s)
+				break
+			}
+		}
+	}
+	return out
 }
 
 type note struct {

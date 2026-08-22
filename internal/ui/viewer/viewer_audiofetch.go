@@ -120,12 +120,18 @@ func (m *ViewerModel) maybeDetectIntroCmd() tea.Cmd {
 	}
 }
 
-func (m ViewerModel) downloadSelectedSourceCmd() tea.Cmd {
+func (m *ViewerModel) downloadSelectedSourceCmd() tea.Cmd {
 	tab := m.tab
 	tabID := m.tabID
 	tabPath := m.tabPath
 	src := m.selectedSource()
+	// S3.3: surface the downloader's progress in the status row. The state
+	// slot is shared across model copies (pointer field), and the package
+	// hook is registered for the fetch's lifetime.
+	st := m.downloadState()
+	st.begin()
 	return func() tea.Msg {
+		defer st.end()
 		path, err := player.EnsureAudioSource(tab, src)
 		return msgs.AudioFetchedMsg{Path: path, Err: err, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
 	}

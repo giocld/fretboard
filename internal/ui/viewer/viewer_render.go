@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fretboard/internal/model"
 	"fretboard/internal/player"
@@ -25,10 +26,38 @@ func (m ViewerModel) View() string {
 		if b := strings.TrimSpace(m.tab.Metadata[model.MetaKeySourceBadge]); b != "" {
 			title += kit.MutedStyle.Render("  " + b)
 		}
+		// S5.1: a UG Pro-only tab gets a pro badge; a rebuilt (Songsterr)
+		// tab is flagged so the provenance is never mistaken for a direct
+		// fetch.
+		if m.tab.Metadata["pro"] == "1" {
+			title += kit.WarningStyle.Render("  pro")
+		}
+		if m.tab.Metadata["reconstructed"] == "1" {
+			label := "reconstructed"
+			if strings.Contains(strings.ToLower(m.tab.Metadata[model.MetaKeySource]), "songsterr") {
+				label = "songsterr (reconstructed)"
+			}
+			title += kit.MutedStyle.Render("  " + label)
+		}
+		// S5.3a: drum parts carry no frets; the label explains why
+		// transpose is disabled.
+		if m.isDrums() {
+			title += kit.WarningStyle.Render("  drums")
+		}
 		// The two-axis state label leads the status row: [load|sync] plus
 		// the calibrating "..." and track-ended "[end]" tags.
-		status = kit.MutedStyle.Render(fmt.Sprintf("%s · %s · bar %d/%d · %d BPM",
-			syncStateOf(m).label(), m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm))
+		if m.chordSheet {
+			// S1.2: a chord sheet has no bars — the position slot names it.
+			status = kit.MutedStyle.Render(fmt.Sprintf("%s · %s · %d BPM · chord sheet",
+				syncStateOf(m).label(), m.tab.Tuning.Label(), m.bpm))
+		} else {
+			status = kit.MutedStyle.Render(fmt.Sprintf("%s · %s · bar %d/%d · %d BPM",
+				syncStateOf(m).label(), m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm))
+		}
+		if t := m.qualityTiming(); t != "" {
+			// S1.1: the timing word badge for tab-kind sheets.
+			status += kit.MutedStyle.Render("  timing: " + t)
+		}
 		if sec := m.currentSection(); sec != "" {
 			status = kit.MutedStyle.Render(sec) + "  " + status
 		}
@@ -39,10 +68,17 @@ func (m ViewerModel) View() string {
 					label = "audio"
 				}
 				status += "  " + kit.SuccessStyle.Render(""+label)
-			} else if label != "" {
-				status += "  " + kit.SuccessStyle.Render("midi:"+label)
 			} else {
-				status += "  " + kit.SuccessStyle.Render("midi")
+				// S2.3: the synthesizer previews the tab, not a recording.
+				midi := "MIDI preview"
+				if label != "" {
+					midi += " (" + label + ")"
+				}
+				status += "  " + kit.SuccessStyle.Render(midi)
+			}
+			// S2.1: where the playing tempo came from, in small print.
+			if m.tempoSrcSet {
+				status += kit.MutedStyle.Render("  " + player.TempoProvenanceLabel(m.tempoSrc))
 			}
 		}
 		if src := m.selectedSource(); !m.playing {
@@ -54,14 +90,30 @@ func (m ViewerModel) View() string {
 				status += kit.MutedStyle.Render("   " + filepath.Base(m.resolvedAudio))
 			}
 		}
-		if m.audioOffset != 0 {
-			status += kit.MutedStyle.Render(fmt.Sprintf("  offset %+.1fs", m.audioOffset))
+		// S4.3: the compact per-source calibration chip (audio only):
+		// offset, anchors, drift, and the color-coded calibration word.
+		if chip := m.calibrationChip(); chip != "" {
+			status += "  " + chip
 		}
-		if len(m.syncPoints) > 0 {
-			status += kit.MutedStyle.Render(fmt.Sprintf("  anchors %d", len(m.syncPoints)))
+		// S4.1: the passive verification chip, visible only while the
+		// auto-keep deadline is pending.
+		if m.verify != nil && m.verify.State == player.VerifyPending {
+			secs := int(time.Until(m.verify.AutoKeepAt) / time.Second)
+			if secs < 1 {
+				secs = 1
+			}
+			drift := m.verify.Drift
+			if q, ok := m.syncQuality(); ok {
+				drift = time.Duration(q * float64(time.Second))
+			}
+			chip := fmt.Sprintf("sync ±%.1fs · verify? (kept automatically in %ds)", drift.Seconds(), secs)
+			status += "  " + kit.WarningStyle.Render(chip)
 		}
-		if q, ok := m.syncQuality(); ok {
-			status += kit.InfoStyle.Render(fmt.Sprintf("  ±%.2fs", q))
+		// S3.3: live download progress while a fetch is in flight.
+		if d := m.download; d != nil {
+			if active, pct := d.get(); active {
+				status += kit.InfoStyle.Render(fmt.Sprintf("  downloading %.0f%%", pct))
+			}
 		}
 		if map_, ok := m.tempoMap(); ok {
 			status += kit.InfoStyle.Render(fmt.Sprintf("  %d->%d bpm", map_[0], map_[1]))
@@ -90,6 +142,18 @@ func (m ViewerModel) View() string {
 		if m.perfMode {
 			status += kit.InfoStyle.Render("  perf")
 		}
+		if m.sessionMode {
+			// S8.1: the running session's loop count and tempo ramp.
+			status += kit.InfoStyle.Render(fmt.Sprintf("  session: %d loops · %d→%d bpm", m.sessionLoops, m.bpm, m.sessionTargetBPM))
+		}
+		if name := m.currentTrackName(); name != "" {
+			// S5.3b: the active Guitar Pro track.
+			status += kit.MutedStyle.Render("  track: " + name)
+		}
+		if r := strings.TrimSpace(m.tab.Metadata["pick_reason"]); r != "" {
+			// S5.2: why the fetch fell through (e.g. a UG Pro fallback).
+			status += kit.WarningStyle.Render("  " + r)
+		}
 		if m.driftMs != 0 && !m.audioSync {
 			status += kit.WarningStyle.Render(fmt.Sprintf("  drift %dms", m.driftMs))
 		}
@@ -111,6 +175,11 @@ func (m ViewerModel) View() string {
 	if m.infoMsg != "" {
 		status += "  " + kit.InfoStyle.Render(kit.Truncate(m.infoMsg, 48))
 	}
+	if m.warnMsg != "" {
+		// S4.2: inline amber warnings (anchor deviations) sit between info
+		// and error.
+		status += "  " + kit.WarningStyle.Render(kit.Truncate(m.warnMsg, 48))
+	}
 	if m.errMsg != "" {
 		status += "  " + kit.ErrorStyle.Render("! "+kit.Truncate(m.errMsg, 48))
 	}
@@ -130,47 +199,23 @@ func (m ViewerModel) View() string {
 	} else {
 		body += kit.RenderPanel(m.width-2, "Tab", m.viewport.View())
 	}
-	if m.showAlignmentConfirm {
+	if m.showCache {
+		body += renderCacheScreen(m)
+	} else if m.showAlignmentConfirm {
 		body += renderAlignmentConfirm(m)
 	} else if m.showAudioPicker {
 		body += RenderAudioPicker(m.width, m.audioCatalog, m.audioCursor, m.fetchingCatalog, m.strictAudio, m.recommendedSourceIdx(), rejectedSources(m.tab))
 	}
-
-	playLabel := "play"
-	if m.playing {
-		playLabel = "pause"
+	if m.sessionCard != "" {
+		// S8.1: the exit summary card sits above the footer.
+		body += "\n" + kit.RenderPanel(m.width-2, "Session", kit.InfoStyle.Render(m.sessionCard)) + "\n"
 	}
+
 	statusLine := ""
 	if m.tab != nil && m.tab.Title != "" {
 		statusLine = fmt.Sprintf(" %s", kit.Truncate(m.tab.Title, 24))
 	}
-	footer := kit.RenderFooterWithStatus(m.width, statusLine, []kit.KeyHint{
-		{Key: "a", Label: "audio"},
-		{Key: "Space/p", Label: playLabel},
-		{Key: "+/-", Label: "BPM"},
-		{Key: "> <", Label: "speed"},
-		{Key: "m", Label: "metronome"},
-		{Key: "C", Label: "count-in"},
-		{Key: "f7", Label: "+-15s"},
-		{Key: "f8", Label: "count-in"},
-		{Key: "f12", Label: "events"},
-		{Key: "y", Label: "instrument"},
-		{Key: "[ ] , .", Label: "sync"},
-		{Key: "o", Label: "reset"},
-		{Key: "s", Label: "sync bar"},
-		{Key: "i/u", Label: "loop"},
-		{Key: "v", Label: "layout"},
-		{Key: "f", Label: "follow"},
-		{Key: "P", Label: "perf"},
-		{Key: "X", Label: "export"},
-		{Key: "j/k", Label: "scroll"},
-		{Key: "/", Label: "search"},
-		{Key: "n/N", Label: "next"},
-		{Key: "T/Z", Label: "transpose"},
-		{Key: "e", Label: "notes"},
-		{Key: "b", Label: "library"},
-		{Key: "q", Label: "quit"},
-	})
+	footer := kit.RenderFooterWithStatus(m.width, statusLine, m.footerHints())
 	return kit.LayoutScreen(m.width, m.height, crumb, body, footer)
 }
 

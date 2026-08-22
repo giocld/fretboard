@@ -39,8 +39,19 @@ fretboard import path/to/tabs/
 - A MIDI synthesizer for playback:
   - `fluidsynth` + a GM soundfont (set `FRETBOARD_SOUNDFONT` to override), or
   - `timidity`
-- Optional: `yt-dlp` for automatic online backing-track lookup
-- Optional: `cargo` to build the Guitar Pro parser (`tools/gp-parser`)
+### Soundfonts
+
+The bundled soundfont search auto-detects common names (`FluidR3_GM.sf2`,
+`GeneralUser_GS.sf2`, …) in standard locations, or point
+`FRETBOARD_SOUNDFONT` at any `.sf2`/`.sf3` file. Two good free options:
+
+- [GeneralUser GS](https://schristiancollins.com/generaluser.php) — detailed
+  GM/GS bank with a small footprint; the recommended default.
+- [FluidR3_GM](https://github.com/Jacalz/fluid-soundfont) — the classic Fluid
+  bank, available as `.sf2` and compressed `.sf3` (both supported). On
+  Debian/Ubuntu it also ships as the `fluid-soundfont-gm` package.
+
+## Keybindings
 
 ## Keybindings
 

@@ -46,6 +46,17 @@ func parseLines(lines []string) (*model.Tab, error) {
 	cleaned := stripCommentsAndBlanks(lines)
 	tab := &model.Tab{Metadata: map[string]string{}}
 
+	// Chord sheets (few tab-shaped rows) have no tab region: keep the raw
+	// text for display and tag the sheet so viewers render text, not bars.
+	if Classify(cleaned) == SheetChord {
+		extractMetadata(cleaned, tab)
+		tab.Tuning = model.Standard
+		tab.Metadata[metaKeyKind] = "chords"
+		tab.Metadata["quality_timing"] = "n/a" // no rhythm rows to time
+		tab.Metadata[metaKeyRaw] = strings.Join(lines, "\n")
+		return tab, nil
+	}
+
 	// Pass 1: extract metadata from header lines.
 	metaEnd := extractMetadata(cleaned, tab)
 
@@ -54,6 +65,7 @@ func parseLines(lines []string) (*model.Tab, error) {
 	if tabStart < 0 || tabEnd <= tabStart {
 		// No tab region found. Return what we have.
 		tab.Tuning = model.Standard
+		ApplyQuality(tab, ScoreTab(cleaned))
 		return tab, nil
 	}
 
@@ -64,6 +76,9 @@ func parseLines(lines []string) (*model.Tab, error) {
 	// Pass 2: split the tab region into bar chunks and extract segments.
 	tab.Bars = extractBars(cleaned[tabStart:tabEnd], stringsPerColumn)
 	normalizeTabBPM(tab)
+	// Quality lands at parse time so consumers (search, library) can sort
+	// and filter without re-parsing the file.
+	ApplyQuality(tab, ScoreTab(cleaned))
 	return tab, nil
 }
 

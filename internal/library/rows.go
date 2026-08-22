@@ -11,6 +11,9 @@ type TabRow struct {
 	PlayCount   int64
 	LastPlayed  string // SQLite datetime from last_played, empty if never opened
 	SourceBadge string // provenance label for online tabs, e.g. "[UG *4.9]"
+	ContentHash string // sha256 of the raw tab file bytes, "" for legacy rows
+	EditedAt    int64  // unix seconds of the last in-app edit, 0 = never edited
+	Status      string // want | learning | learned
 }
 
 // MoreRecentlyUsed reports whether a should sort before b in recent-tab lists.

@@ -28,6 +28,8 @@ type Engine struct {
 	loopStart     time.Duration
 	loopEnd       time.Duration
 	posFB         posFeedback // mpv --term-status-msg feedback (audio mode)
+	audioBackend  string      // active audio player binary: "mpv", "ffplay", "mpg123"
+	mpvSocket     string      // mpv IPC socket path ("" until first mpv launch)
 	shutdown      bool
 }
 
@@ -40,7 +42,9 @@ func NewEngine() *Engine {
 func (e *Engine) Rate() float64 { return e.rate }
 
 // SetRate changes the playback rate (clamped to 0.25-4). While audio is
-// playing the player is restarted at the current position with the new rate.
+// playing the rate is pushed live to mpv over its IPC socket when the
+// socket is reachable; otherwise the player is restarted at the current
+// position with the new rate.
 func (e *Engine) SetRate(r float64) error {
 	if r < 0.25 {
 		r = 0.25
@@ -49,6 +53,13 @@ func (e *Engine) SetRate(r float64) error {
 		r = 4
 	}
 	if e.mode != "audio" {
+		e.rate = r
+		return nil
+	}
+	// mpv retimes itself over IPC; ffplay/mpg123 (or an unreachable mpv
+	// socket, e.g. a fake mpv that never bound one) fall back to the
+	// restart path below.
+	if e.setMPVSpeedLive(r) {
 		e.rate = r
 		return nil
 	}

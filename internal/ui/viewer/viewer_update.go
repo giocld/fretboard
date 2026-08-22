@@ -157,6 +157,7 @@ func (m ViewerModel) handleBPMDerived(msg msgs.BPMDerivedMsg) (ViewerModel, tea.
 		return m, nil
 	}
 	m.bpm = player.ClampBPM(msg.BPM)
+	m.derivedBPM = m.bpm // S2.1: the probed audio tempo feeds the chain
 	m.refresh()
 	return m, nil
 }
@@ -194,7 +195,19 @@ func (m ViewerModel) handleAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cm
 		m.refresh()
 		return m, nil
 	}
-	return m.applyAlignment(msg)
+	m2, cmd := m.applyAlignment(msg)
+	if m2.tab != nil && m2.autoActive {
+		// S4.1: after an auto alignment lands, open the passive verification
+		// chip: the anchors are kept automatically after 30s (or s refines
+		// manually). Playback is never blocked on the decision.
+		m2.startVerifySession(len(m2.autoAnchors), msg.Offset)
+		m2.refresh()
+		if cmd != nil {
+			return m2, tea.Batch(cmd, verifyTickCmd())
+		}
+		return m2, verifyTickCmd()
+	}
+	return m2, cmd
 }
 
 // applyAlignment applies a completed alignment: the detected tempo, the
@@ -205,6 +218,7 @@ func (m ViewerModel) handleAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cm
 // trustworthy enough to reach this point.
 func (m ViewerModel) applyAlignment(msg msgs.AlignmentMsg) (ViewerModel, tea.Cmd) {
 	m.bpm = player.ClampBPM(msg.BPM)
+	m.derivedBPM = m.bpm // S2.1: the audio-synced BPM feeds the tempo chain
 	if m.audioOffset == 0 && len(m.syncPoints) == 0 {
 		m.audioOffset = msg.Offset.Seconds()
 		if m.tab.Metadata == nil {

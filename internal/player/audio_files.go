@@ -100,7 +100,9 @@ func findAudioByNames(dir string, names []string) string {
 		for _, fname := range files {
 			stem := normalizeAudioName(strings.TrimSuffix(fname, filepath.Ext(fname)))
 			if stem == want {
-				return filepath.Join(dir, fname)
+				p := filepath.Join(dir, fname)
+				touchCached(dir, p)
+				return p
 			}
 		}
 	}
@@ -122,6 +124,9 @@ func findAudioByNames(dir string, names []string) string {
 				bestLen = len(stem)
 			}
 		}
+	}
+	if best != "" {
+		touchCached(dir, best)
 	}
 	return best
 }
@@ -172,4 +177,16 @@ func uniqueDirs(dirs []string) []string {
 		out = append(out, d)
 	}
 	return out
+}
+
+// touchCached marks a just-located file as used when it lives in the audio
+// cache dir, bumping its mtime so LRU eviction sees it as recently played.
+// Files found in other dirs are user tracks, not cache entries, and are
+// left untouched. Best-effort: a failed touch never blocks playback.
+func touchCached(dir, path string) {
+	cacheDir, err := config.AudioDir()
+	if err != nil || filepath.Clean(dir) != filepath.Clean(cacheDir) {
+		return
+	}
+	_ = TouchCacheEntry(path)
 }

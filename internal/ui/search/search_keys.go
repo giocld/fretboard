@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"fretboard/internal/model"
 	"fretboard/internal/scraper"
@@ -72,6 +73,8 @@ func (m SearchModel) handleKey(msg tea.KeyMsg) (SearchModel, tea.Cmd) {
 			}
 			m.lastQuery = q
 			m.cacheNote = ""
+			m.cacheSavedAt = time.Time{}
+			m.cacheStale = false
 			m.loading = true
 			m.importing = false
 			m.errMsg = ""
@@ -200,10 +203,17 @@ func (m *SearchModel) searchMoreCmd(query string, gen int) tea.Cmd {
 }
 
 func (m *SearchModel) importCmd(result scraper.SearchResult, gen int) tea.Cmd {
+	query := m.lastQuery
 	return func() tea.Msg {
-		tab, err := m.client.Fetch(result)
+		// FetchBest falls back to a community copy when the selected result
+		// is UG Pro/official-only and its direct fetch hits the paywall;
+		// the reason is carried on the result for the viewer to surface.
+		tab, reason, err := m.client.FetchBest(result, query)
 		if err != nil {
 			return msgs.TabImportErrorMsg{Err: err, Gen: gen}
+		}
+		if reason != "" {
+			result.PickReason = reason
 		}
 		// Carry provenance into the library: where the tab came from and how
 		// well it is rated, so the browser and viewer can show it later.
@@ -216,6 +226,20 @@ func (m *SearchModel) importCmd(result scraper.SearchResult, gen int) tea.Cmd {
 		}
 		if result.Votes > 0 {
 			tab.Metadata["source_votes"] = strconv.FormatInt(result.Votes, 10)
+		}
+		// Provenance for the viewer header/badges: pro/reconstructed flags,
+		// the source page URL (g binds it), and the pick fallback reason.
+		if result.Pro {
+			tab.Metadata["pro"] = "1"
+		}
+		if result.Reconstructed {
+			tab.Metadata["reconstructed"] = "1"
+		}
+		if result.SourceURL != "" {
+			tab.Metadata["source_url"] = result.SourceURL
+		}
+		if result.PickReason != "" {
+			tab.Metadata["pick_reason"] = result.PickReason
 		}
 		return msgs.TabFetchedMsg{Tab: tab, Source: result, Gen: gen}
 	}

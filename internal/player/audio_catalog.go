@@ -27,16 +27,17 @@ func StrictCompatible(c AudioCategory) bool {
 
 // AudioSource is one selectable playback option for a tab.
 type AudioSource struct {
-	ID       string
-	Kind     AudioSourceKind
-	Label    string
-	Path     string
-	VideoID  string
-	Duration time.Duration
-	Score    int
-	Detail   string
-	Category AudioCategory
-	StrictOK bool // acceptable under strict studio-lock selection
+	ID         string
+	Kind       AudioSourceKind
+	Label      string
+	Path       string
+	VideoID    string
+	Duration   time.Duration
+	Score      int
+	Detail     string
+	Category   AudioCategory
+	StrictOK   bool   // acceptable under strict studio-lock selection
+	PickReason string // human-readable why this source won the ranking ("" when unranked)
 }
 
 // AudioCatalog lists MIDI, local files, and ranked online matches.

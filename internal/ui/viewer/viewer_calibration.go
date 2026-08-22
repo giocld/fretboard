@@ -49,6 +49,10 @@ func (m ViewerModel) syncPointsKey() string {
 func (m *ViewerModel) restoreCalibrationForSource() {
 	m.audioOffset = 0
 	m.syncPoints = nil
+	// A different source means a different recording: any pending alignment
+	// verification and the previous source's measured tempo no longer apply.
+	m.verify = nil
+	m.derivedBPM = 0
 	if m.tab == nil || m.tab.Metadata == nil {
 		return
 	}
@@ -227,6 +231,50 @@ func (m ViewerModel) setSyncPoint() (ViewerModel, tea.Cmd) {
 		m.tab.Metadata[m.audioOffsetKey()] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
 		m.tab.Metadata[model.MetaKeyAudioOffset] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
 	}
+	m.refresh()
+	return m, m.saveTabPrefsCmd()
+}
+
+// setPausedSyncPoint anchors the cursor bar while playback is paused: the
+// anchor seconds are the audio position the cursor currently maps to under
+// the existing calibration. S4.2 adds a sanity gate: anchors implying a
+// tempo below 40 or above 300 BPM are rejected with the reason shown, and
+// deviations beyond 20% from the tab tempo surface as an inline amber
+// warning (the anchor is still kept).
+func (m ViewerModel) setPausedSyncPoint() (ViewerModel, tea.Cmd) {
+	bar := m.cursorBar + 1
+	seconds := m.resumeAudioPos().Seconds()
+	candidate := make([]player.SyncPoint, 0, len(m.syncPoints)+1)
+	candidate = append(candidate, m.syncPoints...)
+	candidate = append(candidate, player.SyncPoint{Bar: bar, Seconds: seconds})
+	warnings, ok := player.CheckAnchorSanity(candidate, m.bpm)
+	if !ok {
+		// Rejected outright: the anchor implies a physically implausible
+		// tempo, so adding it would corrupt the time mapping.
+		m.errMsg = "Anchor rejected: " + strings.Join(warnings, "; ")
+		m.warnMsg = ""
+		m.refresh()
+		return m, nil
+	}
+	if bar == 1 {
+		m.audioOffset = seconds
+	}
+	m.syncPoints = candidate
+	if m.tab != nil {
+		m.syncPoints = refineSyncPoints(player.BuildSchedule(m.tab), m.syncPoints)
+	}
+	m.saveSyncPoints()
+	if m.tab != nil && m.tab.Metadata != nil {
+		m.tab.Metadata[m.audioOffsetKey()] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+		m.tab.Metadata[model.MetaKeyAudioOffset] = strconv.FormatFloat(m.audioOffset, 'f', 1, 64)
+	}
+	m.errMsg = ""
+	if len(warnings) > 0 {
+		m.warnMsg = strings.Join(warnings, "; ")
+	} else {
+		m.warnMsg = ""
+	}
+	m.infoMsg = fmt.Sprintf("Anchored bar %d at %.1fs (paused calibration)", bar, seconds)
 	m.refresh()
 	return m, m.saveTabPrefsCmd()
 }

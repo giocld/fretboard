@@ -81,6 +81,10 @@ func (m HomeModel) renderBody() string {
 		b.WriteString("\n")
 		b.WriteString(kit.ErrorStyle.Render(m.errMsg))
 	}
+	if banner := m.degradedBanner(); banner != "" {
+		b.WriteString("\n")
+		b.WriteString(kit.WarningStyle.Render(banner))
+	}
 
 	b.WriteString("\n\n")
 	actions := []struct {
@@ -176,16 +180,37 @@ func (m HomeModel) audioWarning() string {
 	return "yt-dlp not found — install for automatic song audio"
 }
 
+// degradedBanner renders the one-line missing-dependency banner: which
+// critical tool group is absent and what playback it disables, pointing at
+// `fretboard doctor` for the full report (8.2).
+func (m HomeModel) degradedBanner() string {
+	if len(m.missingDeps) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, name := range m.missingDeps {
+		impact := "audio playback unavailable"
+		if strings.Contains(name, "fluidsynth") || strings.Contains(name, "timidity") {
+			impact = "MIDI playback unavailable"
+		}
+		b.WriteString("missing: " + name + " — " + impact + " (see `fretboard doctor`)")
+		b.WriteString("\n")
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
 // View renders the landing page.
 func (m HomeModel) View() string {
-	footer := kit.RenderFooter(m.width, []kit.KeyHint{
+	status := ""
+	if len(m.missingDeps) > 0 {
+		status = "⚠ missing: " + strings.Join(m.missingDeps, ", ")
+	}
+	footer := kit.RenderFooterWithStatus(m.width, status, []kit.KeyHint{
 		{Key: "j/k", Label: "navigate"},
 		{Key: "Enter", Label: "select"},
 		{Key: "l", Label: "library"},
 		{Key: "o", Label: "search"},
 		{Key: "i", Label: "import"},
-		{Key: "?", Label: "help"},
-		{Key: "t", Label: "theme"},
 		{Key: "q", Label: "quit"},
 	})
 	return kit.LayoutScreen(m.width, m.height, kit.FormatBreadcrumb("home"), m.renderBody(), footer)

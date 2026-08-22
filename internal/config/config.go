@@ -20,6 +20,12 @@ type Config struct {
 	AudioSearchPaths     []string `json:"audio_search_paths,omitempty"`
 	AutoFetchAudio       bool     `json:"auto_fetch_audio"`
 	StrictAudioSelection bool     `json:"strict_audio_selection"`
+	HumanizeMIDI         bool     `json:"humanize_midi"`
+	AudioCacheMaxGB      int      `json:"audio_cache_max_gb"`
+	ConsentOnlineAudio   bool     `json:"consent_online_audio"`
+	TabsDir              string   `json:"tabs_dir,omitempty"`
+	GPParserVersion      string   `json:"gp_parser_version,omitempty"`
+	TourSeen             bool     `json:"tour_seen"`
 }
 
 // Defaults returns the default configuration.
@@ -30,6 +36,7 @@ func Defaults() Config {
 		VolumePercent:        80,
 		AutoFetchAudio:       true,
 		StrictAudioSelection: true,
+		AudioCacheMaxGB:      5,
 	}
 }
 
@@ -50,6 +57,9 @@ func (c *Config) UnmarshalJSON(data []byte) error {
 	}
 	if _, ok := keys["strict_audio_selection"]; !ok {
 		a.StrictAudioSelection = true
+	}
+	if _, ok := keys["audio_cache_max_gb"]; !ok {
+		a.AudioCacheMaxGB = 5
 	}
 	*c = Config(a)
 	return nil

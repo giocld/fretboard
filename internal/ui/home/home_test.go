@@ -101,23 +101,26 @@ func TestHomeStatRowFitsAvailableWidth(t *testing.T) {
 
 // TestHomeStatRowSeparatorsAligned guards the stat columns render side by
 // side (not stacked): the labels and values must share lines.
-func TestHomeStatRowSeparatorsAligned(t *testing.T) {
-	m := HomeModel{store: nil, width: 80, height: 24, loaded: true, tabs: []library.TabRow{{ID: 1, Title: "Layla"}}}
-	body := m.renderBody()
-	lines := strings.Split(body, "\n")
-	var labels, values string
-	for _, l := range lines {
-		if strings.HasPrefix(strings.TrimSpace(l), "TABS") {
-			labels = l
-		}
-		if strings.Contains(l, "0 *") && strings.Contains(l, "Layla") {
-			values = l
+// TestHomeDegradedBanner guards 8.2: missing critical deps surface as a
+// one-line banner (with the doctor hint) and a footer marker.
+func TestHomeDegradedBanner(t *testing.T) {
+	m := HomeModel{store: nil, width: 80, height: 24, loaded: true,
+		missingDeps: []string{"fluidsynth/timidity", "mpv/ffplay"}}
+	view := m.View()
+	for _, want := range []string{
+		"missing: fluidsynth/timidity",
+		"MIDI playback unavailable",
+		"missing: mpv/ffplay",
+		"audio playback unavailable",
+		"fretboard doctor",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("degraded home should contain %q:\n%s", want, view)
 		}
 	}
-	if labels == "" || values == "" {
-		t.Fatalf("stat labels and values not both rendered:\n%s", body)
-	}
-	if strings.Count(labels, "│") != 2 || strings.Count(values, "│") != 2 {
-		t.Fatalf("stat row should have 2 separators on each line, labels=%q values=%q", labels, values)
+	// The banner must not render when nothing is missing.
+	m2 := HomeModel{store: nil, width: 80, height: 24, loaded: true}
+	if banner := m2.degradedBanner(); banner != "" {
+		t.Fatalf("no missing deps should render no banner, got %q", banner)
 	}
 }

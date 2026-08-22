@@ -65,6 +65,10 @@ func (c *ugAPIClient) SearchPage(query string, page int) ([]SearchResult, error)
 			Type:       string(t.Type),
 			Rating:     t.Rating,
 			Votes:      t.Votes,
+			// Pro/official access types and types gate the tab behind the
+			// UG Pro paywall; flag them so ranking demotes them and
+			// FetchBest can fall back to a community copy.
+			Pro: isProAccess(string(t.TabAccessType)) || isProType(string(t.Type)),
 		})
 	}
 	return out, nil

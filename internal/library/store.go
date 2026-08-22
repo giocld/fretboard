@@ -47,22 +47,60 @@ func (s *Store) Close() error {
 func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`
 		CREATE TABLE IF NOT EXISTS tabs (
-			id           INTEGER PRIMARY KEY AUTOINCREMENT,
-			filepath     TEXT NOT NULL UNIQUE,
-			title        TEXT NOT NULL DEFAULT '',
-			artist       TEXT NOT NULL DEFAULT '',
-			tuning       TEXT NOT NULL DEFAULT '',
-			content      TEXT NOT NULL DEFAULT '',
-			added_at     TEXT DEFAULT (datetime('now')),
-			last_played  TEXT,
-			play_count   INTEGER DEFAULT 0,
-			favorite     INTEGER DEFAULT 0,
-			source_badge TEXT NOT NULL DEFAULT ''
+			id             INTEGER PRIMARY KEY AUTOINCREMENT,
+			filepath       TEXT NOT NULL UNIQUE,
+			title          TEXT NOT NULL DEFAULT '',
+			artist         TEXT NOT NULL DEFAULT '',
+			tuning         TEXT NOT NULL DEFAULT '',
+			content        TEXT NOT NULL DEFAULT '',
+			added_at       TEXT DEFAULT (datetime('now')),
+			last_played    TEXT,
+			play_count     INTEGER DEFAULT 0,
+			favorite       INTEGER DEFAULT 0,
+			source_badge   TEXT NOT NULL DEFAULT '',
+			content_sha256 TEXT NOT NULL DEFAULT '',
+			edited_at      INTEGER NOT NULL DEFAULT 0,
+			status         TEXT NOT NULL DEFAULT 'want'
+		);
+	`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`
+		CREATE TABLE IF NOT EXISTS tags (
+			id   INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE
+		);
+		CREATE TABLE IF NOT EXISTS tab_tags (
+			tab_id INTEGER NOT NULL REFERENCES tabs(id) ON DELETE CASCADE,
+			tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+			PRIMARY KEY (tab_id, tag_id)
+		);
+		CREATE TABLE IF NOT EXISTS setlists (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			name       TEXT NOT NULL,
+			created_at TEXT DEFAULT (datetime('now'))
+		);
+		CREATE TABLE IF NOT EXISTS setlist_items (
+			setlist_id INTEGER NOT NULL REFERENCES setlists(id) ON DELETE CASCADE,
+			tab_id     INTEGER NOT NULL REFERENCES tabs(id) ON DELETE CASCADE,
+			position   INTEGER NOT NULL,
+			PRIMARY KEY (setlist_id, tab_id)
+		);
+		CREATE TABLE IF NOT EXISTS practice_events (
+			id               INTEGER PRIMARY KEY AUTOINCREMENT,
+			tab_id           INTEGER NOT NULL REFERENCES tabs(id) ON DELETE CASCADE,
+			started_at       INTEGER NOT NULL,
+			duration_seconds INTEGER NOT NULL,
+			tempo_bpm        INTEGER,
+			loops            INTEGER
 		);
 	`); err != nil {
 		return err
 	}
 	if err := s.addMissingColumns(); err != nil {
+		return err
+	}
+	if err := s.addIndexes(); err != nil {
 		return err
 	}
 	return s.dropLegacyColumns()
@@ -79,6 +117,33 @@ func (s *Store) addMissingColumns() error {
 		if _, err := s.db.Exec(`ALTER TABLE tabs ADD COLUMN source_badge TEXT NOT NULL DEFAULT ''`); err != nil {
 			return fmt.Errorf("add column source_badge: %w", err)
 		}
+	}
+	if !existing["content_sha256"] {
+		if _, err := s.db.Exec(`ALTER TABLE tabs ADD COLUMN content_sha256 TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add column content_sha256: %w", err)
+		}
+	}
+	if !existing["edited_at"] {
+		if _, err := s.db.Exec(`ALTER TABLE tabs ADD COLUMN edited_at INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add column edited_at: %w", err)
+		}
+	}
+	if !existing["status"] {
+		if _, err := s.db.Exec(`ALTER TABLE tabs ADD COLUMN status TEXT NOT NULL DEFAULT 'want'`); err != nil {
+			return fmt.Errorf("add column status: %w", err)
+		}
+	}
+	return nil
+}
+
+// addIndexes creates indexes that speed up hash-based relocation scans and
+// setlist ordering. All are IF NOT EXISTS so re-migration is a no-op.
+func (s *Store) addIndexes() error {
+	if _, err := s.db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_tabs_content_sha256 ON tabs(content_sha256);
+		CREATE INDEX IF NOT EXISTS idx_setlist_items_order ON setlist_items(setlist_id, position);
+	`); err != nil {
+		return fmt.Errorf("create indexes: %w", err)
 	}
 	return nil
 }

@@ -1,6 +1,9 @@
+//go:build !noytdlp
+
 package player
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -51,8 +54,13 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 		limit = 5
 	}
 
+	// A pinned video wins unconditionally; keep every collected candidate so
+	// the pin is never trimmed out of the list before the promotion pass.
+	_, pinned := PinnedVideoFor(tab)
+
 	seen := map[string]struct{}{}
 	var ranked []AudioSource
+	reasons := map[string]string{} // candidate ID -> pick-reason fragment
 	var lastErr error
 
 	for _, query := range AudioSearchQueries(tab) {
@@ -79,32 +87,16 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 				(strings.TrimSpace(tab.Artist) == "" || strings.Contains(strings.ToLower(e.Title), strings.ToLower(strings.TrimSpace(tab.Artist)))) {
 				strictOK = true // unambiguous "Artist - Song" style title without an official marker
 			}
-			score := ScoreYouTubeResult(tab, e.Title, channel, e.Description, e.Duration)
-			dur := time.Duration(e.Duration) * time.Second
-			path := cachedPathForVideo(tab, e.ID)
-			if fileExists(path) {
-				if probed, err := ProbeDuration(path); err == nil && probed > 0 {
-					dur = probed
-				}
-			}
-			src := AudioSource{
-				ID:       "yt:" + e.ID,
-				Kind:     SourceOnline,
-				Label:    e.Title,
-				Path:     path,
-				VideoID:  e.ID,
-				Duration: dur,
-				Score:    score,
-				Detail:   formatDuration(dur) + " · " + channel + " · online",
-				Category: cat,
-				StrictOK: strictOK,
-			}
+			src, reason := onlineSourceFromEntry(tab, e, strictOK)
+			reasons[src.ID] = reason
 			ranked = append(ranked, src)
 		}
 	}
 
 	sortAudioSources(ranked)
-	ranked = ranked[:min(len(ranked), limit*2)]
+	if !pinned && len(ranked) > limit*2 {
+		ranked = ranked[:limit*2]
+	}
 	// Second pass: when the primary queries found nothing (not even an
 	// error), retry with the fallback phrasing — song-only engines and
 	// "official audio"/"lyrics" variants often rescue the search.
@@ -132,28 +124,65 @@ func SearchOnlineCandidates(tab *model.Tab, limit int) ([]AudioSource, error) {
 				if cat == CatOther && strings.Contains(strings.ToLower(e.Title), strings.ToLower(strings.TrimSpace(tab.Title))) {
 					strictOK = true
 				}
-				ranked = append(ranked, AudioSource{
-					ID:       "yt:" + e.ID,
-					Kind:     SourceOnline,
-					Label:    e.Title,
-					Path:     cachedPathForVideo(tab, e.ID),
-					VideoID:  e.ID,
-					Duration: time.Duration(e.Duration) * time.Second,
-					Score:    ScoreYouTubeResult(tab, e.Title, channel, e.Description, e.Duration),
-					Detail:   formatDuration(time.Duration(e.Duration)*time.Second) + " · " + channel + " · online",
-					Category: cat,
-					StrictOK: strictOK,
-				})
+				src, reason := onlineSourceFromEntry(tab, e, strictOK)
+				reasons[src.ID] = reason
+				ranked = append(ranked, src)
 			}
 		}
 		sortAudioSources(ranked)
 	}
+
+	// Pin wins forever: promote it ahead of every heuristic, synthesizing a
+	// source when the search engine no longer surfaces the pinned video.
+	promotePinned(tab, &ranked)
+
 	// A total failure must not be reported as "no matches": the real cause
 	// (yt-dlp missing, timed out, network error) is what the user needs.
+	// A pinned video rescues this case: the user's explicit choice needs no
+	// search engine.
 	if len(ranked) == 0 && lastErr != nil {
 		return nil, lastErr
 	}
+
+	// The top candidate gets the human-readable reason for its win.
+	if len(ranked) > 0 && ranked[0].PickReason == "" {
+		ranked[0].PickReason = reasons[ranked[0].ID]
+		if ranked[0].PickReason == "" {
+			ranked[0].PickReason = "top-ranked match"
+		}
+	}
 	return ranked, nil
+}
+
+// maxIntScore marks a pinned candidate as unbeatable by any heuristic: the
+// user's explicit choice outranks every computed score.
+const maxIntScore = 1 << 30
+
+// promotePinned re-ranks the list so a user-pinned video leads
+// unconditionally. When the search no longer surfaces the pinned video, a
+// minimal source is synthesized from the pin so it keeps winning.
+func promotePinned(tab *model.Tab, ranked *[]AudioSource) {
+	pinID, ok := PinnedVideoFor(tab)
+	if !ok || ranked == nil {
+		return
+	}
+	for i := range *ranked {
+		if (*ranked)[i].VideoID == pinID {
+			(*ranked)[i].Score = maxIntScore
+			(*ranked)[i].PickReason = "pinned source"
+			sortAudioSources(*ranked)
+			return
+		}
+	}
+	*ranked = append([]AudioSource{{
+		ID:         "yt:" + pinID,
+		Kind:       SourceOnline,
+		Label:      "pinned video",
+		VideoID:    pinID,
+		Score:      maxIntScore,
+		Detail:     "pinned source · online",
+		PickReason: "pinned source",
+	}}, (*ranked)...)
 }
 
 // ResolveAudio finds a local backing track or downloads the best online match.
@@ -176,6 +205,19 @@ func ResolveAudio(tab *model.Tab, tabPath string, extraDirs []string, allowOnlin
 
 // BestOnlineSource returns the top-ranked online candidate.
 func BestOnlineSource(tab *model.Tab) (*AudioSource, error) {
+	// A pinned video wins without a search: the user's explicit choice is
+	// the answer, and it must hold even when the search engine is down.
+	if pinID, ok := PinnedVideoFor(tab); ok {
+		return &AudioSource{
+			ID:         "yt:" + pinID,
+			Kind:       SourceOnline,
+			Label:      "pinned video",
+			VideoID:    pinID,
+			Score:      maxIntScore,
+			Detail:     "pinned source · online",
+			PickReason: "pinned source",
+		}, nil
+	}
 	cands, err := SearchOnlineCandidates(tab, 5)
 	if err != nil {
 		return nil, err
@@ -232,7 +274,6 @@ func DownloadYouTubeAudio(tab *model.Tab, videoID string, expected time.Duration
 	targetBase := filepath.Join(dir, sanitizeAudioFilename(cacheAudioBasename(tab))+" ["+videoID+"]")
 	outTemplate := targetBase + ".%(ext)s"
 	url := "https://www.youtube.com/watch?v=" + videoID
-
 	args := []string{
 		url,
 		"--extract-audio",
@@ -242,12 +283,25 @@ func DownloadYouTubeAudio(tab *model.Tab, videoID string, expected time.Duration
 		"--no-playlist",
 		"--no-warnings",
 		"--quiet",
-		"--no-progress",
+		"--newline",
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), ytDownloadTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "yt-dlp", args...)
-	if err := cmd.Run(); err != nil {
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("download audio: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("download audio: %w", err)
+	}
+	// Feed yt-dlp's --newline progress lines to the UI hook while the
+	// download runs; ParseProgressLine ignores non-progress lines.
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		NotifyDownloadProgress(scanner.Text())
+	}
+	if err := cmd.Wait(); err != nil {
 		return "", fmt.Errorf("download audio: %w", err)
 	}
 	for _, ext := range audioExtensions {
@@ -264,6 +318,8 @@ func DownloadYouTubeAudio(tab *model.Tab, videoID string, expected time.Duration
 					}
 				}
 			}
+			// New cache entry: enforce the configured cap (LRU eviction).
+			_ = EnforceCacheCap()
 			return p, nil
 		}
 	}
