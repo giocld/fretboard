@@ -84,11 +84,11 @@ func names(results []CheckResult) []string {
 // check must come back OK and the result set must be complete and stable.
 func TestRunChecksAllPresent(t *testing.T) {
 	testutil.RedirectConfigDir(t)
-	base := os.Getenv("XDG_CONFIG_HOME")
-	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		base = os.Getenv("HOME")
+	cfgDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
 	}
-	sf := filepath.Join(base, "fretboard", "FluidR3_GM.sf2")
+	sf := filepath.Join(cfgDir, "fretboard", "FluidR3_GM.sf2")
 	if err := os.MkdirAll(filepath.Dir(sf), 0o755); err != nil {
 		t.Fatal(err)
 	}

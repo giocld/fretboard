@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -321,8 +322,12 @@ func TestInstallGPParser(t *testing.T) {
 	if !bytes.Equal(got, bin) {
 		t.Fatal("installed bytes differ from the downloaded binary")
 	}
-	if info, _ := os.Stat(wantDest); info.Mode()&0o111 == 0 {
-		t.Fatal("installed binary is not executable")
+	if runtime.GOOS != "windows" {
+		// Windows has no permission bits: executability comes from the
+		// .exe suffix, so the mode assertion is meaningless there.
+		if info, _ := os.Stat(wantDest); info.Mode()&0o111 == 0 {
+			t.Fatal("installed binary is not executable")
+		}
 	}
 }
 

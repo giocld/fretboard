@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -218,12 +219,27 @@ func TestSettingsFromLibraryKey(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // forceOnline makes the consent gate behave as if yt-dlp were installed,
-// so the consent-state tests are hermetic on machines without it.
+// so the consent-state tests are hermetic on machines without it. It also
+// shims a fake yt-dlp onto PATH: BeginAudioFetch re-checks the player
+// package's own yt-dlp lookup before taking the online branch, so the host
+// install would otherwise decide whether Accept proceeds with a fetch.
 func forceOnline(t *testing.T) {
 	t.Helper()
 	old := onlineAudioAvailable
 	onlineAudioAvailable = func() bool { return true }
 	t.Cleanup(func() { onlineAudioAvailable = old })
+
+	dir := t.TempDir()
+	name := "yt-dlp"
+	script := "#!/bin/sh\necho 2026.01.01\n"
+	if runtime.GOOS == "windows" {
+		name += ".cmd"
+		script = "@echo off\r\necho 2026.01.01\r\n"
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 // newTestStore opens an isolated library store for a test.
@@ -570,13 +586,26 @@ func TestPracticeSessionMsg(t *testing.T) {
 	}
 }
 
-// writeFakeGpParser installs a fake gp-parser script that echoes the given
-// --all envelope, so app-level GP import flows run without a real Guitar
-// Pro file.
+// writeFakeGpParser installs a fake gp-parser that echoes the given --all
+// envelope, so app-level GP import flows run without a real Guitar Pro
+// file. The shim is a shell script on Unix and a .cmd batch file on Windows
+// (CreateProcess cannot run extensionless shebang scripts; .cmd/.bat are
+// executed via cmd.exe).
 func writeFakeGpParser(t *testing.T, envelope string) {
 	t.Helper()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "gp-parser")
+	if runtime.GOOS == "windows" {
+		bin += ".cmd"
+		// JSON is whitespace-insensitive, so one echo line carries the
+		// envelope and keeps cmd quoting out of the picture.
+		script := "@echo off\r\n" + "echo " + strings.ReplaceAll(envelope, "\n", "") + "\r\n"
+		if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("FRETBOARD_GP_PARSER", bin)
+		return
+	}
 	script := "#!/bin/sh\ncat <<'EOF'\n" + envelope + "\nEOF\n"
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
