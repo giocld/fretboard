@@ -1,5 +1,7 @@
 # fretboard
 
+<img width="1132" height="374" alt="image" src="https://github.com/user-attachments/assets/2f8cb84a-9743-43a5-9453-9646e7b03f40" />
+
 A terminal guitar tab viewer, player, and library manager. Search online tabs,
 import local files, browse your library, and play back tabs with audio — all
 from a keyboard-driven Bubble Tea TUI.
