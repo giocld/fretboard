@@ -5,50 +5,17 @@ import (
 	"time"
 )
 
-// BuildSchedule returns playback steps with rhythm-aware tick durations.
-// Bars are visited in repeat-aware performance order (RepeatOrder), so "|:"
-// ":|" sections and 1./2. endings play the way a human reads them: the
-// section is repeated once, first-ending bars are skipped on the second pass
-// and second-ending bars are skipped on the first.
+// BuildSchedule returns playback steps with rhythm-aware tick durations,
+// bars visited in repeat-aware performance order (RepeatOrder). See
+// BarSteps for how each bar is timed.
 func BuildSchedule(tab *model.Tab) []PlaybackStep {
 	if tab == nil || len(tab.Bars) == 0 {
 		return nil
 	}
+	perBar := BarSteps(tab)
 	var steps []PlaybackStep
 	for _, b := range RepeatOrder(tab) {
-		bar := tab.Bars[b]
-		if len(bar.Strings) == 0 {
-			continue
-		}
-		cols := maxColumns(bar.Strings)
-		if cols == 0 {
-			continue
-		}
-		noteCols := NoteColumns(bar)
-		if len(noteCols) == 0 {
-			// Rest bar: emit one step with the bar's duration so the clock,
-			// the metronome, and the audio-sync mapping all stay correct —
-			// without it the cursor teleports over rests and the playhead
-			// runs ahead of the music.
-			steps = append(steps, PlaybackStep{
-				Bar:   b,
-				Col:   0,
-				Ticks: restBarTicks(bar, cols),
-				Rest:  true,
-			})
-			continue
-		}
-		for i, col := range noteCols {
-			width := stepWidth(bar.Strings, col)
-			ticks := columnTicks(bar, col, cols, noteCols, i)
-			steps = append(steps, PlaybackStep{
-				Bar:      b,
-				Col:      col,
-				ColWidth: width,
-				Ticks:    ticks,
-				Sustain:  sustainForNote(bar, col, ticks),
-			})
-		}
+		steps = append(steps, perBar[b]...)
 	}
 	return steps
 }
@@ -154,68 +121,6 @@ func StepDuration(ticks, bpm int) time.Duration {
 		ticks = ticksPerQuarter / 4
 	}
 	return time.Duration(ticks) * time.Minute / time.Duration(bpm*ticksPerQuarter)
-}
-
-// BeatColumns returns the note columns of a bar that start a quarter-note
-// beat, derived from the bar's own column tick durations. The first note of
-// the bar is always a beat (accented by the metronome). Rest bars have no
-// notes, so their beats come from the rhythm row or from the sixteenth-note
-// column grid (every 8 columns = one quarter).
-func BeatColumns(bar model.Bar) []int {
-	cols := NoteColumns(bar)
-	if len(cols) == 0 {
-		// Rest bar: rhythm marks on quarter boundaries, else the column
-		// grid (8 columns per quarter at the 16th-per-column heuristic).
-		if len(bar.Rhythm) > 0 {
-			var beats []int
-			for _, r := range bar.Rhythm {
-				if r.Ticks >= ticksPerQuarter {
-					beats = append(beats, r.Position)
-				}
-			}
-			if len(beats) > 0 {
-				return beats
-			}
-		}
-		width := maxColumns(bar.Strings)
-		var beats []int
-		for c := 0; c < width; c += 8 {
-			beats = append(beats, c)
-		}
-		if len(beats) == 0 {
-			beats = []int{0}
-		}
-		return beats
-	}
-	maxC := maxColumns(bar.Strings)
-	var beats []int
-	acc := 0
-	for i, c := range cols {
-		ticks := columnTicks(bar, c, maxC, cols, i)
-		if acc%ticksPerQuarter == 0 {
-			beats = append(beats, c)
-		}
-		acc += ticks
-	}
-	return beats
-}
-
-// restBarTicks returns the MIDI tick duration of a rest bar: the rhythm
-// row's total when one is present, otherwise the bar's column span at the
-// sixteenth-note-per-column heuristic (the same rule note columns use).
-func restBarTicks(bar model.Bar, cols int) int {
-	total := 0
-	for _, r := range bar.Rhythm {
-		total += r.Ticks
-	}
-	if total > 0 {
-		return total
-	}
-	ticks := cols * (ticksPerQuarter / 4)
-	if ticks < 1 {
-		ticks = ticksPerQuarter
-	}
-	return ticks
 }
 
 // ScheduleDurationSeconds returns the schedule's total wall-clock length at

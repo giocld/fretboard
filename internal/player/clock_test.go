@@ -56,8 +56,9 @@ func TestBuildScheduleEmitsRestSteps(t *testing.T) {
 	if len(sched) != 4 {
 		t.Fatalf("expected 4 steps, got %d: %+v", len(sched), sched)
 	}
+	// A rest bar is a whole measure of rest, whatever its width on the page.
 	rest := sched[2]
-	if !rest.Rest || rest.Bar != 1 || rest.Ticks != 4*(ticksPerQuarter/4) {
+	if !rest.Rest || rest.Bar != 1 || rest.Ticks != ticksPerMeasure {
 		t.Fatalf("rest step wrong: %+v", rest)
 	}
 	if sched[3].Bar != 2 {
@@ -65,29 +66,20 @@ func TestBuildScheduleEmitsRestSteps(t *testing.T) {
 	}
 }
 
-// TestBeatColumnsRestBar guards metronome beats on rest bars: quarter beats
-// land on the column grid (every 8 columns).
-func TestBeatColumnsRestBar(t *testing.T) {
-	rest := modelBar("------", "------", "------", "------", "------", "------")
-	beats := BeatColumns(rest)
-	if len(beats) != 1 || beats[0] != 0 {
-		t.Fatalf("6-column rest bar should beat at column 0 only, got %v", beats)
+// TestRestBarIsAMeasureOnTheBeat guards metronome beats on rest bars: a
+// rest bar is a whole measure whose single step starts on the downbeat, so
+// the metronome clicks (accented) as it begins.
+func TestRestBarIsAMeasureOnTheBeat(t *testing.T) {
+	rest := modelBar("----------------")
+	steps := BarSteps(&model.Tab{Bars: []model.Bar{rest}})[0]
+	if len(steps) != 1 || !steps[0].Rest || steps[0].Ticks != ticksPerMeasure || steps[0].Onset != 0 {
+		t.Fatalf("rest bar should be one measure-long step on beat 1, got %+v", steps)
 	}
-	wide := modelBar("----------------", "----------------", "----------------", "----------------", "----------------", "----------------")
-	beats = BeatColumns(wide)
-	if len(beats) != 2 || beats[0] != 0 || beats[1] != 8 {
-		t.Fatalf("16-column rest bar should beat at 0 and 8, got %v", beats)
-	}
-	// Rhythm-marked rest bar: beats at quarter marks.
-	marked := modelBar("----------------", "----------------", "----------------", "----------------", "----------------", "----------------")
-	marked.Rhythm = []model.RhythmMark{
-		{Position: 0, Ticks: ticksPerQuarter},
-		{Position: 8, Ticks: ticksPerQuarter},
-		{Position: 12, Ticks: ticksPerQuarter / 2},
-	}
-	beats = BeatColumns(marked)
-	if len(beats) != 2 || beats[0] != 0 || beats[1] != 8 {
-		t.Fatalf("rhythm rest bar should beat at quarter marks, got %v", beats)
+	// A rhythm row sets a rest bar's length.
+	marked := modelBar("----------------")
+	marked.Rhythm = []model.RhythmMark{{Position: 0, Ticks: ticksPerQuarter}, {Position: 8, Ticks: ticksPerQuarter}}
+	if got := BarSteps(&model.Tab{Bars: []model.Bar{marked}})[0][0].Ticks; got != 2*ticksPerQuarter {
+		t.Fatalf("rhythm rest bar should last its marks (960), got %d", got)
 	}
 }
 

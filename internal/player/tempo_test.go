@@ -46,10 +46,10 @@ func TestTempoAnchorsMeasuredSpacing(t *testing.T) {
 	if len(anchors) < 10 {
 		t.Fatalf("expected many anchors, got %d", len(anchors))
 	}
-	// Spacing between consecutive anchors = 4 tab bars at ~1.0s each = ~4s.
+	// Spacing between consecutive anchors = 4 tab bars at ~2.0s each = ~8s.
 	for i := 1; i < len(anchors) && i < 6; i++ {
 		gap := anchors[i].Seconds - anchors[i-1].Seconds
-		if gap < 3.5 || gap > 4.5 {
+		if gap < 7.5 || gap > 8.5 {
 			t.Fatalf("anchor gap %v (bars %d->%d), want ~8s", gap, anchors[i-1].Bar, anchors[i].Bar)
 		}
 	}
@@ -111,7 +111,8 @@ func TestAutoMapSurvivesTempoChange(t *testing.T) {
 	sched := BuildSchedule(tab)
 	expected := ExpectedOnsets(tab, 120)
 	scale := 120.0 / float64(a.BPM)
-	anchors := TempoAnchors(expected, a.Onsets, scale, a.Offset, a.BPM, 4)
+	// Anchors every ~4s, as this test was designed: 2 of its 2s bars.
+	anchors := TempoAnchors(expected, a.Onsets, scale, a.Offset, a.BPM, 2)
 	points := MergeAnchors(nil, anchors)
 	if len(points) < 4 {
 		t.Fatalf("too few anchors: %d", len(points))
@@ -125,9 +126,9 @@ func TestAutoMapSurvivesTempoChange(t *testing.T) {
 			return 0
 		}
 		if el <= 60.0 {
-			return int(el / 1.0) // 1s tab bars (120 BPM clicks)
+			return int(el / 2.0) // 2s tab bars (120 BPM clicks)
 		}
-		return 60 + int((el-60.0)/1.2) // 1.2s tab bars at 100 BPM
+		return 30 + int((el-60.0)/2.4) // 2.4s tab bars at 100 BPM
 	}
 	for _, at := range []float64{20, 40, 55, 65, 72} {
 		want := trueBar(at)
@@ -348,7 +349,7 @@ func TestTrackAlignmentAcceptance(t *testing.T) {
 	if len(points) < 5 {
 		t.Fatalf("too few anchors: %d", len(points))
 	}
-	// Truth: tab bar at audio time t (tab bars are 1s; the music drifts
+	// Truth: tab bar at audio time t (tab bars are 2s; the music drifts
 	// ~4% slower over the track).
 	trueBar := func(t float64) int {
 		if t <= introEnd.Seconds() {
@@ -357,7 +358,7 @@ func TestTrackAlignmentAcceptance(t *testing.T) {
 		// Integrate the drifting tempo: average ratio over the elapsed part.
 		el := t - introEnd.Seconds()
 		avgRatio := 1.0 + 0.02*el/60.0           // linear drift -> avg = mid ratio
-		return int(el / (1.0 * avgRatio) / 0.98) // tab bar ~0.98s at 122 bpm
+		return int(el / (2.0 * avgRatio) / 0.98) // tab bar ~1.97s at 122 bpm
 	}
 	for _, at := range []float64{10, 25, 40, 55, 70} {
 		idx := StepIndexAtSyncPoints(sched, points, at, a.BPM)

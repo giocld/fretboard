@@ -146,7 +146,7 @@ func TestPlayStepNoClickOffBeat(t *testing.T) {
 		}},
 	}
 	// col 2 is a half-beat; accumulated ticks 240 % 480 != 0 -> no click.
-	if err := s.PlayStep(tab, PlaybackStep{Bar: 0, Col: 2, Ticks: 240}, 120); err != nil {
+	if err := s.PlayStep(tab, PlaybackStep{Bar: 0, Col: 2, Ticks: 240, Onset: 240}, 120); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(500 * time.Millisecond) // let any (wrong) click land in the log
@@ -191,32 +191,25 @@ func TestCountInPlaysLeadInClicks(t *testing.T) {
 	}
 }
 
-// TestBeatColumns guards the beat derivation: quarters click on every note,
-// eighths on every other note, and the first note is always a beat.
-func TestBeatColumns(t *testing.T) {
-	quarters := model.Bar{Strings: []model.StringLine{{
-		Segments: []model.Segment{
-			{Char: '0', Value: 0, Position: 0, Width: 1},
-			{Char: '-', Position: 1}, {Char: '-', Position: 2}, {Char: '-', Position: 3},
-			{Char: '3', Value: 3, Position: 4, Width: 1},
-		},
-	}}}
-	if got := BeatColumns(quarters); len(got) != 2 {
-		t.Fatalf("quarter-note bar should have 2 beats, got %v", got)
+// TestMetronomeBeatsFollowOnsets guards the beat derivation: the metronome
+// clicks on steps whose onset is a quarter-note boundary, so quarters click
+// on every note, eighths on every other, and beat 1 is accented.
+func TestMetronomeBeatsFollowOnsets(t *testing.T) {
+	beats := func(first string) []int {
+		tab := &model.Tab{Bars: []model.Bar{modelBar(first)}}
+		var out []int
+		for _, s := range BuildSchedule(tab) {
+			if !s.Rest && s.Onset%ticksPerQuarter == 0 {
+				out = append(out, s.Col)
+			}
+		}
+		return out
 	}
-
-	eighths := model.Bar{Strings: []model.StringLine{{
-		Segments: []model.Segment{
-			{Char: '0', Value: 0, Position: 0, Width: 1},
-			{Char: '-', Position: 1},
-			{Char: '3', Value: 3, Position: 2, Width: 1},
-			{Char: '-', Position: 3},
-			{Char: '5', Value: 5, Position: 4, Width: 1},
-		},
-	}}}
-	got := BeatColumns(eighths)
-	if len(got) != 2 || got[0] != 0 || got[1] != 4 {
-		t.Fatalf("eighth-note bar should beat on cols 0 and 4, got %v", got)
+	if got := beats("-0---3---5---7---"); len(got) != 4 {
+		t.Fatalf("quarter-note bar should click on all 4 notes, got %v", got)
+	}
+	if got := beats("-0-3-5-7-0-3-5-7-"); len(got) != 4 || got[0] != 1 || got[1] != 5 {
+		t.Fatalf("eighth-note bar should click on every other note, got %v", got)
 	}
 }
 

@@ -12,13 +12,18 @@ import (
 
 // testTab builds a long, regular tab: 240 two-quarter-note bars (~240 s at
 // 120 BPM). The spacing heuristic gives each note a full quarter ("0---3---").
+// testTab is 240 bars of four quarter notes (0---3---0---3---): a bar is a
+// 4/4 measure, 2s at 120 BPM.
 func testTab() *model.Tab {
-	bar := model.Bar{Strings: []model.StringLine{{Segments: []model.Segment{
-		{Char: '0', Value: 0, Position: 0, Width: 1},
-		{Char: '-', Position: 1}, {Char: '-', Position: 2}, {Char: '-', Position: 3},
-		{Char: '3', Value: 3, Position: 4, Width: 1},
-		{Char: '-', Position: 5}, {Char: '-', Position: 6}, {Char: '-', Position: 7},
-	}}}}
+	var segs []model.Segment
+	for i, c := range "0---3---0---3---" {
+		seg := model.Segment{Char: c, Position: i, Width: 1}
+		if c != '-' {
+			seg.Value = int(c - '0')
+		}
+		segs = append(segs, seg)
+	}
+	bar := model.Bar{Strings: []model.StringLine{{Segments: segs}}}
 	bars := make([]model.Bar, 240)
 	for i := range bars {
 		bars[i] = bar
@@ -189,12 +194,12 @@ func TestExpectedOnsets(t *testing.T) {
 	if len(onsets) < 100 {
 		t.Fatalf("expected many onsets, got %d", len(onsets))
 	}
-	// Second note = 500 ms at 120 BPM (two quarter notes per bar).
+	// Second note = 500 ms at 120 BPM (four quarter notes per bar).
 	if d := absDur(onsets[1].Time - 500*time.Millisecond); d > 2*time.Millisecond {
 		t.Fatalf("onset[1] = %v, want ~500ms", onsets[1].Time)
 	}
-	if !onsets[0].BarStart || onsets[1].BarStart || !onsets[2].BarStart {
-		t.Fatalf("bar-start flags wrong: %+v %+v %+v", onsets[0], onsets[1], onsets[2])
+	if !onsets[0].BarStart || onsets[1].BarStart || onsets[3].BarStart || !onsets[4].BarStart {
+		t.Fatalf("bar-start flags wrong: %+v %+v %+v", onsets[0], onsets[1], onsets[4])
 	}
 }
 
