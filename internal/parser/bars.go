@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 
 	"fretboard/internal/model"
@@ -53,11 +55,49 @@ func extractBars(region []string, stringsPerColumn int) []model.Bar {
 		for k := range chunkBars {
 			chunkBars[k].Section = currentSection
 		}
+		i += len(col)
+		// A count mark trails the block's lines ("E|--0--| (x12)") or sits
+		// on the line just below it ("x2").
+		times := 0
+		for _, line := range col {
+			times = max(times, repeatCount(afterLastPipe(line)))
+		}
+		if times == 0 && i < len(region) {
+			if times = repeatCount(region[i]); times > 0 {
+				i++
+			}
+		}
+		if times > 1 && len(chunkBars) > 0 {
+			last := &chunkBars[len(chunkBars)-1]
+			last.Times, last.TimesFrom = times, len(bars)
+		}
 		bars = append(bars, chunkBars...)
 		barNum += len(chunkBars)
-		i += len(col)
 	}
 	return bars
+}
+
+// repeatMark matches "x4", "(x12)", "x 3", "4x", "(2x)".
+var repeatMark = regexp.MustCompile(`(?i)^\(?\s*(?:x\s*(\d{1,2})|(\d{1,2})\s*x)\s*\)?$`)
+
+// repeatCount returns the play count when s is nothing but a count mark,
+// else 0. Requiring the whole text keeps bar content like "3x5" (dead notes)
+// from reading as a count on lines that lack a closing bar line.
+func repeatCount(s string) int {
+	m := repeatMark.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(m[1] + m[2])
+	return n
+}
+
+// afterLastPipe returns the text after a line's final bar line.
+func afterLastPipe(line string) string {
+	if i := strings.LastIndexByte(line, '|'); i >= 0 {
+		return line[i+1:]
+	}
+	return ""
 }
 
 func parseRhythmMarks(line string) []model.RhythmMark {

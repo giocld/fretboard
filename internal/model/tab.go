@@ -49,6 +49,11 @@ type Bar struct {
 	RepeatEnd   bool
 	Ending      int // 1 or 2 for first/second endings; 0 = no ending
 
+	// Times > 1 plays bars TimesFrom..this bar (tab bar indexes) that many
+	// times in total, from a count mark after a tab block: "(x12)", "x4".
+	Times     int
+	TimesFrom int
+
 	// Section names the song part this bar belongs to ("Verse 1",
 	// "Chorus", ...), from headers like "[Verse]" or "Chorus:" in the tab.
 	Section string

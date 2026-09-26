@@ -76,7 +76,7 @@ func RenderTabPlain(tab *model.Tab) string {
 		b.WriteString(tab.Tuning.Label())
 		b.WriteString("\n\n")
 	}
-	for _, bar := range tab.Bars {
+	for i, bar := range tab.Bars {
 		width := maxBarCols(bar)
 		if width == 0 {
 			continue
@@ -108,12 +108,23 @@ func RenderTabPlain(tab *model.Tab) string {
 		if bar.RepeatEnd {
 			closeP = ":|"
 		}
+		// A count mark goes after the block's last line, as tabs write it.
+		// ponytail: each bar exports as its own block, so a count over
+		// several bars can't be written; only single-bar counts survive.
+		count := ""
+		if bar.Times > 1 && bar.TimesFrom == i {
+			count = fmt.Sprintf(" (x%d)", bar.Times)
+		}
 		for s, line := range lines {
 			ending := ""
 			if s == 0 && (bar.Ending == 1 || bar.Ending == 2) {
 				ending = fmt.Sprintf("%d.", bar.Ending)
 			}
-			b.WriteString(open + ending + line + closeP + "\n")
+			tail := ""
+			if s == len(lines)-1 {
+				tail = count
+			}
+			b.WriteString(open + ending + line + closeP + tail + "\n")
 		}
 	}
 	return b.String()
