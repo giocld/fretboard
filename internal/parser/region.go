@@ -6,9 +6,10 @@ import (
 )
 
 // looksLikeStringLine returns true if the line has a high density of
-// tab-relevant characters (digits, hyphens, pipes, slashes, etc.).
+// tab-relevant characters (digits, hyphens, pipes, slashes, etc.) and starts
+// the way a string does.
 func looksLikeStringLine(l string) bool {
-	if !strings.Contains(l, "-") {
+	if !strings.Contains(l, "-") || !startsLikeString(l) {
 		return false
 	}
 	tally := 0
@@ -34,6 +35,33 @@ func looksLikeStringLine(l string) bool {
 		return false
 	}
 	return tally*2 >= nonSpace
+}
+
+// startsLikeString reports whether a line opens like a string or drum row:
+// straight into "|" or "-", a label followed by a bar line ("e|", "Eb|",
+// "HH|", "SD|"), or a lone note name followed by dashes ("E----").
+// Palm-mute and let-ring rows ("   PM-----|", "P.M.---") are dash-heavy
+// too, but their label runs into dashes or holds punctuation; counting them
+// as strings adds a phantom 7th string and shifts every note in blocks that
+// lack the row.
+func startsLikeString(l string) bool {
+	t := strings.TrimSpace(l)
+	i := 0
+	for i < len(t) && (unicode.IsLetter(rune(t[i])) || unicode.IsDigit(rune(t[i])) || t[i] == '#') {
+		i++
+	}
+	label, rest := t[:i], strings.TrimLeft(t[i:], " ")
+	switch {
+	case rest == "":
+		return false
+	case rest[0] == '|':
+		return true
+	case label == "":
+		return rest[0] == '-'
+	}
+	isNote := len(label) <= 2 && strings.IndexByte("ABCDEFGabcdefg", label[0]) >= 0 &&
+		(len(label) == 1 || label[1] == '#' || label[1] == 'b')
+	return isNote && rest[0] == '-'
 }
 
 // findTabRegion returns [start, end) indices spanning all tab blocks in the file.
