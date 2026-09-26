@@ -46,17 +46,27 @@ func (c *ugAPIClient) SearchPage(query string, page int) ([]SearchResult, error)
 	if page < 1 {
 		page = 1
 	}
-	c.rl.throttle()
-	res, err := c.scraper.Search(ultimateguitar.SearchParams{
-		Title: query,
-		Type:  []ultimateguitar.TabType{ultimateguitar.TabTypeTabs},
-		Page:  int32(page),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("ug search: %w", err)
+	// Tabs and chord sheets are separate requests: asked for both at once,
+	// the API can fill the page with chord sheets and push every tab out.
+	// A failed chord request keeps whatever tab results came back.
+	var tabs []ultimateguitar.Tab
+	for _, typ := range []ultimateguitar.TabType{ultimateguitar.TabTypeTabs, ultimateguitar.TabTypeChords} {
+		c.rl.throttle()
+		res, err := c.scraper.Search(ultimateguitar.SearchParams{
+			Title: query,
+			Type:  []ultimateguitar.TabType{typ},
+			Page:  int32(page),
+		})
+		if err != nil {
+			if typ == ultimateguitar.TabTypeTabs {
+				return nil, fmt.Errorf("ug search: %w", err)
+			}
+			break
+		}
+		tabs = append(tabs, res.Tabs...)
 	}
 	var out []SearchResult
-	for _, t := range res.Tabs {
+	for _, t := range tabs {
 		out = append(out, SearchResult{
 			ID:         t.ID,
 			Source:     SourceUG,
@@ -89,10 +99,9 @@ func (c *ugAPIClient) Fetch(id int64) (*model.Tab, error) {
 	if isAlbumTab(res) {
 		return nil, fmt.Errorf("ug fetch %d: album page (%q) is not a single tab", id, res.Part)
 	}
-	content = normalizeContent(content)
-	tab, err := parser.Parse(strings.NewReader(content))
+	tab, err := parseUGContent(content, res.Type, id)
 	if err != nil {
-		return nil, fmt.Errorf("parse fetched tab: %w", err)
+		return nil, err
 	}
 	applyUGMetadata(tab, ugTabMeta{
 		SongName:   res.SongName,
@@ -121,10 +130,12 @@ type ugTabMeta struct {
 // applyUGMetadata backfills parsed-tab metadata (title, artist, tuning, capo)
 // from the UG page data.
 func applyUGMetadata(tab *model.Tab, res ugTabMeta) {
-	if tab.Title == "" {
+	// UG's own names win: the parser can only guess a title from the page's
+	// first lines, which on many pages are a chord chart or a solo label.
+	if res.SongName != "" {
 		tab.Title = res.SongName
 	}
-	if tab.Artist == "" {
+	if res.ArtistName != "" {
 		tab.Artist = res.ArtistName
 	}
 	if len(tab.Tuning) == 0 && res.Tuning != "" {
@@ -155,7 +166,36 @@ func isAlbumTab(res ultimateguitar.TabResult) bool {
 	return false
 }
 
+// parseUGContent parses a UG page body. Chord pages are parsed from the
+// full text: trimNonTabLines drops everything above the first dash, which
+// on a lyrics page is the start of the song. A page labelled "Tabs" that
+// turns out to be a chord sheet is re-read the same way. A page with
+// neither tab bars nor chords is an error on both fetch paths.
+func parseUGContent(content, typ string, id int64) (*model.Tab, error) {
+	text := unescapeUG(content)
+	source := text
+	if !strings.EqualFold(typ, "Chords") {
+		source = trimNonTabLines(text)
+	}
+	tab, err := parser.Parse(strings.NewReader(source))
+	if err == nil && source != text && tab.Metadata["kind"] == "chords" {
+		tab, err = parser.Parse(strings.NewReader(text))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("parse fetched tab: %w", err)
+	}
+	if len(tab.Bars) == 0 && tab.Metadata["kind"] != "chords" {
+		return nil, fmt.Errorf("ug fetch %d: no tab bars or chords found", id)
+	}
+	return tab, nil
+}
+
 func normalizeContent(s string) string {
+	return trimNonTabLines(unescapeUG(s))
+}
+
+// unescapeUG undoes UG's HTML escaping and strips its [ch]/[tab] markup.
+func unescapeUG(s string) string {
 	// Ordered, not a map: replacement order must be deterministic so
 	// double-encoded sequences like "&amp;quot;" always decode the same way.
 	replacements := []struct{ old, new string }{
@@ -173,7 +213,7 @@ func normalizeContent(s string) string {
 	for _, r := range replacements {
 		s = strings.ReplaceAll(s, r.old, r.new)
 	}
-	return trimNonTabLines(s)
+	return s
 }
 
 func trimNonTabLines(s string) string {

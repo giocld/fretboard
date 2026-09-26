@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"fretboard/internal/model"
-	"fretboard/internal/parser"
 )
 
 // ugHTMLClient fetches tabs by scraping Ultimate Guitar web pages.
@@ -170,13 +169,9 @@ func (c *ugHTMLClient) Fetch(r SearchResult) (*model.Tab, error) {
 	if strings.TrimSpace(content) == "" {
 		return nil, fmt.Errorf("ug html fetch %d: empty tab content", r.ID)
 	}
-	content = normalizeContent(content)
-	tab, err := parser.Parse(strings.NewReader(content))
+	tab, err := parseUGContent(content, r.Type, r.ID)
 	if err != nil {
-		return nil, fmt.Errorf("parse fetched tab: %w", err)
-	}
-	if len(tab.Bars) == 0 {
-		return nil, fmt.Errorf("ug html fetch %d: chord sheet with no playable bars (chord-only tabs not yet supported)", r.ID)
+		return nil, err
 	}
 	applyUGMetadata(tab, ugTabMeta{
 		SongName:   page.Store.Page.Data.Tab.SongName,
