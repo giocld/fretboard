@@ -108,10 +108,10 @@ func CurrentTheme() Theme {
 	return currentTheme
 }
 
-// StringColor returns the color for a given string index.
+// StringColor returns the color used to draw a string's dashes and label.
+// Every string uses the same theme-tinted color (see Theme.Staff); the
+// per-string rainbow this used to return made a wall of rests look noisy
+// and had nothing to do with pitch or fret position anyway.
 func StringColor(idx int) lipgloss.AdaptiveColor {
-	if idx < 0 || idx >= len(currentTheme.StringColors) {
-		return currentTheme.Primary
-	}
-	return currentTheme.StringColors[idx]
+	return currentTheme.Staff
 }

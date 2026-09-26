@@ -21,7 +21,10 @@ type Theme struct {
 	Surface      lipgloss.Color         // bg.surface
 	Overlay      lipgloss.Color         // bg.overlay
 	StatusBG     lipgloss.Color         // footer background
-	StringColors []lipgloss.AdaptiveColor
+	// Staff colors the tab's string lines: the muted color blended toward
+	// the accent, so it reads as the theme's own tint -- brighter than
+	// plain grey, without competing with the fret numbers for attention.
+	Staff lipgloss.AdaptiveColor
 }
 
 var (
@@ -41,14 +44,7 @@ var (
 		Surface:   lipgloss.Color("#24283b"),
 		Overlay:   lipgloss.Color("#414868"),
 		StatusBG:  lipgloss.Color("#16161e"),
-		StringColors: []lipgloss.AdaptiveColor{
-			{Light: "#f7768e", Dark: "#f7768e"},
-			{Light: "#e0af68", Dark: "#e0af68"},
-			{Light: "#e0af68", Dark: "#bb9af7"},
-			{Light: "#9ece6a", Dark: "#9ece6a"},
-			{Light: "#7aa2f7", Dark: "#7aa2f7"},
-			{Light: "#bb9af7", Dark: "#bb9af7"},
-		},
+		Staff: lipgloss.AdaptiveColor{Light: "#5f6b94", Dark: "#6a84c6"},
 	}
 
 	OneDarkTheme = Theme{
@@ -67,14 +63,7 @@ var (
 		Surface:   lipgloss.Color("#2C323C"),
 		Overlay:   lipgloss.Color("#3B4048"),
 		StatusBG:  lipgloss.Color("#21252B"),
-		StringColors: []lipgloss.AdaptiveColor{
-			{Light: "#E06C75", Dark: "#E06C75"},
-			{Light: "#D19A66", Dark: "#D19A66"},
-			{Light: "#E5C07B", Dark: "#E5C07B"},
-			{Light: "#98C379", Dark: "#98C379"},
-			{Light: "#61AFEF", Dark: "#61AFEF"},
-			{Light: "#C678DD", Dark: "#C678DD"},
-		},
+		Staff: lipgloss.AdaptiveColor{Light: "#ba92d0", Dark: "#5f8db6"},
 	}
 
 	DraculaTheme = Theme{
@@ -93,14 +82,7 @@ var (
 		Surface:   lipgloss.Color("#313442"),
 		Overlay:   lipgloss.Color("#44475A"),
 		StatusBG:  lipgloss.Color("#21222C"),
-		StringColors: []lipgloss.AdaptiveColor{
-			{Light: "#FF5555", Dark: "#FF5555"},
-			{Light: "#F1FA8C", Dark: "#F1FA8C"},
-			{Light: "#50FA7B", Dark: "#50FA7B"},
-			{Light: "#8BE9FD", Dark: "#8BE9FD"},
-			{Light: "#BD93F9", Dark: "#BD93F9"},
-			{Light: "#FF79C6", Dark: "#FF79C6"},
-		},
+		Staff: lipgloss.AdaptiveColor{Light: "#b876b7", Dark: "#9484d3"},
 	}
 )
 
