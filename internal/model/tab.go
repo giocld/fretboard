@@ -2,6 +2,8 @@
 // string lines, segments, and tunings.
 package model
 
+import "strconv"
+
 // Tab is a complete parsed guitar tab.
 type Tab struct {
 	Title    string
@@ -9,6 +11,21 @@ type Tab struct {
 	Tuning   Tuning
 	Bars     []Bar
 	Metadata map[string]string
+}
+
+// SoundingTuning is the tuning as heard: open strings raised by the capo.
+// Tabs write frets relative to the capo, so fret 0 with a capo on 3 sounds
+// three semitones above the open string.
+func (t *Tab) SoundingTuning() Tuning {
+	capo, _ := strconv.Atoi(t.Metadata[MetaKeyCapo])
+	if capo <= 0 {
+		return t.Tuning
+	}
+	out := make(Tuning, len(t.Tuning))
+	for i, n := range t.Tuning {
+		out[i] = n + capo
+	}
+	return out
 }
 
 // RhythmMark is a parsed rhythm symbol above a tab column (e.g. q, e, h).

@@ -41,7 +41,7 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 			continue
 		}
 		for i, col := range noteCols {
-			notes, _ := collectNotesAt(tab.Tuning, bar.Strings, col)
+			notes, _ := collectNotesAt(tab.SoundingTuning(), bar.Strings, col)
 			var drumHits []int
 			if drum {
 				drumHits = drumHitsAt(bar.Strings, col)

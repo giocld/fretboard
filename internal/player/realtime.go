@@ -169,7 +169,7 @@ func NotesAtStep(tab *model.Tab, step PlaybackStep) ([]note, error) {
 		return nil, nil
 	}
 	bar := tab.Bars[step.Bar]
-	notes, _ := collectNotesAt(tab.Tuning, bar.Strings, step.Col)
+	notes, _ := collectNotesAt(tab.SoundingTuning(), bar.Strings, step.Col)
 	return notes, nil
 }
 
