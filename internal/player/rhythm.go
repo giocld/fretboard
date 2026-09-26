@@ -16,6 +16,7 @@ type PlaybackStep struct {
 	Ticks    int
 	Sustain  int
 	Rest     bool // rest bar: no notes, but the clock and metronome continue
+	Onset    int  // ticks from the start of the bar; beats fall on multiples of a quarter
 }
 
 // NoteColumns returns sorted column indices in a bar that contain at least one

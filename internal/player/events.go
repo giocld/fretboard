@@ -7,11 +7,10 @@ import (
 )
 
 // Events generates a chronological list of MIDI note events for a tab.
-// BPM drives the tempo. Note spacing density and optional rhythm markers
-// determine each step's duration; when neither is present every column is
-// treated as an equal 16th-note step. Bars are visited in repeat-aware
-// performance order (RepeatOrder), so "|:" ":" sections and 1./2. endings
-// play the way a human reads them, matching BuildSchedule.
+// Pitched tabs follow BuildSchedule step for step, so a MIDI file plays
+// exactly what the cursor shows. Drum tabs (x/o hits, which the schedule
+// does not see) keep the column walk below, one 16th per column. Bars are
+// visited in repeat-aware performance order (RepeatOrder).
 func Events(tab *model.Tab, bpm int) ([]Event, error) {
 	if tab == nil {
 		return nil, errors.New("nil tab")
@@ -21,6 +20,9 @@ func Events(tab *model.Tab, bpm int) ([]Event, error) {
 	}
 
 	drum := DetectDrumTab(tab)
+	if !drum {
+		return scheduleEvents(tab), nil
+	}
 	var events []Event
 	currentTick := int64(0)
 
@@ -127,6 +129,27 @@ func drumHitsAt(strings []model.StringLine, col int) []int {
 		}
 	}
 	return out
+}
+
+// scheduleEvents turns BuildSchedule into note on/off events.
+func scheduleEvents(tab *model.Tab) []Event {
+	var events []Event
+	tick := int64(0)
+	tuning := tab.SoundingTuning()
+	for _, step := range BuildSchedule(tab) {
+		if !step.Rest {
+			notes, _ := collectNotesAt(tuning, tab.Bars[step.Bar].Strings, step.Col)
+			for _, n := range notes {
+				events = append(events, Event{Type: NoteOn, Tick: tick, String: n.String, Fret: n.Fret, Note: n.Note, Vel: 100})
+			}
+			off := tick + int64(step.Sustain)
+			for _, n := range notes {
+				events = append(events, Event{Type: NoteOff, Tick: off, String: n.String, Fret: n.Fret, Note: n.Note, Vel: 0})
+			}
+		}
+		tick += int64(step.Ticks)
+	}
+	return events
 }
 
 type note struct {

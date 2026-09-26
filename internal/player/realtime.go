@@ -112,15 +112,8 @@ func (s *Synth) PlayStep(tab *model.Tab, step PlaybackStep, bpm int) error {
 	if !s.realtime || s.stdin == nil {
 		return errors.New("realtime synth not running")
 	}
-	if s.Metronome && step.Bar >= 0 && step.Bar < len(tab.Bars) {
-		bar := tab.Bars[step.Bar]
-		beats := BeatColumns(bar)
-		for i, c := range beats {
-			if c == step.Col {
-				s.Click(i == 0)
-				break
-			}
-		}
+	if s.Metronome && step.Onset%ticksPerQuarter == 0 {
+		s.Click(step.Onset == 0)
 	}
 	notes, err := NotesAtStep(tab, step)
 	if err != nil {
