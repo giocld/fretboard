@@ -50,7 +50,7 @@ func StepIndexAtScheduleTime(schedule []PlaybackStep, musicTime time.Duration, b
 	}
 	var cum time.Duration
 	for i, step := range schedule {
-		cum += time.Duration(StepDuration(step.Ticks, bpm)) * time.Millisecond
+		cum += StepDuration(step.Ticks, bpm)
 		if cum > musicTime {
 			return i
 		}
@@ -242,7 +242,7 @@ func ScheduleTimeAtBar(schedule []PlaybackStep, bar int, bpm int) time.Duration 
 		if s.Bar >= bar {
 			return total
 		}
-		total += time.Duration(StepDuration(s.Ticks, bpm)) * time.Millisecond
+		total += StepDuration(s.Ticks, bpm)
 	}
 	return total
 }

@@ -160,7 +160,7 @@ func (m ViewerModel) nextStepIndexFrom(idx int) int {
 
 // stepDur converts ticks to the wall duration used by the deadline clock.
 func stepDur(ticks, bpm int) time.Duration {
-	return time.Duration(player.StepDuration(ticks, bpm)) * time.Millisecond
+	return player.StepDuration(ticks, bpm)
 }
 
 // stopPlayback halts audio, clears UI playback state, and banks the

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"fretboard/internal/model"
 )
@@ -16,20 +17,24 @@ type nopWriteCloser struct {
 func (n *nopWriteCloser) Write(p []byte) (int, error) { return n.buf.Write(p) }
 func (n *nopWriteCloser) Close() error                { return nil }
 
-func TestStepDurationRoundsUp(t *testing.T) {
-	// A 1-tick sustain at 126 BPM is 0.99 ms: it must schedule at least 1 ms
-	// (the old floor produced 0 ms and the noteoff goroutine was never
-	// spawned, so the note rang forever).
-	if got := StepDuration(1, 126); got != 1 {
-		t.Fatalf("StepDuration(1, 126) = %d, want 1", got)
+func TestStepDurationExactAndNeverZero(t *testing.T) {
+	// A 1-tick sustain at 126 BPM is 0.99 ms: it must still be positive
+	// (a 0 ms sustain skipped the noteoff, so the note rang forever).
+	if got := StepDuration(1, 126); got <= 0 || got >= time.Millisecond {
+		t.Fatalf("StepDuration(1, 126) = %v, want just under 1ms", got)
 	}
-	// Common case unchanged: 480 ticks at 120 BPM = 500 ms exactly.
-	if got := StepDuration(480, 120); got != 500 {
-		t.Fatalf("StepDuration(480, 120) = %d, want 500", got)
+	// 480 ticks at 120 BPM = 500 ms exactly.
+	if got := StepDuration(480, 120); got != 500*time.Millisecond {
+		t.Fatalf("StepDuration(480, 120) = %v, want 500ms", got)
+	}
+	// A 16th at 137 BPM is 109.489 ms; whole-ms rounding drifted ~1s per
+	// 4-minute song.
+	if got := StepDuration(120, 137); got < 109488*time.Microsecond || got > 109490*time.Microsecond {
+		t.Fatalf("StepDuration(120, 137) = %v, want 109.489ms", got)
 	}
 	// Invalid inputs fall back to a sixteenth note at 120 BPM = 125 ms.
-	if got := StepDuration(0, 0); got != 125 {
-		t.Fatalf("StepDuration(0, 0) = %d, want 125", got)
+	if got := StepDuration(0, 0); got != 125*time.Millisecond {
+		t.Fatalf("StepDuration(0, 0) = %v, want 125ms", got)
 	}
 }
 
