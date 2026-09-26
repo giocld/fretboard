@@ -30,3 +30,21 @@ func TestThemeNamesDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// TestStringColorIsThemeTintedNotRainbow guards the staff-color fix: every
+// string index gets the same color (the theme's tint, not a per-string
+// rainbow), and it changes with the active theme.
+func TestStringColorIsThemeTintedNotRainbow(t *testing.T) {
+	SetTheme("default")
+	defaultC := StringColor(0)
+	for i := 1; i < 8; i++ {
+		if got := StringColor(i); got != defaultC {
+			t.Fatalf("string %d color = %v, want the same tint as string 0 (%v)", i, got, defaultC)
+		}
+	}
+	SetTheme("dracula")
+	if got := StringColor(0); got == defaultC {
+		t.Fatalf("dracula staff color should differ from default, both %v", got)
+	}
+	SetTheme("default")
+}
