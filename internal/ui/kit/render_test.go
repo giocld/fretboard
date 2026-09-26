@@ -7,6 +7,7 @@ import (
 	"fretboard/internal/model"
 	"fretboard/internal/parser"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 )
 
@@ -333,5 +334,21 @@ func TestBarHeaderShowsSectionName(t *testing.T) {
 	}
 	if got := sectionLabel(tab, 2); got != "Chorus" {
 		t.Fatalf("section-start bar should be labeled, got %q", got)
+	}
+}
+
+// A counted bar says so in its header, and the plain export writes the mark
+// so the tab re-imports with the count.
+func TestCountedBarsShowAndExportTheirCount(t *testing.T) {
+	tab, err := parser.Parse(strings.NewReader("e|-0-|\nB|---|\nG|---|\nD|---|\nA|---|\nE|---| (x12)\n"))
+	if err != nil || len(tab.Bars) != 1 || tab.Bars[0].Times != 12 {
+		t.Fatalf("parse: %v %+v", err, tab.Bars)
+	}
+	if got := ansi.Strip(RenderTabGrid(tab, 80, 0, nil)); !strings.Contains(got, "×12") {
+		t.Fatalf("grid header should show ×12:\n%s", got)
+	}
+	back, err := parser.Parse(strings.NewReader(RenderTabPlain(tab)))
+	if err != nil || len(back.Bars) != 1 || back.Bars[0].Times != 12 {
+		t.Fatalf("exported tab should re-import x12, got %+v", back.Bars)
 	}
 }

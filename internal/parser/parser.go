@@ -74,6 +74,10 @@ func parseLines(lines []string) (*model.Tab, error) {
 	tab.Tuning = inferTuning(tab, stringsPerColumn)
 
 	// Pass 2: split the tab region into bar chunks and extract segments.
+	// The line after the region may hold the last block's count mark ("x2").
+	if tabEnd < len(cleaned) {
+		tabEnd++
+	}
 	tab.Bars = extractBars(cleaned[tabStart:tabEnd], stringsPerColumn)
 	normalizeTabBPM(tab)
 	// Quality lands at parse time so consumers (search, library) can sort

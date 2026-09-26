@@ -204,7 +204,8 @@ func barList(bars []int) string {
 // ending, and every segment's rendered character and position.
 func barsEqual(x, y model.Bar) bool {
 	if x.Section != y.Section || x.RepeatStart != y.RepeatStart ||
-		x.RepeatEnd != y.RepeatEnd || x.Ending != y.Ending || x.Capo != y.Capo {
+		x.RepeatEnd != y.RepeatEnd || x.Ending != y.Ending || x.Capo != y.Capo ||
+		x.Times != y.Times || x.TimesFrom != y.TimesFrom {
 		return false
 	}
 	if len(x.Strings) != len(y.Strings) || len(x.Rhythm) != len(y.Rhythm) {

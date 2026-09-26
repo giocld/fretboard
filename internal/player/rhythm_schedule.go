@@ -57,7 +57,8 @@ func BuildSchedule(tab *model.Tab) []PlaybackStep {
 // ":|" repeat sections once and resolving 1./2. endings. Sections without
 // endings simply play twice; a section with endings plays ending-1 bars on
 // the first pass and ending-2 bars on the second. Malformed markers (an
-// unpaired ":|" or "|:") fall back to playing the bar once.
+// unpaired ":|" or "|:") fall back to playing the bar once. Count marks
+// ("(x12)", Bar.Times) replay their block that many times in total.
 func RepeatOrder(tab *model.Tab) []int {
 	if tab == nil {
 		return nil
@@ -86,6 +87,7 @@ func RepeatOrder(tab *model.Tab) []int {
 	}
 
 	var order []int
+	counted := 0
 	i := 0
 	for i < len(bars) {
 		if sec, ok := endToSection[i]; ok {
@@ -110,11 +112,19 @@ func RepeatOrder(tab *model.Tab) []int {
 			continue
 		}
 		order = append(order, i)
+		if b := bars[i]; b.Times > 1 && b.TimesFrom >= 0 && b.TimesFrom <= i {
+			for n := 1; n < b.Times; n++ {
+				for j := b.TimesFrom; j <= i; j++ {
+					order = append(order, j)
+				}
+			}
+			counted += (b.Times - 1) * (i - b.TimesFrom + 1)
+		}
 		i++
 	}
-	// Safety net against pathological marker chains: never expand beyond a
-	// sane multiple of the tab size.
-	order = order[:min(len(order), len(bars)*3)]
+	// Safety net against pathological "|:" chains: never expand beyond a
+	// sane multiple of the tab size, plus what explicit counts ask for.
+	order = order[:min(len(order), len(bars)*3+counted)]
 	return order
 }
 

@@ -107,10 +107,25 @@ func barMarkers(bar model.Bar) (open, close, ending string) {
 	if bar.RepeatEnd {
 		close = ":│"
 	}
+	if bar.Times > 1 {
+		close += TimesLabel(bar)
+	}
 	if bar.Ending == 1 || bar.Ending == 2 {
 		ending = fmt.Sprintf("%d.", bar.Ending)
 	}
 	return open, close, ending
+}
+
+// TimesLabel marks the last bar of a counted block: " ×12", or
+// " ×2 (5-7)" when the block spans several bars.
+func TimesLabel(bar model.Bar) string {
+	if bar.Times < 2 {
+		return ""
+	}
+	if first := bar.TimesFrom + 1; first < bar.Number {
+		return fmt.Sprintf(" ×%d (%d-%d)", bar.Times, first, bar.Number)
+	}
+	return fmt.Sprintf(" ×%d", bar.Times)
 }
 
 // barHeaderWithMarkers renders the linear-layout bar header including repeat
