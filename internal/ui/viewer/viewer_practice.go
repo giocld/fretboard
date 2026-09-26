@@ -40,6 +40,14 @@ func (m ViewerModel) loopStartTime() time.Duration {
 	return player.ScheduleTimeAtBar(m.schedule, m.loopStartBar-1, m.bpm) + m.audioOffsetDur()
 }
 
+// loopPassed reports whether audio playback has reached the end of the armed
+// A-B loop. LoopRegion returns (start, end, ok); comparing against start
+// restarted the loop the moment playback crossed A.
+func (m ViewerModel) loopPassed(elapsed time.Duration) bool {
+	_, end, ok := m.engine.LoopRegion()
+	return ok && elapsed >= end
+}
+
 // loopRestartPos returns the audio position at which an A-B loop restarts:
 // the loop start bar warped through the same merged-anchor map the step
 // mapping consumes, so a loop wraps on the recording's timeline instead of
