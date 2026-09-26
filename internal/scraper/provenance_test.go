@@ -180,13 +180,23 @@ func TestFetchBestRestrictsFallbackToSameArtist(t *testing.T) {
 
 // --- Pro detection (WORKON 5.1) ---
 
-// proSearchScraper fakes the UG API backend returning a fixed tab list.
+// proSearchScraper fakes the UG API backend returning a fixed tab list,
+// bucketing each entry into the Chords request or the Tabs request by its
+// own Type field (so a caller that queries both types once each still sees
+// every entry exactly once, the way a real search would split them).
 type proSearchScraper struct {
 	search ultimateguitar.SearchResult
 }
 
-func (f *proSearchScraper) Search(ultimateguitar.SearchParams) (ultimateguitar.SearchResult, error) {
-	return f.search, nil
+func (f *proSearchScraper) Search(p ultimateguitar.SearchParams) (ultimateguitar.SearchResult, error) {
+	wantChords := len(p.Type) > 0 && p.Type[0] == ultimateguitar.TabTypeChords
+	var out ultimateguitar.SearchResult
+	for _, t := range f.search.Tabs {
+		if strings.EqualFold(string(t.Type), "Chords") == wantChords {
+			out.Tabs = append(out.Tabs, t)
+		}
+	}
+	return out, nil
 }
 
 func (f *proSearchScraper) GetTabByID(int64) (ultimateguitar.TabResult, error) {
