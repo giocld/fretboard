@@ -133,7 +133,7 @@ func (tm *TimeMapper) ResumePos(bar, col int) time.Duration {
 	idx := StepIndexAtPosition(tm.schedule, bar, col)
 	var score time.Duration
 	for i := 0; i < idx && i < len(tm.schedule); i++ {
-		score += time.Duration(StepDuration(tm.schedule[i].Ticks, tm.bpm)) * time.Millisecond
+		score += StepDuration(tm.schedule[i].Ticks, tm.bpm)
 	}
 	return tm.AudioAtScore(score)
 }
@@ -259,7 +259,7 @@ func (tm *TimeMapper) extendScore(a, b SyncPoint, audioSeconds float64) time.Dur
 func (tm *TimeMapper) totalScore() time.Duration {
 	var total time.Duration
 	for _, s := range tm.schedule {
-		total += time.Duration(StepDuration(s.Ticks, tm.bpm)) * time.Millisecond
+		total += StepDuration(s.Ticks, tm.bpm)
 	}
 	return total
 }

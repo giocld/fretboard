@@ -2,6 +2,7 @@ package player
 
 import (
 	"fretboard/internal/model"
+	"time"
 )
 
 // BuildSchedule returns playback steps with rhythm-aware tick durations.
@@ -131,19 +132,18 @@ func StepIndexAtPosition(schedule []PlaybackStep, bar, col int) int {
 }
 
 // StepDuration converts MIDI ticks to wall-clock time at the given BPM,
-// rounding up so a sub-millisecond step is never scheduled with 0 ms (which
-// used to make notes at high BPM ring forever — the noteoff goroutine was
-// skipped for sustainMs <= 0).
-func StepDuration(ticks, bpm int) int64 {
+// exactly. Whole milliseconds are not good enough for a clock: rounding each
+// step (up or down) by ~0.5 ms drifts about a second over a 4-minute song
+// at 137 BPM. Any positive tick count gives a positive duration, so a short
+// sustain still schedules its noteoff.
+func StepDuration(ticks, bpm int) time.Duration {
 	if bpm <= 0 {
 		bpm = 120
 	}
 	if ticks <= 0 {
 		ticks = ticksPerQuarter / 4
 	}
-	num := int64(ticks) * int64(60_000)
-	den := int64(bpm) * int64(ticksPerQuarter)
-	return (num + den - 1) / den
+	return time.Duration(ticks) * time.Minute / time.Duration(bpm*ticksPerQuarter)
 }
 
 // BeatColumns returns the note columns of a bar that start a quarter-note

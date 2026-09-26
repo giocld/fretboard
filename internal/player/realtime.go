@@ -133,7 +133,7 @@ func (s *Synth) PlayStep(tab *model.Tab, step PlaybackStep, bpm int) error {
 	if sustainTicks < 1 {
 		sustainTicks = ticksPerQuarter / 4
 	}
-	sustainMs := StepDuration(sustainTicks, bpm)
+	sustain := StepDuration(sustainTicks, bpm)
 	for _, n := range notes {
 		gen, playGen := s.nextGeneration(n.Note)
 		if s.noteActive(n.Note) {
@@ -148,7 +148,7 @@ func (s *Synth) PlayStep(tab *model.Tab, step PlaybackStep, bpm int) error {
 			return err
 		}
 		s.activeNotes = append(s.activeNotes, n.Note)
-		s.scheduleNoteOff(n.Note, gen, playGen, sustainMs)
+		s.scheduleNoteOff(n.Note, gen, playGen, sustain)
 	}
 	return nil
 }
@@ -187,12 +187,12 @@ func (s *Synth) nextGeneration(pitch int) (int, uint64) {
 	return s.noteGen[pitch], s.playGen
 }
 
-// scheduleNoteOff waits sustainMs then releases the note, but only if the
+// scheduleNoteOff waits sustain then releases the note, but only if the
 // pitch is still the same generation and the same playback epoch is running,
 // so a re-trigger or a restarted synth is never silenced by a stale noteoff.
-func (s *Synth) scheduleNoteOff(pitch, gen int, playGen uint64, sustainMs int64) {
+func (s *Synth) scheduleNoteOff(pitch, gen int, playGen uint64, sustain time.Duration) {
 	go func() {
-		time.Sleep(time.Duration(sustainMs) * time.Millisecond)
+		time.Sleep(sustain)
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if s.playGen != playGen || s.noteGen[pitch] != gen || s.stdin == nil {
