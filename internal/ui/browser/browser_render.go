@@ -1,11 +1,10 @@
 package browser
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
-	"fretboard/internal/model"
+	"fretboard/internal/library"
 	"fretboard/internal/ui/kit"
 	"fretboard/internal/ui/msgs"
 	tea "github.com/charmbracelet/bubbletea"
@@ -201,18 +200,5 @@ func sortLabel(s SortMode) string {
 }
 
 func formatRowTuning(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	var t model.Tuning
-	if err := json.Unmarshal([]byte(raw), &t); err != nil {
-		return raw
-	}
-	if len(t) == 0 {
-		return "" // "null"/"[]" must not render as literal text
-	}
-	if label := t.Label(); label != "" {
-		return label
-	}
-	return raw
+	return library.TuningLabel(raw)
 }
