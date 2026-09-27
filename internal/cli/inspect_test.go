@@ -128,8 +128,8 @@ func TestRunShowByLibraryID(t *testing.T) {
 	})
 }
 
-// TestRunShowChordSheet: a stored chord sheet summarizes as text, and timing
-// refuses it with a clear message instead of an empty table.
+// TestRunShowChordSheet: a stored chord sheet summarizes as a playable
+// sheet (chords, one 4/4 bar each) and timing lists its bars.
 func TestRunShowChordSheet(t *testing.T) {
 	withConfigDir(t, func(dir string) {
 		src := filepath.Join("..", "..", "tests", "fixtures", "chords", "amazing_grace.txt")
@@ -143,11 +143,24 @@ func TestRunShowChordSheet(t *testing.T) {
 		if got := showField(t, stdout, "title"); got != "Amazing Grace" {
 			t.Errorf("show title = %q, want Amazing Grace", got)
 		}
-		if got := showField(t, stdout, "kind"); got != "chord sheet (no playable bars)" {
-			t.Errorf("show kind = %q, want a chord sheet notice", got)
+		if got := showField(t, stdout, "kind"); got != "chord sheet" {
+			t.Errorf("show kind = %q, want chord sheet", got)
 		}
-		if code, _, stderr := run("timing", "1"); code != 1 || !strings.Contains(stderr, "no playable bars") {
+		if got := showField(t, stdout, "chords"); got != "13 (one 4/4 bar each)" {
+			t.Errorf("show chords = %q, want 13 bars", got)
+		}
+		if got := showField(t, stdout, "bars"); got != "13" {
+			t.Errorf("show bars = %q, want 13", got)
+		}
+		code, stdout, stderr = run("timing", "1")
+		if code != 0 {
 			t.Fatalf("timing on a chord sheet: code=%d stderr=%q", code, stderr)
+		}
+		if got := timingBars(stdout); len(got) != 13 {
+			t.Fatalf("timing listed %d bars, want one per chord: %v", len(got), got)
+		}
+		if !strings.Contains(stdout, "1.00m") {
+			t.Fatalf("each chord must be one 4/4 measure:\n%s", stdout)
 		}
 	})
 }

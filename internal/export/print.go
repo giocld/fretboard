@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"fretboard/internal/model"
+	"fretboard/internal/ui/kit"
 )
 
 // Print constants. A printed page holds ~55 lines total (page header
@@ -31,7 +32,15 @@ const (
 // bar, at most 6 bars per row), reimplemented here in plain ASCII because
 // the viewer's grid renderer emits ANSI styling.
 func PrintTab(tab *model.Tab, width int) string {
-	if tab == nil || len(tab.Bars) == 0 {
+	if tab == nil {
+		return ""
+	}
+	if len(tab.Sheet) > 0 {
+		// A chord sheet prints as chords over lyrics; its one-column bars
+		// are a playback device, not a tab to read.
+		return kit.RenderTabPlain(tab)
+	}
+	if len(tab.Bars) == 0 {
 		return ""
 	}
 	pageWidth := clampWidth(width)

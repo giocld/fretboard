@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"fretboard/internal/model"
+	"fretboard/internal/parser"
 	"fretboard/internal/player"
 	"fretboard/internal/ui/kit"
 )
@@ -16,9 +17,21 @@ func (m *ViewerModel) refresh() {
 		m.viewport.SetContent(kit.MutedStyle.Render("No tab loaded."))
 		return
 	}
+	if m.chordSheet && len(m.tab.Bars) > 0 {
+		// A chord sheet renders its chords as diagrams over the lyrics
+		// (transposed by the T/Z keys), with the playhead on the current
+		// chord; its chords are one-bar playable shapes.
+		cur := &kit.TabCursor{Bar: m.cursorBar, Playing: m.playing}
+		content, _ := kit.RenderChordSheet(m.displayTab(), cur, m.viewport.Width)
+		m.viewport.SetContent(content)
+		if m.follow {
+			m.ensureCursorVisible()
+		}
+		return
+	}
 	if m.chordSheet {
-		// S1.2: a chord sheet renders its raw text verbatim (transposed by
-		// the T/Z keys) instead of the bar grid; its bars are empty.
+		// S1.2: a chord sheet with no recognized chords renders its raw text
+		// verbatim (transposed by the T/Z keys) instead of the bar grid.
 		m.viewport.SetContent(m.chordText())
 		return
 	}
@@ -47,6 +60,11 @@ func (m *ViewerModel) refresh() {
 func (m ViewerModel) displayTab() *model.Tab {
 	if m.transpose == 0 {
 		return m.tab
+	}
+	if m.chordSheet {
+		// A chord sheet re-fingers its chords; shifting fret numbers would
+		// move open strings off their shape.
+		return parser.TransposedSheet(m.tab, m.transpose)
 	}
 	return model.TransposedTab(m.tab, m.transpose)
 }

@@ -47,13 +47,14 @@ func parseLines(lines []string) (*model.Tab, error) {
 	tab := &model.Tab{Metadata: map[string]string{}}
 
 	// Chord sheets (few tab-shaped rows) have no tab region: keep the raw
-	// text for display and tag the sheet so viewers render text, not bars.
+	// text for display, and lay the chords out as one-bar playable shapes.
 	if Classify(cleaned) == SheetChord {
 		extractMetadata(cleaned, tab)
 		tab.Tuning = model.Standard
 		tab.Metadata[metaKeyKind] = "chords"
 		tab.Metadata["quality_timing"] = "n/a" // no rhythm rows to time
 		tab.Metadata[metaKeyRaw] = strings.Join(lines, "\n")
+		buildSheet(cleaned, tab)
 		return tab, nil
 	}
 

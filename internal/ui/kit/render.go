@@ -76,6 +76,12 @@ func RenderTabPlain(tab *model.Tab) string {
 		b.WriteString(tab.Tuning.Label())
 		b.WriteString("\n\n")
 	}
+	if len(tab.Sheet) > 0 {
+		// A chord sheet prints as chords over lyrics, not as its synthetic
+		// one-column bars.
+		b.WriteString(sheetPlain(tab))
+		return b.String()
+	}
 	for i, bar := range tab.Bars {
 		width := maxBarCols(bar)
 		if width == 0 {

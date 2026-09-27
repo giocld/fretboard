@@ -35,6 +35,7 @@ var (
 	ActionDescStyle     lipgloss.Style
 	ActionSelectedStyle lipgloss.Style
 	MutedStyle          lipgloss.Style
+	StaffStyle          lipgloss.Style
 	SuccessStyle        lipgloss.Style
 	WarningStyle        lipgloss.Style
 	InfoStyle           lipgloss.Style
@@ -91,6 +92,7 @@ func applyTheme(t Theme) {
 		Bold(true).
 		Padding(0, 1)
 	MutedStyle = lipgloss.NewStyle().Foreground(t.Dimmed)
+	StaffStyle = lipgloss.NewStyle().Foreground(t.Staff)
 	SuccessStyle = lipgloss.NewStyle().Foreground(t.Success)
 	WarningStyle = lipgloss.NewStyle().Foreground(t.Warning)
 	InfoStyle = lipgloss.NewStyle().Foreground(t.Info)

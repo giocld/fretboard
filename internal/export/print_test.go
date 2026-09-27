@@ -45,6 +45,38 @@ func sampleTab(bars int) *model.Tab {
 	return tab
 }
 
+// TestPrintTabChordSheet: a chord sheet prints as chords over lyrics, not as
+// its synthetic one-column bars.
+func TestPrintTabChordSheet(t *testing.T) {
+	tab := &model.Tab{
+		Title:  "Amazing Grace",
+		Artist: "Traditional",
+		Tuning: model.Standard,
+		Metadata: map[string]string{
+			"kind": "chords",
+		},
+		Sheet: []model.SheetLine{
+			{Text: "[Verse 1]"},
+			{Text: "Amazing grace, how sweet the sound", Chords: []model.SheetChord{
+				{Name: "G", Col: 0, Bar: 0}, {Name: "C", Col: 15, Bar: 1},
+			}},
+		},
+	}
+	tab.Bars = []model.Bar{
+		{Number: 1, Strings: []model.StringLine{lineFrom("3"), lineFrom("5")}},
+		{Number: 2, Strings: []model.StringLine{lineFrom("x"), lineFrom("3")}},
+	}
+	out := PrintTab(tab, 100)
+	if strings.Contains(out, "|") {
+		t.Fatalf("chord sheet printed as bars:\n%s", out)
+	}
+	for _, want := range []string{"Amazing Grace", "G", "C", "Amazing grace, how sweet the sound"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("chord sheet print missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestPrintTabPagination(t *testing.T) {
 	// 40 bars × 5 per row = 8 rows of 8 lines; the page header is 3 lines,
 	// so the first page holds 6 rows (51 lines) and page 2 the rest.

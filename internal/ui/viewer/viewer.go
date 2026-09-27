@@ -94,7 +94,7 @@ type ViewerModel struct {
 	errMsg     string
 	warnMsg    string // inline amber warning line (anchor sanity, S4.2)
 	// Wave-2 workon features.
-	chordSheet       bool           // kind=="chords": render raw text, no playback (S1.2)
+	chordSheet       bool           // kind=="chords": diagrams over lyrics, one-bar chord shapes (S1.2)
 	editing          bool           // quick-edit editor session in flight (S1.3)
 	editPath         string         // temp file the quick-edit editor is editing
 	drums            bool           // player-detected drum tab (S5.3a)

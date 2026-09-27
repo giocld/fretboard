@@ -87,12 +87,14 @@ func runShow(store *library.Store, args []string, stdout, stderr io.Writer) int 
 	fmt.Fprintf(tw, "source\t%s\n", label)
 	fmt.Fprintf(tw, "title\t%s\n", tab.Title)
 	fmt.Fprintf(tw, "artist\t%s\n", tab.Artist)
-	if kind := tab.Metadata["kind"]; kind == "chords" {
-		fmt.Fprintf(tw, "kind\tchord sheet (no playable bars)\n")
-		lines := strings.Split(tab.Metadata["raw"], "\n")
-		fmt.Fprintf(tw, "lines\t%d\n", len(lines))
-		tw.Flush()
-		return 0
+	chordSheet := tab.Metadata["kind"] == "chords"
+	if chordSheet {
+		chords := 0
+		for _, sl := range tab.Sheet {
+			chords += len(sl.Chords)
+		}
+		fmt.Fprintf(tw, "kind\tchord sheet\n")
+		fmt.Fprintf(tw, "chords\t%d (one 4/4 bar each)\n", chords)
 	}
 	tuning := "?"
 	if tab.Tuning != nil {
@@ -105,8 +107,7 @@ func runShow(store *library.Store, args []string, stdout, stderr io.Writer) int 
 	fmt.Fprintf(tw, "bars\t%d\n", len(tab.Bars))
 	bpm := player.TabBPM(tab)
 	fmt.Fprintf(tw, "tempo\t%d BPM\n", bpm)
-	unit, perMeasure := player.ColumnGrid(tab)
-	if perMeasure > 0 {
+	if unit, perMeasure := player.ColumnGrid(tab); perMeasure > 0 && !chordSheet {
 		fmt.Fprintf(tw, "spacing\t%d cols/note, %d cols/measure\n", unit, perMeasure)
 	}
 	order := player.RepeatOrder(tab)
@@ -130,10 +131,6 @@ func runTiming(store *library.Store, args []string, stdout, stderr io.Writer) in
 	tab, _, err := resolveTab(store, args[0])
 	if err != nil {
 		fmt.Fprintf(stderr, "timing: %v\n", err)
-		return 1
-	}
-	if tab.Metadata["kind"] == "chords" {
-		fmt.Fprintln(stderr, "timing: chord sheet has no playable bars")
 		return 1
 	}
 	from, to := 1, len(tab.Bars)

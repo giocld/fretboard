@@ -11,6 +11,9 @@ type Tab struct {
 	Tuning   Tuning
 	Bars     []Bar
 	Metadata map[string]string
+	// Sheet holds a chord sheet's lines and the chords written above them;
+	// its chords also appear as one-bar playable shapes in Bars.
+	Sheet []SheetLine
 }
 
 // SoundingTuning is the tuning as heard: open strings raised by the capo.
