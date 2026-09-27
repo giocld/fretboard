@@ -77,8 +77,8 @@ func extractBars(region []string, stringsPerColumn int) []model.Bar {
 	return bars
 }
 
-// repeatMark matches "x4", "(x12)", "x 3", "4x", "(2x)".
-var repeatMark = regexp.MustCompile(`(?i)^\(?\s*(?:x\s*(\d{1,2})|(\d{1,2})\s*x)\s*\)?$`)
+// repeatMark matches "x4", "(x12)", "(x120)", "x 3", "4x", "(2x)".
+var repeatMark = regexp.MustCompile(`(?i)^\(?\s*(?:x\s*(\d{1,3})|(\d{1,3})\s*x)\s*\)?$`)
 
 // repeatCount returns the play count when s is nothing but a count mark,
 // else 0. Requiring the whole text keeps bar content like "3x5" (dead notes)

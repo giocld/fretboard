@@ -275,7 +275,7 @@ func TestRunChords(t *testing.T) {
 // fretted position in a shape must appear as '#' regardless of how high the
 // barre sits.
 func TestChordDiagramShowsEveryFrettedNote(t *testing.T) {
-	for _, name := range []string{"C", "G", "F", "Am7", "Fsus2", "Bm7", "D#"} {
+	for _, name := range []string{"C", "G", "F", "Am7", "Fsus2", "Bm7", "D#", "G5", "C5"} {
 		c, ok := parser.ParseChord(name)
 		if !ok {
 			t.Fatalf("%s: not parseable", name)

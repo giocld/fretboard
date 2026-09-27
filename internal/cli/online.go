@@ -63,7 +63,13 @@ func runFetch(store *library.Store, args []string, client onlineClient, stdout, 
 	}
 	r := scraper.SearchResult{Source: scraper.SourceUG}
 	if strings.HasPrefix(args[0], "http") {
-		m := ugURLID.FindStringSubmatch(args[0])
+		// A pasted URL can carry a query string or fragment; the tab id is
+		// the last path segment, not whatever digits trail the parameters.
+		u := args[0]
+		if i := strings.IndexAny(u, "?#"); i >= 0 {
+			u = u[:i]
+		}
+		m := ugURLID.FindStringSubmatch(u)
 		if m == nil {
 			fmt.Fprintf(stderr, "fetch: no tab id at the end of %s\n", args[0])
 			return 1

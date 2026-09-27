@@ -112,9 +112,18 @@ func quantizedSteps(b int, bar model.Bar, cols int, noteCols []int, grid colGrid
 	perCol := float64(slots) / float64(measures*grid.perMeasure)
 	if cols-end <= 2*grid.unit {
 		// Filled to the closing bar line: the bar runs from its downbeat to
-		// the pipe. Authors disagree by a column on whether the last dash
-		// belongs to the final note; measuring to the midpoint lands both.
-		perCol = float64(slots) / (float64(cols-lead) + 0.5)
+		// the pipe. When its width already matches whole grid measures the
+		// author typed at the tab's own rate, keep that rate — stretching a
+		// near-grid bar by its content width drifts the later notes off the
+		// grid, so evenly spaced notes must quantize to evenly spaced slots.
+		// Only a bar typed materially shorter or longer than its measures is
+		// its own timeline, measured to the midpoint of the one column
+		// authors disagree on (whether the last dash belongs to the note).
+		if gridWidth := measures * grid.perMeasure; abs(cols-lead-gridWidth) <= grid.unit {
+			perCol = float64(slots) / float64(gridWidth)
+		} else {
+			perCol = float64(slots) / (float64(cols-lead) + 0.5)
+		}
 	}
 	onsets := make([]int, len(noteCols))
 	for {

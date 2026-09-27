@@ -8,7 +8,7 @@ from a keyboard-driven Bubble Tea TUI.
 
 ## Features
 
-- **ASCII tab viewer** with syntax highlighting, string colors, and vim-style navigation.
+- **ASCII tab viewer** with syntax highlighting, theme-tinted string lines, and vim-style navigation.
 - **Rhythm-aware playback** — infers note durations from column spacing; honors rhythm rows (`| q e e q |`) when present; plays repeats (`|:` `:|`) and 1./2. endings in human reading order.
 - **Audio playback** — tries a real backing track first (`ffplay`/`mpv`), then MIDI via `fluidsynth`/`timidity`, with a moving cursor.
 - **Playable chord sheets** — lyrics with chords become one 4/4 bar per chord: diagrams over the lyrics, the playhead on the current chord, and transpose re-fingers the shapes.

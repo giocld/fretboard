@@ -3,6 +3,7 @@ package player
 import (
 	"errors"
 	"os/exec"
+	"sync/atomic"
 	"time"
 
 	"fretboard/internal/model"
@@ -22,7 +23,9 @@ type Engine struct {
 	mode          string
 	audioPath     string
 	playbackStart time.Time
-	audioDuration time.Duration
+	// audioDuration is written by the mpv status-feeder goroutine (the
+	// player's own duration report) and read by the UI, so it is atomic.
+	audioDuration atomic.Int64
 	audioBase     time.Duration // music-time base after seeks/restarts
 	rate          float64       // playback rate (1 = normal)
 	loopStart     time.Duration
@@ -118,7 +121,7 @@ func (e *Engine) AudioPath() string {
 
 // AudioDuration returns the length of the active backing track.
 func (e *Engine) AudioDuration() time.Duration {
-	return e.audioDuration
+	return time.Duration(e.audioDuration.Load())
 }
 
 // Elapsed returns the backing audio's file position: the base set at the
@@ -215,7 +218,7 @@ func (e *Engine) PlayMIDIStep(tab *model.Tab, step PlaybackStep, bpm int) error 
 
 // beginMIDI resets the engine to MIDI backend state.
 func (e *Engine) beginMIDI() {
-	e.audioDuration = 0
+	e.audioDuration.Store(0)
 	e.playbackStart = time.Time{}
 	e.mode = "midi"
 	e.audioPath = ""
@@ -238,7 +241,7 @@ func (e *Engine) playAudioFile(path string) error {
 	if err := e.playAudio(path, 0); err != nil {
 		return err
 	}
-	e.audioDuration = dur
+	e.audioDuration.Store(int64(dur))
 	e.audioBase = 0
 	e.playbackStart = time.Now()
 	return nil
@@ -250,7 +253,7 @@ func (e *Engine) Stop() error {
 	e.mode = ""
 	e.audioPath = ""
 	e.playbackStart = time.Time{}
-	e.audioDuration = 0
+	e.audioDuration.Store(0)
 	e.audioBase = 0
 	e.rate = 1
 	return e.Synth.Stop()

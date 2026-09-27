@@ -6,7 +6,8 @@ import "time"
 // A tea.Tick chain re-bases its timer after every message, so render and
 // processing time accumulates as drift; StepClock instead rolls an absolute
 // deadline forward by each step's duration, and tea.Tick only waits
-// time.Until(deadline). Lateness is measurable and catch-up-able.
+// time.Until(deadline). Lateness is measurable; when a whole step has been
+// missed the tick handler rebases here rather than dropping notes to catch up.
 type StepClock struct {
 	deadline time.Time
 }

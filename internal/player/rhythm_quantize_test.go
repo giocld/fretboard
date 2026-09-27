@@ -135,3 +135,31 @@ func TestEventsFollowSchedule(t *testing.T) {
 		pos += s.Ticks
 	}
 }
+
+// A bar filled to the closing pipe at the tab's own grid must keep that grid:
+// stretching a near-grid bar by its content width drifted the tail notes late
+// (the Sultans fixture: 8 straight 8ths came out with a 360-tick gap). Every
+// uniform 4-column gap must land on a uniform 240-tick step.
+func TestFilledBarKeepsItsGridRate(t *testing.T) {
+	tab, err := parser.Parse(strings.NewReader("Sultans\n\n" + sixStrings(
+		"---------------------------------",
+		"---3---3---2---0---0---0---3---0-",
+		"---------------------------------",
+		"---------------------------------",
+		"---------------------------------",
+		"---------------------------------",
+	)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tab.Bars) != 1 {
+		t.Fatalf("want 1 bar, got %d", len(tab.Bars))
+	}
+	onsets, length := barOnsets(BuildSchedule(tab))
+	if length[0] != ticksPerMeasure {
+		t.Fatalf("bar lasts %d ticks, want one measure", length[0])
+	}
+	if got := fmt.Sprint(onsets[0]); got != "[0 240 480 720 960 1200 1440 1680]" {
+		t.Fatalf("uniform 8ths quantized unevenly: onsets %s", got)
+	}
+}
