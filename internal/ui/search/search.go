@@ -240,7 +240,7 @@ func (m *SearchModel) ensureCursorVisible() {
 
 // OnlineTabPath returns a stable library key for an online search result.
 func OnlineTabPath(r scraper.SearchResult) string {
-	return fmt.Sprintf("online://%s/%d", r.Source, r.ID)
+	return scraper.LibraryPath(r)
 }
 
 func (m *SearchModel) refresh() {

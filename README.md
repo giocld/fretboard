@@ -11,6 +11,7 @@ from a keyboard-driven Bubble Tea TUI.
 - **ASCII tab viewer** with syntax highlighting, string colors, and vim-style navigation.
 - **Rhythm-aware playback** — infers note durations from column spacing; honors rhythm rows (`| q e e q |`) when present; plays repeats (`|:` `:|`) and 1./2. endings in human reading order.
 - **Audio playback** — tries a real backing track first (`ffplay`/`mpv`), then MIDI via `fluidsynth`/`timidity`, with a moving cursor.
+- **Playable chord sheets** — lyrics with chords become one 4/4 bar per chord: diagrams over the lyrics, the playhead on the current chord, and transpose re-fingers the shapes.
 - **Online tab search** across four sources — Ultimate Guitar (API + HTML fallback), Songsterr, GuitarTabs.cc, and GuitareTab.com (`o` in library), merged **best-first**: tabs outrank chord sheets, and UG rating/votes (`* 4.9 · 2.1k`) decide the order, so the official version surfaces above covers.
 - **Guitar Pro import** for `.gp3`, `.gp4`, `.gp5`, `.gpx` via the bundled `gp-parser` helper (Rust + `guitarpro`).
 - **Local library** backed by SQLite — fuzzy filter, sort, favorites, delete.
@@ -32,7 +33,9 @@ fretboard
 fretboard import path/to/tab.txt
 fretboard import path/to/tabs/
 
-# Search online (open the app and press 'o' in the library)
+# Search online from the shell, or open the app and press 'o' in the library
+fretboard search enter sandman
+fretboard fetch 24697          # save a UG tab or chord sheet by id or URL
 
 # Inspect how fretboard reads a tab, without opening the TUI
 fretboard list                 # library ids, titles, tuning labels, play counts

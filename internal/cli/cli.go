@@ -111,6 +111,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runChords(rest[1:], stdout, stderr)
 	}
 
+	if len(rest) >= 1 && rest[0] == "search" {
+		return runSearch(rest[1:], scraper.NewClient(*ugDelay), stdout, stderr)
+	}
+
 	store, err := openStore()
 	if err != nil {
 		fmt.Fprintf(stderr, "library: %v\n", err)
@@ -132,6 +136,10 @@ func Run(args []string, stdout, stderr io.Writer) int {
 
 	if len(rest) >= 1 && rest[0] == "timing" {
 		return runTiming(store, rest[1:], stdout, stderr)
+	}
+
+	if len(rest) >= 1 && rest[0] == "fetch" {
+		return runFetch(store, rest[1:], scraper.NewClient(*ugDelay), stdout, stderr)
 	}
 
 	if len(rest) >= 1 && rest[0] == "import" {

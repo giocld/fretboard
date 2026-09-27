@@ -30,6 +30,13 @@ func NewClient(delay time.Duration) *Client {
 	}
 }
 
+// LibraryPath returns the stable library key for an online search result:
+// the same "online://<source>/<id>" path the TUI imports under, so a second
+// fetch updates the existing entry instead of duplicating it.
+func LibraryPath(r SearchResult) string {
+	return fmt.Sprintf("online://%s/%d", r.Source, r.ID)
+}
+
 // Search queries online sources: UG API, then UG HTML (fallback), Songsterr,
 // and the plain-text tab sites (guitartabs.cc, guitaretab.com), merged and
 // deduplicated.
