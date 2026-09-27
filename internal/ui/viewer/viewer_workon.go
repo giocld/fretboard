@@ -646,6 +646,8 @@ func (m ViewerModel) footerHints() []kit.KeyHint {
 	}
 	if m.chordSheet {
 		return []kit.KeyHint{
+			{Key: "Space/p", Label: "play"},
+			{Key: "a", Label: "audio"},
 			{Key: "T/Z", Label: "transpose"},
 			{Key: "E/$", Label: "edit"},
 			{Key: "ctrl+p", Label: "print"},

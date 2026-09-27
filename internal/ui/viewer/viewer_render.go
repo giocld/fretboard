@@ -47,9 +47,12 @@ func (m ViewerModel) View() string {
 		// The two-axis state label leads the status row: [load|sync] plus
 		// the calibrating "..." and track-ended "[end]" tags.
 		if m.chordSheet {
-			// S1.2: a chord sheet has no bars — the position slot names it.
-			status = kit.MutedStyle.Render(fmt.Sprintf("%s · %s · %d BPM · chord sheet",
-				syncStateOf(m).label(), m.tab.Tuning.Label(), m.bpm))
+			pos := "chord sheet"
+			if len(m.tab.Bars) > 0 {
+				pos = fmt.Sprintf("chord %d/%d", m.cursorBar+1, len(m.tab.Bars))
+			}
+			status = kit.MutedStyle.Render(fmt.Sprintf("%s · %s · %s · %d BPM",
+				syncStateOf(m).label(), m.tab.Tuning.Label(), pos, m.bpm))
 		} else {
 			status = kit.MutedStyle.Render(fmt.Sprintf("%s · %s · bar %d/%d · %d BPM",
 				syncStateOf(m).label(), m.tab.Tuning.Label(), m.cursorBar+1, len(m.tab.Bars), m.bpm))
@@ -298,6 +301,9 @@ func (m *ViewerModel) maxPanOffset() int {
 func (m *ViewerModel) cursorBarLineOffset() int {
 	if m.tab == nil || m.cursorBar < 0 {
 		return 0
+	}
+	if m.chordSheet && len(m.tab.Bars) > 0 {
+		return kit.ChordSheetBarLine(m.displayTab(), m.viewport.Width, m.cursorBar)
 	}
 	var offsets []int
 	if m.linear {

@@ -295,15 +295,25 @@ func TestFretShape(t *testing.T) {
 }
 
 // TestParseChordSheetHook parses a real fixture end-to-end: chord sheets must
-// carry kind/quality_timing/raw metadata, zero bars, and normal title/artist
-// extraction.
+// carry kind/quality_timing/raw metadata, a Sheet layout, one playable bar
+// per chord, and normal title/artist extraction.
 func TestParseChordSheetHook(t *testing.T) {
 	tab, err := ParseFile(filepath.Join(chordFixtureDir, "amazing_grace.txt"))
 	if err != nil {
 		t.Fatalf("parse fixture: %v", err)
 	}
-	if len(tab.Bars) != 0 {
-		t.Fatalf("chord sheet parsed %d bars, want 0", len(tab.Bars))
+	if len(tab.Bars) == 0 {
+		t.Fatal("chord sheet parsed 0 bars; every chord must be playable")
+	}
+	if len(tab.Sheet) == 0 {
+		t.Fatal("chord sheet has no Sheet layout")
+	}
+	chords := 0
+	for _, sl := range tab.Sheet {
+		chords += len(sl.Chords)
+	}
+	if chords != len(tab.Bars) {
+		t.Fatalf("sheet has %d chords but %d bars", chords, len(tab.Bars))
 	}
 	if got := tab.Metadata["kind"]; got != "chords" {
 		t.Errorf("metadata[kind] = %q, want %q", got, "chords")

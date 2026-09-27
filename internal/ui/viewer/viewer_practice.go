@@ -245,9 +245,10 @@ func (m *ViewerModel) togglePlayback() tea.Cmd {
 	if m.tab == nil {
 		return nil
 	}
-	if m.chordSheet {
-		// S1.2: a chord sheet has no playable bars — say so honestly.
-		m.errMsg = "chord sheet — playback unavailable"
+	if m.chordSheet && len(m.tab.Bars) == 0 {
+		// A chord sheet whose lines held no recognized chords has nothing
+		// to play; say so honestly.
+		m.errMsg = "chord sheet — no recognized chords to play"
 		m.refresh()
 		return nil
 	}

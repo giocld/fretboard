@@ -60,24 +60,76 @@ func TestChordSheetTransposesOnlyChordWords(t *testing.T) {
 	}
 }
 
-// TestChordSheetModeDisablesPlayback guards S1.2: toggling playback on a
-// chord sheet refuses honestly and never starts a session.
-func TestChordSheetModeDisablesPlayback(t *testing.T) {
+// TestChordSheetWithoutChordsRefusesPlayback: a kind=chords tab whose lines
+// hold no recognized chords has nothing to play — it refuses honestly and
+// falls back to rendering the raw text verbatim.
+func TestChordSheetWithoutChordsRefusesPlayback(t *testing.T) {
 	m := NewViewerModel()
 	m.LoadTab(chordTab(), "chords.txt", 0)
 	if !m.chordSheet {
 		t.Fatal("a kind=chords tab must enter chord-sheet mode")
 	}
 	if cmd := m.togglePlayback(); cmd != nil {
-		t.Fatal("chord sheets must not produce a playback command")
+		t.Fatal("a chord sheet with no chords must not produce a playback command")
 	}
-	if !strings.Contains(m.errMsg, "playback unavailable") {
-		t.Fatalf("errMsg = %q, want the honest playback-unavailable hint", m.errMsg)
+	if !strings.Contains(m.errMsg, "no recognized chords") {
+		t.Fatalf("errMsg = %q, want the no-chords hint", m.errMsg)
 	}
 	// The body renders the raw text verbatim.
 	view := m.View()
 	if !strings.Contains(view, "Intro:  Am   C    G") {
 		t.Fatalf("chord-sheet body missing the raw text:\n%s", view)
+	}
+}
+
+// TestChordSheetPlaysItsChords: a parsed chord sheet is playable — one
+// 4/4 step per chord — and renders its chords as diagrams over the lyrics
+// with the playhead on the current chord.
+func TestChordSheetPlaysItsChords(t *testing.T) {
+	tab := mustParseTab(t, "Am  C\nsome lyric line\n")
+	if len(tab.Bars) != 2 {
+		t.Fatalf("parsed %d bars, want 2", len(tab.Bars))
+	}
+	schedule := player.BuildSchedule(tab)
+	if len(schedule) != 2 {
+		t.Fatalf("schedule has %d steps, want one per chord", len(schedule))
+	}
+	for i, step := range schedule {
+		if step.Ticks != 4*480 {
+			t.Fatalf("chord %d lasts %d ticks, want one 4/4 measure", i, step.Ticks)
+		}
+	}
+	m := NewViewerModel()
+	m.LoadTab(tab, "sheet.txt", 0)
+	if cmd := m.togglePlayback(); cmd == nil {
+		t.Fatalf("chord sheets must be playable, errMsg = %q", m.errMsg)
+	}
+	if m.errMsg != "" {
+		t.Fatalf("playback refused: %q", m.errMsg)
+	}
+	view := m.View()
+	for _, want := range []string{"Am", "C", "some lyric line", "●"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("chord-sheet view missing %q:\n%s", want, view)
+		}
+	}
+}
+
+// TestChordSheetTransposeRefingers: transposing re-fingers the chords and
+// their bars (an open string cannot be shifted by semitones).
+func TestChordSheetTransposeRefingers(t *testing.T) {
+	m := NewViewerModel()
+	m.LoadTab(mustParseTab(t, "G\n"), "sheet.txt", 0)
+	m.transpose = 2
+	display := m.displayTab()
+	if got := display.Sheet[0].Chords[0].Name; got != "A" {
+		t.Fatalf("transposed chord = %q, want A", got)
+	}
+	if got := display.Bars[0].Strings[0].Segments[0].Char; got != '-' {
+		t.Fatalf("open A's low string should be muted, got %q", got)
+	}
+	if got := m.tab.Sheet[0].Chords[0].Name; got != "G" {
+		t.Fatalf("source tab was mutated: %q", got)
 	}
 }
 
