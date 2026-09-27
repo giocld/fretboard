@@ -1,5 +1,31 @@
 package library
 
+import (
+	"encoding/json"
+
+	"fretboard/internal/model"
+)
+
+// TuningLabel renders a row's stored tuning JSON as a compact display label
+// like "EADGBE". Values that are empty, "null"/"[]", or not a tuning at all
+// (legacy rows) are returned unchanged so the caller can show something.
+func TuningLabel(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	var t model.Tuning
+	if err := json.Unmarshal([]byte(raw), &t); err != nil {
+		return raw
+	}
+	if len(t) == 0 {
+		return "" // "null"/"[]" must not render as literal text
+	}
+	if label := t.Label(); label != "" {
+		return label
+	}
+	return raw
+}
+
 // TabRow is a lightweight summary of a stored tab.
 type TabRow struct {
 	ID          int64

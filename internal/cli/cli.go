@@ -107,12 +107,32 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
+	if len(rest) >= 1 && rest[0] == "chords" {
+		return runChords(rest[1:], stdout, stderr)
+	}
+
 	store, err := openStore()
 	if err != nil {
 		fmt.Fprintf(stderr, "library: %v\n", err)
 		return 1
 	}
 	defer store.Close()
+
+	if len(rest) >= 1 && rest[0] == "list" {
+		if len(rest) != 1 {
+			fmt.Fprintln(stderr, "usage: fretboard list")
+			return 1
+		}
+		return runList(store, stdout, stderr)
+	}
+
+	if len(rest) >= 1 && rest[0] == "show" {
+		return runShow(store, rest[1:], stdout, stderr)
+	}
+
+	if len(rest) >= 1 && rest[0] == "timing" {
+		return runTiming(store, rest[1:], stdout, stderr)
+	}
 
 	if len(rest) >= 1 && rest[0] == "import" {
 		if len(rest) != 2 {

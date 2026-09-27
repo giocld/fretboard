@@ -33,6 +33,13 @@ fretboard import path/to/tab.txt
 fretboard import path/to/tabs/
 
 # Search online (open the app and press 'o' in the library)
+
+# Inspect how fretboard reads a tab, without opening the TUI
+fretboard list                 # library ids, titles, tuning labels, play counts
+fretboard show 9               # tuning, capo, tempo, spacing, repeats, length
+fretboard timing 9 1-4         # each bar: measures and note onsets
+fretboard chords Am7 C G/B     # print text fretboard diagrams
+fretboard doctor               # check synth, soundfont, players, ffprobe
 ```
 
 ## Requirements
