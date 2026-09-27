@@ -51,6 +51,8 @@ func printUsage(w io.Writer, fs *flag.FlagSet) {
 	fmt.Fprintln(w, "  show <id|file>                     summarize how a tab was parsed and will be scheduled")
 	fmt.Fprintln(w, "  timing <id|file> [from-to]         per-bar timing breakdown (measures and note onsets)")
 	fmt.Fprintln(w, "  chords <name...>                   print a text fretboard diagram for one or more chords")
+	fmt.Fprintln(w, "  search <query...>                  search Ultimate Guitar and Songsterr")
+	fmt.Fprintln(w, "  fetch <ug-id|ug-url>               save a UG tab or chord sheet (re-fetching updates it)")
 	fmt.Fprintln(w, "  doctor [check-name]                run environment checks; exit 1 when any check FAILs")
 	fmt.Fprintln(w, "  scan [dir]                         relink moved tab files (default: tabs_dir, else the most recent tab's folder)")
 	fmt.Fprintln(w, "  export <archive.json>              back up the library to an archive")
