@@ -53,7 +53,9 @@ func buildAudioCandidates(path string, seek time.Duration, rate float64, vol int
 }
 
 func formatSeek(d time.Duration) string {
-	return strconv.FormatFloat(d.Seconds(), 'f', 1, 64)
+	// A tenth of a second is almost a whole 16th note at 120 BPM. Preserve
+	// millisecond precision for calibrated offsets and loop restarts.
+	return strconv.FormatFloat(d.Seconds(), 'f', 3, 64)
 }
 
 // posFeedback is the mpv position feedback channel: the player reports its

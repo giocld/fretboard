@@ -70,12 +70,19 @@ func TestBuildAudioCandidates(t *testing.T) {
 
 	cands = buildAudioCandidates("/tmp/song.mp3", 90*time.Second, 1.25, 60)
 	mv := cands[0].args
-	if !containsArg(mv, "--start=90.0") || !containsArg(mv, "--speed=1.250") || !containsArg(mv, "--volume=60") {
+	if !containsArg(mv, "--start=90.000") || !containsArg(mv, "--speed=1.250") || !containsArg(mv, "--volume=60") {
 		t.Fatalf("mpv seek+rate args wrong: %v", mv)
 	}
 	ff := cands[1].args
-	if !containsArg(ff, "-ss") || !containsArg(ff, "90.0") || !containsArg(ff, "-af") || !containsArg(ff, "atempo=1.250") || !containsArg(ff, "-volume") || !containsArg(ff, "60") {
+	if !containsArg(ff, "-ss") || !containsArg(ff, "90.000") || !containsArg(ff, "-af") || !containsArg(ff, "atempo=1.250") || !containsArg(ff, "-volume") || !containsArg(ff, "60") {
 		t.Fatalf("ffplay seek+rate args wrong: %v", ff)
+	}
+}
+
+func TestSeekPreservesCalibratedMilliseconds(t *testing.T) {
+	cands := buildAudioCandidates("/tmp/song.mp3", 9055*time.Millisecond, 1, 80)
+	if !containsArg(cands[0].args, "--start=9.055") || !containsArg(cands[1].args, "9.055") {
+		t.Fatalf("calibrated 55ms offset lost on seek: mpv=%v ffplay=%v", cands[0].args, cands[1].args)
 	}
 }
 

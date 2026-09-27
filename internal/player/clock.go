@@ -16,6 +16,12 @@ func (c *StepClock) Start(delay time.Duration) {
 	c.deadline = time.Now().Add(delay)
 }
 
+// StartAt uses the instant the first note sounded, not the later instant
+// Bubble Tea handled its started message. Queue/render latency is not tempo.
+func (c *StepClock) StartAt(start time.Time, delay time.Duration) {
+	c.deadline = start.Add(delay)
+}
+
 // Next rolls the deadline forward by one step's duration.
 func (c *StepClock) Next(d time.Duration) {
 	c.deadline = c.deadline.Add(d)

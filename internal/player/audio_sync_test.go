@@ -78,8 +78,8 @@ func TestStepIndexAtSyncPoints(t *testing.T) {
 	if got := StepIndexAtSyncPoints(schedule, points, 10, 120); got != 0 {
 		t.Fatalf("at the first anchor should sit at step 0, got %d", got)
 	}
-	if got := StepIndexAtSyncPoints(schedule, points, 15, 120); got != 0 {
-		t.Fatalf("mid bar1..bar2 segment: 15s is exactly the first step's span end (tick-aware), got %d", got)
+	if got := StepIndexAtSyncPoints(schedule, points, 15, 120); got != 1 {
+		t.Fatalf("at the second note's onset the cursor should move to step 1, got %d", got)
 	}
 	if got := StepIndexAtSyncPoints(schedule, points, 15.1, 120); got != 1 {
 		t.Fatalf("just past the midpoint the cursor should be step 1, got %d", got)
@@ -95,6 +95,44 @@ func TestStepIndexAtSyncPoints(t *testing.T) {
 	}
 	if got := StepIndexAtSyncPoints(nil, points, 30, 120); got != 0 {
 		t.Fatalf("empty schedule should be step 0, got %d", got)
+	}
+}
+
+func TestSingleAnchorAtLaterBarKeepsItsScorePosition(t *testing.T) {
+	schedule := []PlaybackStep{
+		{Bar: 0, Ticks: 480}, {Bar: 1, Ticks: 480},
+		{Bar: 2, Ticks: 480}, {Bar: 3, Ticks: 480},
+	}
+	points := []SyncPoint{{Bar: 2, Seconds: 10}}
+	for _, tc := range []struct {
+		seconds float64
+		want    int
+	}{{8.9, 0}, {9.5, 1}, {10, 2}, {10.1, 2}, {10.5, 3}} {
+		if got := StepIndexAtSyncPoints(schedule, points, tc.seconds, 120); got != tc.want {
+			t.Errorf("at %.1fs: step %d, want %d", tc.seconds, got, tc.want)
+		}
+	}
+}
+
+func TestLastAnchorExtrapolationRespectsNoteDurations(t *testing.T) {
+	// Bar 0 lasts 480 ticks across a 2s anchor span. After the last
+	// anchor bar 1 has a 120-tick note (0.5s at that rate) followed by
+	// a long 960-tick note. The old steps/second extrapolation kept the
+	// cursor on the short note for 2s, then raced through the long one.
+	schedule := []PlaybackStep{
+		{Bar: 0, Ticks: 480},
+		{Bar: 1, Ticks: 120},
+		{Bar: 1, Col: 2, Ticks: 960},
+		{Bar: 2, Ticks: 120},
+	}
+	points := []SyncPoint{{Bar: 0, Seconds: 0}, {Bar: 1, Seconds: 2}}
+	for _, tc := range []struct {
+		seconds float64
+		want    int
+	}{{2, 1}, {2.49, 1}, {2.51, 2}, {5, 2}, {6.51, 3}} {
+		if got := StepIndexAtSyncPoints(schedule, points, tc.seconds, 120); got != tc.want {
+			t.Errorf("at %.2fs: step %d, want %d", tc.seconds, got, tc.want)
+		}
 	}
 }
 

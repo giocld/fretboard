@@ -10,6 +10,7 @@ import (
 
 // handlePlaybackStarted arms the deadline clock and re-arms the A-B loop on playback start.
 func (m ViewerModel) handlePlaybackStarted(msg msgs.PlaybackStartedMsg) (ViewerModel, tea.Cmd) {
+	m.playGen++
 	m.playing = true
 	m.schedule = msg.Schedule
 	m.stepIdx = msg.StepIdx
@@ -40,12 +41,21 @@ func (m ViewerModel) handlePlaybackStarted(msg msgs.PlaybackStartedMsg) (ViewerM
 	}
 	m.refresh()
 	if !m.audioSync {
-		// Deadline clock for the MIDI loop: the first tick fires at the
-		// end of the step the start command already sounded.
-		m.stepClock.Start(m.tickDur)
+		// The command sounded the first note before its message entered the
+		// UI queue. Anchor to that instant, not the later handler time.
+		started := msg.Started
+		if started.IsZero() {
+			started = time.Now()
+		}
+		m.stepClock.StartAt(started, m.tickDur)
 		m.driftMs = 0
+		wait := time.Until(m.stepClock.Deadline())
+		if wait < time.Millisecond {
+			wait = time.Millisecond
+		}
+		return m, tea.Batch(tickCmd(m.playGen, wait), monitorPlaybackCmd(m.playGen, false))
 	}
-	return m, tea.Batch(tickCmd(m.tickDur), monitorPlaybackCmd(m.engine))
+	return m, monitorPlaybackCmd(m.playGen, true)
 }
 
 // handlePlaybackError stops playback and surfaces the playback error.
@@ -61,6 +71,9 @@ func (m ViewerModel) handlePlaybackError(msg msgs.PlaybackErrorMsg) (ViewerModel
 
 // handlePlaybackMonitor tracks the playhead against the audio and re-arms the loop.
 func (m ViewerModel) handlePlaybackMonitor(msg msgs.PlaybackMonitorMsg) (ViewerModel, tea.Cmd) {
+	if msg.Gen != m.playGen {
+		return m, nil
+	}
 	if m.engine.ShutdownRequested() {
 		m.stopPlayback()
 		return m, nil
@@ -115,8 +128,12 @@ func (m ViewerModel) handlePlaybackMonitor(msg msgs.PlaybackMonitorMsg) (ViewerM
 			} else {
 				snapIdx, ok = player.CorrectStepSnap(m.schedule, points, elapsed, m.autoOnsets, m.bpm)
 			}
+			// An onset *ahead* of the audio clock is not audible yet.
+			// Snapping to it skipped a note, then the next poll could jump
+			// back when the onset fell inside the snap threshold. Likewise
+			// never rewind a note that was already shown in this pass.
 			if ok {
-				idx = snapIdx
+				idx = boundedAudioSnap(m.stepIdx, idx, snapIdx)
 			}
 			m.syncDrift = 0
 			if n, ok := player.NearestOnset(m.autoOnsets, elapsed, 500*time.Millisecond); ok {
@@ -159,21 +176,31 @@ func (m ViewerModel) handlePlaybackMonitor(msg msgs.PlaybackMonitorMsg) (ViewerM
 			return m, nil
 		}
 	}
-	return m, monitorPlaybackCmd(m.engine)
+	return m, monitorPlaybackCmd(m.playGen, m.audioSync)
+}
+
+func boundedAudioSnap(current, mapped, snapped int) int {
+	if snapped >= current && snapped <= mapped {
+		return snapped
+	}
+	return mapped
 }
 
 // handlePlaybackTick advances the MIDI deadline clock one step.
 func (m ViewerModel) handlePlaybackTick(msg msgs.PlaybackTickMsg) (ViewerModel, tea.Cmd) {
+	if msg.Gen != m.playGen {
+		return m, nil
+	}
 	if !m.playing || len(m.schedule) == 0 {
 		return m, nil
 	}
 	if m.audioSync {
-		return m, monitorPlaybackCmd(m.engine)
+		return m, nil // only the monitor chain samples audio
 	}
 	// Deadline-clock MIDI loop: the tick fired at the absolute deadline
 	// of the step we are about to play. Roll the clock past it (the
 	// advance is by the step being played, so render/processing time
-	// never shifts the beat), then catch up if we are late.
+	// does not normally shift the beat).
 	next := m.nextStepIndexFrom(m.stepIdx)
 	if m.sessionMode && m.loopEndBar > 0 && next < len(m.schedule) && m.schedule[next].Bar < m.schedule[m.stepIdx].Bar {
 		// S8.1: the A-B loop wrapped — count the pass (and ramp the tempo
@@ -185,21 +212,12 @@ func (m ViewerModel) handlePlaybackTick(msg msgs.PlaybackTickMsg) (ViewerModel, 
 		m.refresh()
 		return m, nil
 	}
+	onsetLate := m.stepClock.Late(time.Now())
 	m.stepClock.Next(stepDur(m.schedule[next].Ticks, m.bpm))
-	// Catch up: any step whose deadline already passed is skipped
-	// (bounded) instead of starting late — late ticks must never
-	// accumulate.
-	jumps := 0
-	for jumps < 8 && next < len(m.schedule)-1 && m.stepClock.Late(time.Now()) > 0 {
-		m.stepClock.Next(stepDur(m.schedule[next+1].Ticks, m.bpm))
-		next = m.nextStepIndexFrom(next)
-		jumps++
-	}
-	if next >= len(m.schedule) {
-		m.stopPlayback()
-		m.refresh()
-		return m, nil
-	}
+	// Never drop a scheduled note to catch up with UI latency. If the
+	// entire next step would already have elapsed, rebase from this note's
+	// actual onset rather than queuing a burst of late notes. Small delays
+	// keep the absolute deadline and naturally settle on the next beat.
 	m.stepIdx = next
 	step := m.schedule[next]
 	m.cursorBar = step.Bar
@@ -210,10 +228,13 @@ func (m ViewerModel) handlePlaybackTick(msg msgs.PlaybackTickMsg) (ViewerModel, 
 			m.errMsg = err.Error()
 		}
 	}
+	if m.stepClock.Late(time.Now()) > 0 {
+		m.stepClock.Rebase(m.tickDur)
+	}
 	// Drift telemetry: how late the clock was when the tick arrived.
 	m.driftMs = 0
-	if lat := m.stepClock.Late(time.Now()); lat > 20*time.Millisecond {
-		m.driftMs = lat.Milliseconds()
+	if onsetLate > 20*time.Millisecond {
+		m.driftMs = onsetLate.Milliseconds()
 	}
 	m.ensureCursorVisible()
 	m.refresh()
@@ -221,5 +242,5 @@ func (m ViewerModel) handlePlaybackTick(msg msgs.PlaybackTickMsg) (ViewerModel, 
 	if wait < time.Millisecond {
 		wait = time.Millisecond
 	}
-	return m, tea.Batch(tickCmd(wait), monitorPlaybackCmd(m.engine))
+	return m, tickCmd(m.playGen, wait)
 }
