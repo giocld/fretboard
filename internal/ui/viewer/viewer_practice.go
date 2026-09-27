@@ -123,6 +123,7 @@ func (m *ViewerModel) applyLoopRegion() {
 
 // resetPlayback clears UI playback state without starting audio.
 func (m *ViewerModel) resetPlayback() {
+	m.playGen++
 	m.playing = false
 	m.audioSync = false
 	m.schedule = nil

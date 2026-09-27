@@ -81,6 +81,7 @@ type ViewerModel struct {
 	cursorCol  int
 	panOffset  int
 	playing    bool
+	playGen    uint64 // invalidates timers from a stopped or restarted session
 	schedule   []player.PlaybackStep
 	stepIdx    int
 	tickDur    time.Duration
@@ -135,6 +136,7 @@ func NewViewerModel() ViewerModel {
 
 // LoadTab sets the tab to display and refreshes the viewport content.
 func (m *ViewerModel) LoadTab(tab *model.Tab, tabPath string, tabID int64) {
+	m.playGen++ // old tab's in-flight playback timers cannot control this tab
 	m.tab = tab
 	m.tabPath = tabPath
 	m.tabID = tabID

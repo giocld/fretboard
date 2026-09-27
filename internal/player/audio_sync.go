@@ -126,8 +126,11 @@ func StepIndexAtSyncPoints(schedule []PlaybackStep, points []SyncPoint, audioSec
 	sorted := append([]SyncPoint(nil), points...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Seconds < sorted[j].Seconds })
 	first := sorted[0]
-	if audioSeconds <= first.Seconds {
-		return 0
+	if audioSeconds < first.Seconds {
+		// A later-bar anchor also locates the score *before* that bar.
+		// Hold at step zero only when the back-projected score is negative.
+		start := ScheduleTimeAtBar(schedule, first.Bar, bpm)
+		return StepIndexAtScheduleTime(schedule, start+time.Duration((audioSeconds-first.Seconds)*float64(time.Second)), bpm)
 	}
 	for i := 0; i < len(sorted)-1; i++ {
 		cur, next := sorted[i], sorted[i+1]
@@ -141,8 +144,10 @@ func StepIndexAtSyncPoints(schedule []PlaybackStep, points []SyncPoint, audioSec
 		prev := sorted[len(sorted)-2]
 		return extendLastSegment(schedule, prev, last, audioSeconds)
 	}
-	// Single anchor: plain schedule accumulation past the anchor.
-	return StepIndexAtScheduleTime(schedule, time.Duration((audioSeconds-last.Seconds)*float64(time.Second)), bpm)
+	// Single anchor: accumulate from that bar's position, not from step 0.
+	// Anchoring a later bar must not restart the cursor at the first bar.
+	start := ScheduleTimeAtBar(schedule, last.Bar, bpm)
+	return StepIndexAtScheduleTime(schedule, start+time.Duration((audioSeconds-last.Seconds)*float64(time.Second)), bpm)
 }
 
 // segmentStep maps an audio position inside the segment between anchors a and
@@ -175,7 +180,7 @@ func segmentStep(schedule []PlaybackStep, a, b SyncPoint, audioSeconds float64) 
 	acc := int64(0)
 	for i := startStep; i < endStep; i++ {
 		acc += int64(schedule[i].Ticks)
-		if float64(acc) >= target {
+		if float64(acc) > target {
 			return i
 		}
 	}
@@ -183,7 +188,9 @@ func segmentStep(schedule []PlaybackStep, a, b SyncPoint, audioSeconds float64) 
 }
 
 // extendLastSegment maps audio time past the final anchor by extending the
-// last segment's step rate (steps per second).
+// last segment's tick rate. A uniform steps/second rate ignores the duration
+// of each note and drifts through passages with different note densities;
+// the inverse TimeMapper also extrapolates by ticks.
 func extendLastSegment(schedule []PlaybackStep, a, b SyncPoint, audioSeconds float64) int {
 	startStep := stepIndexAtBar(schedule, a.Bar)
 	endStep := stepIndexAtBar(schedule, b.Bar)
@@ -192,12 +199,25 @@ func extendLastSegment(schedule []PlaybackStep, a, b SyncPoint, audioSeconds flo
 	}
 	endStep = min(endStep, len(schedule))
 	span := b.Seconds - a.Seconds
-	if span <= 0 {
+	if span <= 0 || endStep >= len(schedule) {
+		return min(endStep, len(schedule)-1)
+	}
+	var ticks int64
+	for _, step := range schedule[startStep:endStep] {
+		ticks += int64(step.Ticks)
+	}
+	if ticks <= 0 {
 		return endStep
 	}
-	rate := float64(endStep-startStep) / span
-	step := min(endStep+int((audioSeconds-b.Seconds)*rate), len(schedule)-1)
-	return step
+	target := (audioSeconds - b.Seconds) * float64(ticks) / span
+	var elapsed int64
+	for i := endStep; i < len(schedule); i++ {
+		elapsed += int64(schedule[i].Ticks)
+		if float64(elapsed) > target {
+			return i
+		}
+	}
+	return len(schedule) - 1
 }
 
 // TicksBetweenBars sums the schedule's MIDI ticks for steps whose bar is in

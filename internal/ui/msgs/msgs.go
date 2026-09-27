@@ -91,12 +91,10 @@ type TabImportErrorMsg struct {
 	Gen int
 }
 
-// PlaybackTickMsg is sent by the playback goroutine on each step.
+// PlaybackTickMsg is sent by the playback timer for a single play session.
+// Gen prevents a timer left over from a previous session advancing this one.
 type PlaybackTickMsg struct {
-	Bar      int
-	Col      int
-	StepIdx  int
-	Duration time.Duration
+	Gen uint64
 }
 
 // PlaybackStartedMsg is sent when audio playback has begun.
@@ -105,6 +103,7 @@ type PlaybackStartedMsg struct {
 	StepIdx   int
 	Duration  time.Duration
 	AudioSync bool
+	Started   time.Time // when the first MIDI step sounded
 }
 
 // PlaybackErrorMsg is sent when audio playback fails to start.
@@ -112,8 +111,8 @@ type PlaybackErrorMsg struct {
 	Err error
 }
 
-// PlaybackMonitorMsg checks whether the external synth is still running.
-type PlaybackMonitorMsg struct{}
+// PlaybackMonitorMsg samples audio position and checks process health.
+type PlaybackMonitorMsg struct{ Gen uint64 }
 
 // AudioFetchedMsg is sent when a background audio lookup finishes.
 type AudioFetchedMsg struct {

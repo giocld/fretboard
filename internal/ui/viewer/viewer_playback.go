@@ -30,6 +30,7 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 		}
 		step := schedule[startIdx]
 		dur := stepDur(step.Ticks, bpm)
+		var started time.Time
 		if src.Kind == player.SourceMIDI {
 			engine.Synth.Metronome = opts.metronome
 			engine.Synth.Program = opts.program
@@ -45,6 +46,7 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 				_ = engine.Stop()
 				return msgs.PlaybackErrorMsg{Err: err}
 			}
+			started = time.Now()
 		} else {
 			ctx := player.PlayContext{TabPath: tabPath, AudioDirs: audioDirs, AllowOnline: false}
 			if err := engine.PlaySource(tab, bpm, src, ctx); err != nil {
@@ -73,6 +75,7 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 			StepIdx:   startIdx,
 			Duration:  dur,
 			AudioSync: synced,
+			Started:   started,
 		}
 	}
 }
@@ -95,16 +98,21 @@ func (m ViewerModel) playbackOpts() playbackOpts {
 	return playbackOpts{metronome: m.metronome, countIn: m.countIn, program: m.program}
 }
 
-func tickCmd(duration time.Duration) tea.Cmd {
+func tickCmd(gen uint64, duration time.Duration) tea.Cmd {
 	return tea.Tick(duration, func(time.Time) tea.Msg {
-		return msgs.PlaybackTickMsg{}
+		return msgs.PlaybackTickMsg{Gen: gen}
 	})
 }
 
-// monitorPlaybackCmd polls synth process health while audio may be playing.
-func monitorPlaybackCmd(engine *player.Engine) tea.Cmd {
-	return tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg {
-		return msgs.PlaybackMonitorMsg{}
+// One monitor timer is armed per session; MIDI ticks never add more monitors.
+// Audio samples often enough to show sixteenths (125ms at 120 BPM).
+func monitorPlaybackCmd(gen uint64, audio bool) tea.Cmd {
+	interval := 250 * time.Millisecond
+	if audio {
+		interval = 30 * time.Millisecond
+	}
+	return tea.Tick(interval, func(time.Time) tea.Msg {
+		return msgs.PlaybackMonitorMsg{Gen: gen}
 	})
 }
 
