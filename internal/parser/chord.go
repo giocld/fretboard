@@ -106,8 +106,9 @@ func mod12(n int) int {
 // FretShape returns barre-chord fret positions, low E string first, for an
 // inline chord diagram. Roots on the low E string (E F F# G G#) use the
 // E-shape barre; every other root uses the A-shape barre on the A string.
-// -1 marks a muted string; qualities without a standard barre voicing return
-// all -1.
+// Five chords (G5) use the three-string power-chord shape: root, fifth and
+// octave, the higher strings muted. -1 marks a muted string; qualities
+// without a standard voicing return all -1.
 func (c Chord) FretShape() [6]int {
 	impossible := [6]int{-1, -1, -1, -1, -1, -1}
 	idx, ok := noteSemitones[c.Root]
@@ -134,6 +135,8 @@ func (c Chord) FretShape() [6]int {
 			return [6]int{R, R + 2, R + 2, R + 2, R, R} // Fsus4 = 133311
 		case "sus2":
 			return [6]int{R, R + 2, R + 4, R + 4, R, R} // Fsus2 = 135511
+		case "5":
+			return [6]int{R, R + 2, R + 2, -1, -1, -1} // F5 = 133xxx
 		case "aug":
 			return [6]int{R, R + 2, R + 2, R + 1, R + 1, R} // F+ = 133221
 		}
@@ -157,6 +160,8 @@ func (c Chord) FretShape() [6]int {
 		return [6]int{-1, R, R + 2, R + 2, R, R} // Asus2 = x02200
 	case "sus4":
 		return [6]int{-1, R, R + 2, R + 2, R + 3, R} // Asus4 = x02230
+	case "5":
+		return [6]int{-1, R, R + 2, R + 2, -1, -1} // B5 = x244xx
 	}
 	return impossible
 }

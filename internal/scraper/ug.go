@@ -175,7 +175,9 @@ func parseUGContent(content, typ string, id int64) (*model.Tab, error) {
 	text := unescapeUG(content)
 	source := text
 	if !strings.EqualFold(typ, "Chords") {
-		source = trimNonTabLines(text)
+		// Tab pages are trimmed to their first tab-like line (and re-read
+		// from the full text above when that turns out to be a chord sheet).
+		source = normalizeContent(content)
 	}
 	tab, err := parser.Parse(strings.NewReader(source))
 	if err == nil && source != text && tab.Metadata["kind"] == "chords" {

@@ -154,6 +154,11 @@ func barHeaderLine(tab *model.Tab, barIdx int, width int) string {
 	if bar.RepeatEnd {
 		closeM = ":|"
 	}
+	if bar.Times > 1 {
+		// The same "×12" the on-screen header shows, so the printout says
+		// how often the bar plays.
+		closeM += kit.TimesLabel(bar)
+	}
 	if bar.Ending == 1 || bar.Ending == 2 {
 		ending = fmt.Sprintf("%d.", bar.Ending)
 	}

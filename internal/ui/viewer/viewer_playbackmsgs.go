@@ -179,6 +179,12 @@ func (m ViewerModel) handlePlaybackMonitor(msg msgs.PlaybackMonitorMsg) (ViewerM
 	return m, monitorPlaybackCmd(m.playGen, m.audioSync)
 }
 
+// boundedAudioSnap keeps live onset correction from showing a future note
+// before the player reaches it or rewinding a note already displayed. The
+// tempo map is monotone in audio time, so snapped <= mapped is the same as
+// "the snapped onset has already sounded": an onset still ahead of the audio
+// clock maps past the current position and is refused. mapped (not snapped)
+// is returned outside the window, so seeks and loop wraps follow the audio.
 func boundedAudioSnap(current, mapped, snapped int) int {
 	if snapped >= current && snapped <= mapped {
 		return snapped

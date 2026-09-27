@@ -180,9 +180,10 @@ func (e *Engine) feedMPVStatus(line string) {
 	e.posFB.seen = true
 	e.posFB.mu.Unlock()
 	// Duration fallback: without ffprobe the audio stays synced thanks to
-	// the player's own duration report.
-	if dur > 0 && e.audioDuration == 0 {
-		e.audioDuration = dur
+	// the player's own duration report. The field is atomic: this feeder
+	// goroutine writes it while the UI reads it.
+	if dur > 0 && e.audioDuration.Load() == 0 {
+		e.audioDuration.Store(int64(dur))
 	}
 }
 
@@ -252,7 +253,7 @@ func (e *Engine) audioRunning() bool {
 		e.mode = ""
 		e.audioPath = ""
 		e.playbackStart = time.Time{}
-		e.audioDuration = 0
+		e.audioDuration.Store(0)
 		return false
 	}
 	return true

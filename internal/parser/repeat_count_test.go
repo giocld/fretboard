@@ -7,7 +7,7 @@ import (
 
 func TestRepeatCountMarks(t *testing.T) {
 	for in, want := range map[string]int{
-		" (x12)": 12, "x4": 4, "X 3": 3, "4x": 4, "(2x)": 2,
+		" (x12)": 12, "x4": 4, "X 3": 3, "4x": 4, "(2x)": 2, "x100": 100, "(x120)": 120,
 		"": 0, "3x5---": 0, "then x4 more": 0, "PM---|": 0,
 	} {
 		if got := repeatCount(in); got != want {

@@ -112,9 +112,10 @@ func stepIndexAtBar(schedule []PlaybackStep, bar int) int {
 // using per-bar sync anchors. Between anchors the timeline is scaled by the
 // schedule's own tick density (a bar full of chords spans more steps than a
 // sparse bar at the same real-time length), so dense sections don't crawl
-// and sparse ones don't jump. Before the first anchor the cursor sits at
-// step 0; past the last anchor the final segment's step rate is extended
-// (so outros keep the cursor moving).
+// and sparse ones don't jump. Before the first anchor the score is
+// back-projected from that anchor's bar (clamped at step 0); a single anchor
+// accumulates from its own bar, and past the last anchor the final segment's
+// tick rate is extended (so outros keep the cursor moving).
 func StepIndexAtSyncPoints(schedule []PlaybackStep, points []SyncPoint, audioSeconds float64, bpm int) int {
 	if len(schedule) == 0 {
 		return 0

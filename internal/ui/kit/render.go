@@ -71,10 +71,23 @@ func RenderTabPlain(tab *model.Tab) string {
 		b.WriteString(tab.Artist)
 		b.WriteString("\n")
 	}
+	wroteHeader := false
 	if tab.Tuning != nil && len(tab.Tuning) > 0 {
 		b.WriteString("Tuning: ")
 		b.WriteString(tab.Tuning.Label())
-		b.WriteString("\n\n")
+		b.WriteString("\n")
+		wroteHeader = true
+	}
+	if capo := strings.TrimSpace(tab.Metadata[model.MetaKeyCapo]); capo != "" {
+		// Keep the capo on export and print: without it a re-import of the
+		// text plays in the wrong key.
+		b.WriteString("Capo: ")
+		b.WriteString(capo)
+		b.WriteString("\n")
+		wroteHeader = true
+	}
+	if wroteHeader {
+		b.WriteString("\n")
 	}
 	if len(tab.Sheet) > 0 {
 		// A chord sheet prints as chords over lyrics, not as its synthetic

@@ -352,3 +352,24 @@ func TestCountedBarsShowAndExportTheirCount(t *testing.T) {
 		t.Fatalf("exported tab should re-import x12, got %+v", back.Bars)
 	}
 }
+
+// TestPlainExportKeepsCapo: a capo tab exported to plain text re-imports with
+// its capo, so the exported text still plays at the same pitch.
+func TestPlainExportKeepsCapo(t *testing.T) {
+	tab, err := parser.Parse(strings.NewReader(
+		"Title: T\nCapo: 3\n\ne|-0--|\nB|----|\nG|----|\nD|----|\nA|----|\nE|----|\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := RenderTabPlain(tab)
+	if !strings.Contains(plain, "Capo: 3") {
+		t.Fatalf("plain export lost the capo:\n%s", plain)
+	}
+	back, err := parser.Parse(strings.NewReader(plain))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := back.Metadata[model.MetaKeyCapo]; got != "3" {
+		t.Fatalf("re-imported capo = %q, want 3", got)
+	}
+}

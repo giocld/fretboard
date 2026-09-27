@@ -204,3 +204,32 @@ func TestPrintTabNilOrEmpty(t *testing.T) {
 		t.Fatalf("tab with no bars should print empty, got %q", out)
 	}
 }
+
+// TestPrintTabShowsCountAndCapo: a printed tab says how often a counted bar
+// plays, and a printed chord sheet keeps its capo header so reading from the
+// page plays in the right key.
+func TestPrintTabShowsCountAndCapo(t *testing.T) {
+	tab := sampleTab(1)
+	tab.Bars[0].Times = 12
+	tab.Bars[0].TimesFrom = 0
+	if out := PrintTab(tab, 80); !strings.Contains(out, "×12") {
+		t.Fatalf("printed bar header should show its repeat count:\n%s", out)
+	}
+
+	sheet := &model.Tab{
+		Title:  "Greensleeves",
+		Artist: "Traditional",
+		Tuning: model.Standard,
+		Metadata: map[string]string{
+			"kind":            "chords",
+			model.MetaKeyCapo: "3",
+		},
+		Sheet: []model.SheetLine{
+			{Text: "Alas, my love", Chords: []model.SheetChord{{Name: "Am", Col: 0, Bar: 0}}},
+		},
+		Bars: []model.Bar{{Number: 1}},
+	}
+	if out := PrintTab(sheet, 80); !strings.Contains(out, "Capo: 3") {
+		t.Fatalf("printed chord sheet lost its capo:\n%s", out)
+	}
+}

@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	sheetDiagramFrets = 4  // fret rows drawn per diagram
+	sheetDiagramFrets = 4  // minimum fret rows drawn per diagram
 	sheetDiagramCell  = 17 // columns per diagram: 11 of fretboard, a fret label, a gap
 )
 
@@ -128,10 +128,18 @@ func sheetDiagramRows(tab *model.Tab, highlightBar int, width int) []string {
 		for _, name := range names[start:end] {
 			cells = append(cells, ChordDiagram(name, barShape(tab, barOf[name]), name == highlight))
 		}
-		for l := range cells[0] {
+		tallest := 0
+		for _, cell := range cells {
+			tallest = max(tallest, len(cell))
+		}
+		for l := 0; l < tallest; l++ {
 			var row strings.Builder
 			for _, cell := range cells {
-				row.WriteString(padToWidth(cell[l], sheetDiagramCell))
+				line := ""
+				if l < len(cell) {
+					line = cell[l]
+				}
+				row.WriteString(padToWidth(line, sheetDiagramCell))
 			}
 			rows = append(rows, strings.TrimRight(row.String(), " "))
 		}
@@ -171,7 +179,7 @@ func sheetPlain(tab *model.Tab) string {
 				}
 				b.WriteString(strings.Repeat(" ", max(pad, 0)))
 				b.WriteString(c.Name)
-				col += max(pad, 0) + len(c.Name)
+				col += max(pad, 0) + lipgloss.Width(c.Name)
 			}
 			b.WriteString("\n")
 			if sl.Text == "" {
@@ -224,6 +232,10 @@ func ChordDiagram(name string, shape [6]int, current bool) []string {
 			}
 		}
 	}
+	// A shape can span more than the default window (an E-shape sus2 barre
+	// reaches four frets above its root); draw what the shape needs so no
+	// fretted note is silently dropped.
+	rows := max(sheetDiagramFrets, top-base+1)
 	marks := make([]string, len(shape))
 	for s, f := range shape {
 		switch {
@@ -241,7 +253,7 @@ func ChordDiagram(name string, shape [6]int, current bool) []string {
 		edge = strings.Repeat("═", 2*len(shape)-1)
 	}
 	out = append(out, StaffStyle.Render(edge))
-	for fret := base; fret < base+sheetDiagramFrets; fret++ {
+	for fret := base; fret < base+rows; fret++ {
 		cells := make([]string, len(shape))
 		for s, f := range shape {
 			cells[s] = StaffStyle.Render("│")

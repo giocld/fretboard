@@ -277,6 +277,12 @@ func TestFretShape(t *testing.T) {
 		{"C", [6]int{-1, 3, 5, 5, 5, 3}},
 		{"D", [6]int{-1, 5, 7, 7, 7, 5}},
 		{"Dm", [6]int{-1, 5, 7, 7, 6, 5}},
+		// Power chords: root, fifth, octave; higher strings muted.
+		{"E5", [6]int{0, 2, 2, -1, -1, -1}},
+		{"G5", [6]int{3, 5, 5, -1, -1, -1}},
+		{"A5", [6]int{-1, 0, 2, 2, -1, -1}},
+		{"C5", [6]int{-1, 3, 5, 5, -1, -1}},
+		{"D5", [6]int{-1, 5, 7, 7, -1, -1}},
 		// Qualities without a standard barre voicing are impossible.
 		{"Cdim", [6]int{-1, -1, -1, -1, -1, -1}},
 		{"Cdim7", [6]int{-1, -1, -1, -1, -1, -1}},
@@ -290,6 +296,33 @@ func TestFretShape(t *testing.T) {
 		c, _ := ParseChord(tc.chord)
 		if got := c.FretShape(); got != tc.want {
 			t.Errorf("(%q).FretShape() = %v, want %v", tc.chord, got, tc.want)
+		}
+	}
+}
+
+// TestChordSheetPowerChordsPlay: the "5" quality has a standard power-chord
+// shape (root, fifth, octave), so the G5/C5/D5 chorus of the fixture no
+// longer plays as silent rest bars.
+func TestChordSheetPowerChordsPlay(t *testing.T) {
+	tab, err := ParseFile(filepath.Join(chordFixtureDir, "dust_on_the_highway.txt"))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	shapes := map[string]string{}
+	for _, sl := range tab.Sheet {
+		for _, c := range sl.Chords {
+			if c.Bar >= 0 && c.Bar < len(tab.Bars) {
+				shapes[c.Name] = segmentFrets(tab.Bars[c.Bar])
+			}
+		}
+	}
+	for _, tc := range []struct{ name, want string }{
+		{"G5", "3 5 5 x x x"},
+		{"C5", "x 3 5 5 x x"},
+		{"D5", "x 5 7 7 x x"},
+	} {
+		if got := shapes[tc.name]; got != tc.want {
+			t.Errorf("%s bar shape = %q, want %q", tc.name, got, tc.want)
 		}
 	}
 }

@@ -140,3 +140,28 @@ func TestRunFetchErrors(t *testing.T) {
 }
 
 var errFake = errors.New("boom")
+
+// TestRunFetchURLIgnoresQueryDigits: the tab id is the last path segment, not
+// a number trailing the query string.
+func TestRunFetchURLIgnoresQueryDigits(t *testing.T) {
+	withConfigDir(t, func(dir string) {
+		store, err := openStore()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		tab, err := parser.Parse(strings.NewReader("Am  C\nsome lyric line\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		client := &fakeOnline{tab: tab}
+		var out, errBuf bytes.Buffer
+		url := "https://tabs.ultimate-guitar.com/tab/metallica/enter-sandman-24697?utm_source=copy&utm_id=2"
+		if code := runFetch(store, []string{url}, client, &out, &errBuf); code != 0 {
+			t.Fatalf("code=%d stderr=%q", code, errBuf.String())
+		}
+		if len(client.fetched) != 1 || client.fetched[0].ID != 24697 {
+			t.Fatalf("client saw %+v, want id 24697", client.fetched)
+		}
+	})
+}
