@@ -6,21 +6,21 @@ import "github.com/charmbracelet/lipgloss"
 
 // Theme is a complete semantic color palette for the TUI.
 type Theme struct {
-	Name         string
-	Primary      lipgloss.AdaptiveColor // fg.default
-	Secondary    lipgloss.AdaptiveColor // secondary labels
-	Dimmed       lipgloss.AdaptiveColor // fg.muted
-	Accent       lipgloss.AdaptiveColor // accent.primary
-	Highlight    lipgloss.AdaptiveColor // accent.secondary
-	Emphasis     lipgloss.AdaptiveColor // fg.emphasis
-	Error        lipgloss.Color         // status.error
-	Success      lipgloss.Color         // status.success
-	Warning      lipgloss.Color         // status.warning
-	Info         lipgloss.Color         // status.info
-	Base         lipgloss.Color         // bg.base
-	Surface      lipgloss.Color         // bg.surface
-	Overlay      lipgloss.Color         // bg.overlay
-	StatusBG     lipgloss.Color         // footer background
+	Name      string
+	Primary   lipgloss.AdaptiveColor // fg.default
+	Secondary lipgloss.AdaptiveColor // secondary labels
+	Dimmed    lipgloss.AdaptiveColor // fg.muted
+	Accent    lipgloss.AdaptiveColor // accent.primary
+	Highlight lipgloss.AdaptiveColor // accent.secondary
+	Emphasis  lipgloss.AdaptiveColor // fg.emphasis
+	Error     lipgloss.Color         // status.error
+	Success   lipgloss.Color         // status.success
+	Warning   lipgloss.Color         // status.warning
+	Info      lipgloss.Color         // status.info
+	Base      lipgloss.Color         // bg.base
+	Surface   lipgloss.Color         // bg.surface
+	Overlay   lipgloss.Color         // bg.overlay
+	StatusBG  lipgloss.Color         // footer background
 	// Staff colors the tab's string lines: the muted color blended toward
 	// the accent, so it reads as the theme's own tint -- brighter than
 	// plain grey, without competing with the fret numbers for attention.
@@ -44,7 +44,7 @@ var (
 		Surface:   lipgloss.Color("#24283b"),
 		Overlay:   lipgloss.Color("#414868"),
 		StatusBG:  lipgloss.Color("#16161e"),
-		Staff: lipgloss.AdaptiveColor{Light: "#5f6b94", Dark: "#6a84c6"},
+		Staff:     lipgloss.AdaptiveColor{Light: "#5f6b94", Dark: "#6a84c6"},
 	}
 
 	OneDarkTheme = Theme{
@@ -63,7 +63,7 @@ var (
 		Surface:   lipgloss.Color("#2C323C"),
 		Overlay:   lipgloss.Color("#3B4048"),
 		StatusBG:  lipgloss.Color("#21252B"),
-		Staff: lipgloss.AdaptiveColor{Light: "#ba92d0", Dark: "#5f8db6"},
+		Staff:     lipgloss.AdaptiveColor{Light: "#ba92d0", Dark: "#5f8db6"},
 	}
 
 	DraculaTheme = Theme{
@@ -82,7 +82,7 @@ var (
 		Surface:   lipgloss.Color("#313442"),
 		Overlay:   lipgloss.Color("#44475A"),
 		StatusBG:  lipgloss.Color("#21222C"),
-		Staff: lipgloss.AdaptiveColor{Light: "#b876b7", Dark: "#9484d3"},
+		Staff:     lipgloss.AdaptiveColor{Light: "#b876b7", Dark: "#9484d3"},
 	}
 )
 
