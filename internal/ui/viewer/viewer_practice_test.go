@@ -91,7 +91,7 @@ func TestPracticeKeysDriveEndToEndPlayback(t *testing.T) {
 	if strings.Contains(joined, "cc 1 7 0") {
 		t.Fatalf("metronome is on; the click channel must not be muted, got %q", joined)
 	}
-	mid, err := os.ReadFile(filepath.Join(os.TempDir(), "fretboard_playback.mid"))
+	mid, err := os.ReadFile(m.engine.Synth.LastMidiPath)
 	if err != nil {
 		t.Fatalf("read generated mid: %v", err)
 	}

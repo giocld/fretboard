@@ -3,9 +3,7 @@ package player
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -223,9 +221,9 @@ func (e *Engine) PlayMIDIFile(tab *model.Tab, bpm int, opts MIDIFileOpts) error 
 	if err != nil {
 		return fmt.Errorf("write smf: %w", err)
 	}
-	midPath := filepath.Join(os.TempDir(), "fretboard_playback.mid")
-	if err := os.WriteFile(midPath, data, 0644); err != nil {
-		return fmt.Errorf("write mid file: %w", err)
+	midPath, err := e.Synth.writeMidTemp(data)
+	if err != nil {
+		return err
 	}
 
 	e.beginMIDI()
