@@ -263,17 +263,19 @@ func TestMidiTickLoopDeadlines(t *testing.T) {
 	}
 }
 
-// TestSyncedFor guards the flagship sync predicate: audio mode alone must
-// arm audio sync. The old predicate (`Mode()=="audio" && AudioDuration()>0`)
-// fell back to the tab deadline clock when the duration was unknown, silently
-// desyncing the cursor from the recording.
+// TestSyncedFor guards the flagship sync predicate: audio mode and SMF-player
+// MIDI arm Elapsed()-driven sync (SMF MIDI is self-timed by fluidsynth's
+// player, so the cursor must follow the same monitor path). The old audio
+// predicate (`Mode()=="audio" && AudioDuration()>0`) fell back to the tab
+// deadline clock when the duration was unknown, silently desyncing the
+// cursor from the recording.
 func TestSyncedFor(t *testing.T) {
 	cases := []struct {
 		mode string
 		want bool
 	}{
 		{"audio", true},
-		{"midi", false},
+		{"midi", true},
 		{"", false},
 	}
 	for _, tc := range cases {

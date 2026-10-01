@@ -23,6 +23,13 @@ type Engine struct {
 	mode          string
 	audioPath     string
 	playbackStart time.Time
+	// SMF-player state (mode "midi"): wall-clock position tracking for the
+	// cursor, recalibrated on every seek/tempo change.
+	midiBase         time.Duration
+	midiWall         time.Time
+	midiBPM          int
+	midiCountIn      time.Duration
+	midiCountInTicks int64
 	// audioDuration is written by the mpv status-feeder goroutine (the
 	// player's own duration report) and read by the UI, so it is atomic.
 	audioDuration atomic.Int64
@@ -90,8 +97,18 @@ func (e *Engine) LoopRegion() (time.Duration, time.Duration, bool) {
 }
 
 // RestartAt restarts audio playback at the given music-time position,
-// preserving the playback rate.
+// preserving the playback rate. For SMF-player MIDI it is a live seek.
 func (e *Engine) RestartAt(pos time.Duration) error {
+	if e.mode == "midi" {
+		if e.MIDILive() {
+			return e.MIDISeek(pos)
+		}
+		e.rate = 1
+		if pos > 0 {
+			e.audioBase = pos
+		}
+		return nil
+	}
 	if e.mode != "audio" {
 		e.rate = 1
 		if pos > 0 {
@@ -126,7 +143,11 @@ func (e *Engine) AudioDuration() time.Duration {
 
 // Elapsed returns the backing audio's file position: the base set at the
 // last seek/restart plus wall time since then, scaled by the playback rate.
+// For SMF-player MIDI it is the music position (excluding count-in).
 func (e *Engine) Elapsed() time.Duration {
+	if e.mode == "midi" {
+		return e.MIDIPosition()
+	}
 	if e.mode != "audio" || e.playbackStart.IsZero() {
 		return 0
 	}
@@ -256,6 +277,10 @@ func (e *Engine) Stop() error {
 	e.audioDuration.Store(0)
 	e.audioBase = 0
 	e.rate = 1
+	e.midiWall = time.Time{}
+	e.midiBase = 0
+	e.midiCountIn = 0
+	e.midiCountInTicks = 0
 	return e.Synth.Stop()
 }
 

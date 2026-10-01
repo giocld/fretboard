@@ -31,6 +31,11 @@ func (m ViewerModel) handleKeyNav(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		}
 		m.transpose = clampTranspose(m.transpose + 1)
 		m.jumpBuffer = ""
+		if m.playing && m.engine.Mode() == "midi" {
+			// SMF events are baked; re-finger and resume at the current step.
+			m.resetPlayback()
+			return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+		}
 		m.refresh()
 	case "Z":
 		if m.isDrums() {
@@ -40,10 +45,18 @@ func (m ViewerModel) handleKeyNav(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		}
 		m.transpose = clampTranspose(m.transpose - 1)
 		m.jumpBuffer = ""
+		if m.playing && m.engine.Mode() == "midi" {
+			m.resetPlayback()
+			return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+		}
 		m.refresh()
 	case "R":
 		m.transpose = 0
 		m.jumpBuffer = ""
+		if m.playing && m.engine.Mode() == "midi" {
+			m.resetPlayback()
+			return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
+		}
 		m.refresh()
 	case "e":
 		m.showNotes = !m.showNotes

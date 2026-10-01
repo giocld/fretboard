@@ -1,6 +1,7 @@
 package viewer
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,8 +57,8 @@ func TestPracticeKeysDriveEndToEndPlayback(t *testing.T) {
 		t.Fatalf("programLabel(24) = %q", got)
 	}
 
-	// Space: start playback (MIDI source is the default). The count-in
-	// blocks the command for ~2 s, then PlaybackStartedMsg arrives.
+	// Space: start playback (MIDI source is the default). The SMF player
+	// path returns immediately — timing no longer blocks on the UI.
 	m, cmd = m.Update(key(" "))
 	if cmd == nil {
 		t.Fatal("Space should return a playback cmd")
@@ -73,25 +74,34 @@ func TestPracticeKeysDriveEndToEndPlayback(t *testing.T) {
 	if !m.playing || m.engine.Mode() != "midi" {
 		t.Fatalf("should be playing midi: playing=%v mode=%q", m.playing, m.engine.Mode())
 	}
+	// The engine sent its shell commands synchronously; poll until the fake
+	// synth (a separate process) has echoed the LAST of them.
+	joined := waitForSynth(t, log, "player_cont")
 	m.StopPlayback()
 
-	// The fake synth saw the program and a click on the first beat.
-	deadline := time.Now().Add(3 * time.Second)
-	var cmds []string
-	for time.Now().Before(deadline) {
-		data, _ := os.ReadFile(log)
-		cmds = strings.Split(strings.TrimSpace(string(data)), "\n")
-		if len(cmds) > 0 && cmds[0] != "" {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
+	// SMF playback starts via queued shell commands; the practice settings
+	// are baked into the generated .mid (program change + click track).
+	// Count-in is 1 bar (1920 ticks at 480/quarter); playback starts there.
+	if !strings.Contains(joined, "player_seek 1920") {
+		t.Fatalf("expected seek past the 1-bar count-in, got %q", joined)
 	}
-	joined := strings.Join(cmds, "\n")
-	if !strings.Contains(joined, "prog 0 24") {
-		t.Fatalf("expected 'prog 0 24' in synth log, got %q", joined)
+	if !strings.Contains(joined, "player_cont") {
+		t.Fatalf("expected player_cont, got %q", joined)
 	}
-	if !strings.Contains(joined, "noteon 0 37 120") {
-		t.Fatalf("expected an accented first-beat click, got %q", joined)
+	if strings.Contains(joined, "cc 1 7 0") {
+		t.Fatalf("metronome is on; the click channel must not be muted, got %q", joined)
+	}
+	mid, err := os.ReadFile(filepath.Join(os.TempDir(), "fretboard_playback.mid"))
+	if err != nil {
+		t.Fatalf("read generated mid: %v", err)
+	}
+	// Baked program change on the music channel: 0xC0 24 (nylon).
+	if !bytes.Contains(mid, []byte{0xC0, 0x18}) {
+		t.Fatal("expected baked program change (nylon, 24) in the SMF")
+	}
+	// Baked accented first-beat click on the click channel: 0x91 84 115.
+	if !bytes.Contains(mid, []byte{0x91, 0x54, 0x73}) {
+		t.Fatal("expected baked accented click (ch1 note 84 vel 115) in the SMF")
 	}
 }
 
@@ -251,4 +261,20 @@ func TestPracticeTimerAccumulatesAndPersists(t *testing.T) {
 	if m.practiceTotal() < 5 {
 		t.Fatalf("second session should accumulate, got %d", m.practiceTotal())
 	}
+}
+
+// waitForSynth polls until the fake synth's log contains substr (the echo
+// from the separate echo-process lags the engine's synchronous writes).
+func waitForSynth(t *testing.T, log, substr string) string {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		data, _ := os.ReadFile(log)
+		if strings.Contains(string(data), substr) {
+			return string(data)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("synth log never contained %q", substr)
+	return ""
 }

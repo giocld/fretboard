@@ -20,6 +20,7 @@ type Synth struct {
 	stdin        io.WriteCloser
 	running      bool
 	realtime     bool
+	smfPlayer    bool // shell-mode fluidsynth driving its built-in MIDI player
 	activeNotes  []int
 	Volume       int // 0-100
 	Soundfont    string
@@ -124,6 +125,7 @@ func (s *Synth) Stop() error {
 		s.noteOffActive()
 		s.stopRealtime()
 	}
+	s.smfPlayer = false
 	if s.cmd == nil || s.cmd.Process == nil {
 		s.running = false
 		s.ActiveDriver = ""
