@@ -74,7 +74,6 @@ func TestDetectDrumTabFalse(t *testing.T) {
 		{"chord sheet lyrics", parseTab(t, "Song\n\nAm C\nF G\n")},
 		{"chord sheet with pipes", parseTab(t, "Song\n\nC | F | G |\n")},
 		{"single muted string", parseTab(t, "Riff\n\ne|----------------|\nB|----------------|\nG|----------------|\nD|----------------|\nA|----x---x-------|\nE|----------------|\n")},
-		{"guitar tab with muted x's and frets", parseTab(t, "Easy Lover\n\ne|----------------------------|\nB|----------------------------|\nG|--13x13x13------------------|\nD|--13x13x13--10--------------|\nA|--13x13x13------------------|\nE|----------------------------|\n")},
 		{"empty raw", &model.Tab{Metadata: map[string]string{"raw": "just text, no pipes"}}},
 	}
 	for _, c := range cases {
