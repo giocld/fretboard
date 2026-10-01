@@ -3,6 +3,9 @@ package parser
 import (
 	"strings"
 	"testing"
+
+	"fretboard/internal/model"
+	"fretboard/internal/player"
 )
 
 func TestRepeatCountMarks(t *testing.T) {
@@ -56,5 +59,31 @@ x2
 	}
 	if b := tab.Bars[3]; b.Times != 2 || b.TimesFrom != 2 {
 		t.Fatalf("x2 under a two-bar line repeats bars 3-4: got %d from %d", b.Times, b.TimesFrom)
+	}
+}
+
+// TestAbsurdRepeatCountIsClamped guards the schedule against remote content:
+// a silly count mark must not explode the playback schedule (the parser
+// clamps, and RepeatOrder re-checks the bound for hand-built tabs).
+func TestAbsurdRepeatCountIsClamped(t *testing.T) {
+	tab, err := Parse(strings.NewReader("E|-0-|\n(x999999)\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := tab.Bars[0]; b.Times > maxRepeatCount {
+		t.Fatalf("count = %d, want ≤ %d", b.Times, maxRepeatCount)
+	}
+	// RepeatOrder's own bound holds even for hand-built tabs.
+	hand := &model.Tab{
+		Tuning: model.Standard,
+		Bars: []model.Bar{{Strings: []model.StringLine{{Segments: []model.Segment{
+			{Char: '0', Value: 0, Position: 0, Width: 1},
+		}}}}},
+	}
+	hand.Bars[0].Times = 1 << 30
+	hand.Bars[0].TimesFrom = 0
+	order := player.RepeatOrder(hand)
+	if len(order) != 1 {
+		t.Fatalf("uncapped count expanded to %d bars, want 1", len(order))
 	}
 }

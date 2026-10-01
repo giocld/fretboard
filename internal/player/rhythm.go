@@ -8,6 +8,12 @@ import (
 
 const ticksPerQuarter = 480
 
+// maxRepeats caps how often a count-mark block ("(x12)") may replay. The
+// parser clamps counts, but model.Tabs can be built by hand too, and the
+// schedule safety net below grows with the expansion — this is the bound
+// that actually holds.
+const maxRepeats = 64
+
 // PlaybackStep is one cursor position during playback with its MIDI tick length.
 type PlaybackStep struct {
 	Bar      int

@@ -79,7 +79,7 @@ func RepeatOrder(tab *model.Tab) []int {
 			continue
 		}
 		order = append(order, i)
-		if b := bars[i]; b.Times > 1 && b.TimesFrom >= 0 && b.TimesFrom <= i {
+		if b := bars[i]; b.Times > 1 && b.Times <= maxRepeats && b.TimesFrom >= 0 && b.TimesFrom <= i {
 			for n := 1; n < b.Times; n++ {
 				for j := b.TimesFrom; j <= i; j++ {
 					order = append(order, j)

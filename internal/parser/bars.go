@@ -67,6 +67,7 @@ func extractBars(region []string, stringsPerColumn int) []model.Bar {
 				i++
 			}
 		}
+		times = min(times, maxRepeatCount)
 		if times > 1 && len(chunkBars) > 0 {
 			last := &chunkBars[len(chunkBars)-1]
 			last.Times, last.TimesFrom = times, len(bars)
@@ -76,6 +77,11 @@ func extractBars(region []string, stringsPerColumn int) []model.Bar {
 	}
 	return bars
 }
+
+// maxRepeatCount caps count marks like "(x12)": they arrive from remote
+// tab pages, and a silly count would stretch playback (and the schedule)
+// absurdly. Real-world maximums are single digits.
+const maxRepeatCount = 64
 
 // repeatMark matches "x4", "(x12)", "(x120)", "x 3", "4x", "(2x)".
 var repeatMark = regexp.MustCompile(`(?i)^\(?\s*(?:x\s*(\d{1,3})|(\d{1,3})\s*x)\s*\)?$`)
