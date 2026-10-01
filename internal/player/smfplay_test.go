@@ -98,7 +98,7 @@ func TestBuildSMFEventsCountInAndClicks(t *testing.T) {
 	// on the bar's first beat.
 	clicks := 0
 	for _, e := range evts {
-		if e.Type == NoteOn && e.Ch == countInChanel {
+		if e.Type == NoteOn && e.Ch == countInChannel {
 			clicks++
 			if e.Note != clickNoteBar && e.Note != clickNoteBeat {
 				t.Fatalf("count-in click note = %d", e.Note)
@@ -133,7 +133,7 @@ func TestBuildSMFEventsNoMetronomeNoClicks(t *testing.T) {
 		t.Fatalf("count-in = %d/%v, want 0", ticks, dur)
 	}
 	for _, e := range evts {
-		if (e.Type == NoteOn || e.Type == NoteOff) && (e.Ch == clickChannel || e.Ch == countInChanel) {
+		if (e.Type == NoteOn || e.Type == NoteOff) && (e.Ch == clickChannel || e.Ch == countInChannel) {
 			t.Fatalf("click event without metronome/count-in: %+v", e)
 		}
 	}

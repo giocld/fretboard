@@ -28,7 +28,6 @@ func writeSMF(events []Event, bpm int, drum bool) ([]byte, error) {
 	if bpm <= 0 {
 		bpm = 120
 	}
-	const ticksPerQuarter = 480
 
 	var buf bytes.Buffer
 

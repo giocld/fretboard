@@ -3,6 +3,7 @@ package player
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"sort"
 	"time"
@@ -27,9 +28,9 @@ type MIDIFileOpts struct {
 const (
 	// Clicks ride dedicated channels so muting the metronome never touches
 	// music (and count-in stays audible with the metronome off).
-	clickChannel  = 1  // metronome: muted/unmuted live via CC7
-	countInChanel = 2  // count-in: always audible
-	clickProgram  = 13 // GM Xylophone: short wooden attack, reads as a tick
+	clickChannel   = 1  // metronome: muted/unmuted live via CC7
+	countInChannel = 2  // count-in: always audible
+	clickProgram   = 13 // GM Xylophone: short wooden attack, reads as a tick
 	clickNoteBeat = 79
 	clickNoteBar  = 84
 )
@@ -75,13 +76,13 @@ func buildSMFEvents(tab *model.Tab, bpm int, opts MIDIFileOpts) (evts []Event, c
 	evts = append(evts,
 		Event{Type: ProgramChange, Ch: 0, Note: prog},
 		Event{Type: ProgramChange, Ch: clickChannel, Note: clickProgram},
-		Event{Type: ProgramChange, Ch: countInChanel, Note: clickProgram},
+		Event{Type: ProgramChange, Ch: countInChannel, Note: clickProgram},
 	)
 	if opts.CountInBars > 0 {
 		countInTicks = int64(opts.CountInBars) * 4 * ticksPerQuarter
 		countInDur = time.Duration(opts.CountInBars*4*60) * time.Second / time.Duration(bpm)
 		for i := 0; i < opts.CountInBars*4; i++ {
-			evts = append(evts, clickEvent(countInChanel, i%4 == 0, int64(i)*ticksPerQuarter)...)
+			evts = append(evts, clickEvent(countInChannel, i%4 == 0, int64(i)*ticksPerQuarter)...)
 		}
 	}
 	if opts.Metronome {
@@ -159,6 +160,8 @@ func (s *Synth) StartSMF(midPath string) error {
 			continue
 		}
 		cmd := exec.Command(path, c.args...)
+		cmd.SysProcAttr = childProcAttr()
+		cmd.Stdout = io.Discard
 		var stderr stderrCollector
 		cmd.Stderr = &stderr
 		stdin, err := cmd.StdinPipe()
