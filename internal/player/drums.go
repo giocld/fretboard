@@ -57,9 +57,10 @@ func DetectDrumTab(tab *model.Tab) bool {
 }
 
 // drumRowLabelRe matches a string row whose leading label is a drum row
-// name: optional whitespace, the label (longest alternatives first so
-// "HT"/"HH"/"SD" win over "H"/"S"), then a bar pipe or dash grid.
-var drumRowLabelRe = regexp.MustCompile(`(?i)^\s*(?:HH|SD|BD|CC|CH|FT|HT|H|S|B|C|T|F)\s*[|\-]`)
+// name. Two-letter labels (HH, SD, BD, ...) tolerate whitespace before the
+// bar grid; single-letter labels must be glued to the grid so chord sheets
+// like "C | F | G" are not misread as drum notation.
+var drumRowLabelRe = regexp.MustCompile(`(?i)^\s*(?:HH|SD|BD|CC|CH|FT|HT)\s*[|\-]|^\s*[HSBCTF][|\-]`)
 
 // xoHitRow reports whether a raw text line is a percussion-style row: only
 // x/o hit marks, dashes, pipes and spaces, containing at least one x/o and

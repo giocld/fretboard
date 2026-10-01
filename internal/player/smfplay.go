@@ -278,7 +278,14 @@ func (e *Engine) MIDISeek(pos time.Duration) error {
 		pos = 0
 	}
 	tick := e.midiCountInTicks + midiTicksAt(pos, e.midiBPM)
+	// fluidsynth's player_seek is relative to the current playhead, not an
+	// absolute tick. Stop resets the playhead to the beginning, then seek
+	// forward to the desired absolute tick and continue.
+	_ = e.Synth.sendRealtime("player_stop")
 	if err := e.Synth.sendRealtime(fmt.Sprintf("player_seek %d", tick)); err != nil {
+		return err
+	}
+	if err := e.Synth.sendRealtime("player_cont"); err != nil {
 		return err
 	}
 	e.midiCalibrate(pos)
