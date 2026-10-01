@@ -21,103 +21,69 @@ func (m HomeModel) favoriteCount() int {
 
 func (m HomeModel) renderBody() string {
 	if !m.loaded {
-		return kit.InfoStyle.Render("⠋ Loading library stats...")
+		return kit.MutedStyle.Render("loading library…")
 	}
 
 	var b strings.Builder
 	b.WriteString("\n")
-	b.WriteString(kit.MutedStyle.Render("Guitar tabs in your terminal — browse, play, and search."))
-	b.WriteString("\n\n")
 
-	// Stat row: label-above-value columns separated by dim rules. No borders —
-	// whitespace and alignment carry the grouping.
+	// The library at a glance: one dim line, no widgetry. Alignment and
+	// whitespace carry the page, like tig's main view.
+	stats := fmt.Sprintf("%d tabs · %d favorites", len(m.tabs), m.favoriteCount())
 	recent := m.recentTabs()
-	lastLabel := "—"
 	if len(recent) > 0 {
-		lastLabel = kit.Truncate(recent[0].Title, 26)
+		stats += fmt.Sprintf(" · last opened %s", kit.Truncate(recent[0].Title, 30))
 	}
-	cols := []struct{ label, value string }{
-		{"TABS", fmt.Sprintf("%d", len(m.tabs))},
-		{"FAVORITES", fmt.Sprintf("%d *", m.favoriteCount())},
-		{"RECENT", lastLabel},
-	}
-	var colWidths []int
-	for _, c := range cols {
-		w := lipgloss.Width(c.label)
-		if v := lipgloss.Width(c.value); v > w {
-			w = v
-		}
-		if w < 6 {
-			w = 6
-		}
-		colWidths = append(colWidths, w)
-	}
-	var cells []string
-	for i, c := range cols {
-		cell := kit.StatLabelStyle.Render(c.label) + "\n" + kit.StatValueStyle.Render(c.value)
-		cells = append(cells, lipgloss.NewStyle().Width(colWidths[i]).Render(cell))
-		if i < len(cols)-1 {
-			// Two-line separator so the value row keeps the column rule.
-			cells = append(cells, kit.PanelDividerStyle.Render(" │ \n │ "))
-		}
-	}
-	statLine := lipgloss.JoinHorizontal(lipgloss.Top, cells...)
-	if lipgloss.Width(statLine) > m.width-4 {
-		// Narrow terminals: fall back to a single-line "label: value" row.
-		var flat []string
-		for _, c := range cols {
-			flat = append(flat, kit.StatLabelStyle.Render(c.label+":")+" "+kit.StatValueStyle.Render(c.value))
-		}
-		statLine = strings.Join(flat, "  ")
-	}
-	b.WriteString(statLine)
-	b.WriteString("\n")
+	b.WriteString(kit.MutedStyle.Render(stats))
+	b.WriteString("\n\n")
 
 	if m.autoImportWarn != "" {
-		b.WriteString("\n")
-		b.WriteString(kit.WarningStyle.Render(m.autoImportWarn))
+		b.WriteString(kit.WarningStyle.Render(m.autoImportWarn) + "\n")
 	}
 	if m.errMsg != "" {
-		b.WriteString("\n")
-		b.WriteString(kit.ErrorStyle.Render(m.errMsg))
+		b.WriteString(kit.ErrorStyle.Render(m.errMsg) + "\n")
 	}
 	if banner := m.degradedBanner(); banner != "" {
+		b.WriteString(kit.WarningStyle.Render(banner) + "\n")
+	}
+	if m.autoImportWarn != "" || m.errMsg != "" || m.degradedBanner() != "" {
 		b.WriteString("\n")
-		b.WriteString(kit.WarningStyle.Render(banner))
 	}
 
-	b.WriteString("\n\n")
+	// Actions: plain rows — action name in the left column, dim description
+	// next to it, selection via the shared highlight style.
 	actions := []struct {
 		title string
 		desc  string
-		key   string
 	}{
-		{"Library", "Browse and open saved tabs", "l"},
-		{"Online Search", "Search Ultimate Guitar + Songsterr", "o"},
-		{"Import", "Add tabs from your filesystem", "i"},
+		{"Library", "browse and open saved tabs"},
+		{"Online search", "Ultimate Guitar · Songsterr · GuitarTabs · GuitareTab"},
+		{"Import", "add tabs from your filesystem"},
 	}
-	descW := 0
+	titleW := 0
 	for _, a := range actions {
-		if w := lipgloss.Width(a.desc); w > descW {
-			descW = w
+		if w := lipgloss.Width(a.title); w > titleW {
+			titleW = w
 		}
 	}
+	descW := m.width - titleW - 8
 	for i, a := range actions {
-		line := fmt.Sprintf("%s  %s", a.title, a.desc)
-		pad := descW - lipgloss.Width(a.desc)
+		desc := a.desc
+		if descW > 0 {
+			desc = kit.Truncate(desc, descW)
+		}
+		row := fmt.Sprintf("  %-*s  %s", titleW, a.title, kit.MutedStyle.Render(desc))
 		if i == m.cursor {
-			b.WriteString(kit.ActionSelectedStyle.Render("▸ "+line) + strings.Repeat(" ", pad) + kit.MutedStyle.Render("  ["+a.key+"]"))
+			b.WriteString(kit.ListSelected.Render(row))
 		} else {
-			b.WriteString("  " + kit.ActionTitleStyle.Render(a.title) + "  " + kit.ActionDescStyle.Render(a.desc) + strings.Repeat(" ", pad))
+			b.WriteString(kit.ListNormal.Render(row))
 		}
 		b.WriteString("\n")
 	}
 
 	if len(recent) > 0 {
 		b.WriteString("\n")
-		b.WriteString(kit.StatLabelStyle.Render("RECENT TABS"))
-		b.WriteString("\n")
-		b.WriteString(kit.PanelDividerStyle.Render(strings.Repeat("─", min(m.width-4, 60))))
+		b.WriteString(kit.MutedStyle.Render("RECENT"))
 		b.WriteString("\n")
 		for i, row := range recent {
 			idx := homeActionCount + i
@@ -125,18 +91,17 @@ func (m HomeModel) renderBody() string {
 			if row.Favorite {
 				star = "*"
 			}
-			line := fmt.Sprintf("  %s %s — %s", star, row.Title, row.Artist)
+			rowStr := fmt.Sprintf("  %s %s — %s", star, row.Title, row.Artist)
 			if m.cursor == idx {
-				b.WriteString(kit.ListSelected.Render("▸ "+line) + "\n")
+				b.WriteString(kit.ListSelected.Render(rowStr))
 			} else {
-				b.WriteString(kit.ListNormal.Render(line) + "\n")
+				b.WriteString(kit.ListNormal.Render(rowStr))
 			}
+			b.WriteString("\n")
 		}
 	} else if len(m.tabs) == 0 {
 		b.WriteString("\n")
-		b.WriteString(kit.WarningStyle.Render("No tabs yet"))
-		b.WriteString("\n\n")
-		b.WriteString(kit.MutedStyle.Render("Import one from your shell:"))
+		b.WriteString(kit.MutedStyle.Render("No tabs yet — import one from your shell:"))
 		b.WriteString("\n")
 		b.WriteString(kit.SuccessStyle.Render("  fretboard import samples/sultans.txt"))
 		b.WriteString("\n")
@@ -144,12 +109,17 @@ func (m HomeModel) renderBody() string {
 
 	if m.showImportHelp {
 		b.WriteString("\n")
-		b.WriteString(kit.RenderPanel(m.width-4, "Import tabs", kit.InfoStyle.Render("Run from your shell:")+"\n"+
-			kit.SuccessStyle.Render("  fretboard import path/to/tab.txt")+"\n"+
-			kit.MutedStyle.Render("  fretboard import path/to/tabs/")+"\n\n"+
-			kit.InfoStyle.Render("Backing tracks (optional):")+"\n"+
-			kit.MutedStyle.Render("  ~/.config/fretboard/audio/Artist - Title.mp3")+"\n"+
-			kit.MutedStyle.Render("  or beside the tab file: layla.mp3")))
+		b.WriteString(kit.MutedStyle.Render("import from your shell:"))
+		b.WriteString("\n")
+		b.WriteString(kit.SuccessStyle.Render("  fretboard import path/to/tab.txt"))
+		b.WriteString("\n")
+		b.WriteString(kit.SuccessStyle.Render("  fretboard import path/to/tabs/"))
+		b.WriteString("\n")
+		b.WriteString(kit.MutedStyle.Render("backing tracks (optional):"))
+		b.WriteString("\n")
+		b.WriteString(kit.ListNormal.Render("  ~/.config/fretboard/audio/Artist - Title.mp3"))
+		b.WriteString("\n")
+		b.WriteString(kit.ListNormal.Render("  or beside the tab file: layla.mp3"))
 		b.WriteString("\n")
 	}
 

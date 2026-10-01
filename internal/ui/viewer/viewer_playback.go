@@ -28,38 +28,44 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 			}
 			src.Path = path
 		}
-		step := schedule[startIdx]
-		dur := stepDur(step.Ticks, bpm)
-		var started time.Time
 		if src.Kind == player.SourceMIDI {
 			engine.Synth.Metronome = opts.metronome
 			engine.Synth.Program = opts.program
-			if err := engine.StartMIDIRealtime(); err != nil {
-				return msgs.PlaybackErrorMsg{Err: err}
-			}
-			// Lead-in clicks before the first tab note; blocks for the
-			// count-in duration inside this command's goroutine.
-			if opts.countIn > 0 {
-				engine.Synth.CountIn(opts.countIn, bpm)
-			}
-			if err := engine.PlayMIDIStep(tab, step, bpm); err != nil {
+			// The whole timeline is baked into an SMF that fluidsynth's
+			// built-in player performs sample-accurately — note timing no
+			// longer depends on TUI tick processing. The cursor tracks
+			// Elapsed() in the monitor loop instead of driving notes.
+			if err := engine.PlayMIDIFile(tab, bpm, player.MIDIFileOpts{
+				Metronome:   opts.metronome,
+				CountInBars: opts.countIn,
+				Program:     opts.program,
+				StartAt:     player.ScheduleTimeAtStep(schedule, startIdx, bpm),
+			}); err != nil {
 				_ = engine.Stop()
 				return msgs.PlaybackErrorMsg{Err: err}
 			}
-			started = time.Now()
-		} else {
-			ctx := player.PlayContext{TabPath: tabPath, AudioDirs: audioDirs, AllowOnline: false}
-			if err := engine.PlaySource(tab, bpm, src, ctx); err != nil {
-				return msgs.PlaybackErrorMsg{Err: err}
+			// AudioSync mode: Duration carries the session total (including
+			// count-in) so the monitor can detect the natural end — the
+			// player process outlives the file.
+			return msgs.PlaybackStartedMsg{
+				Schedule:  schedule,
+				StepIdx:   startIdx,
+				Duration:  player.ScheduleSpan(schedule, bpm) + countInDuration(opts.countIn, bpm),
+				AudioSync: true,
+				Started:   time.Now(),
 			}
-			// Resume mid-song: PlaySource starts at the file's position 0,
-			// so seek to the cursor's mapped audio position before the
-			// monitor compares Elapsed() against it. MIDI fallbacks and
-			// first-ever plays (resume == 0) ignore the seek.
-			if opts.resume > 0 && engine.Mode() == "audio" {
-				if err := engine.RestartAt(opts.resume); err != nil {
-					return msgs.PlaybackErrorMsg{Err: err}
-				}
+		}
+		ctx := player.PlayContext{TabPath: tabPath, AudioDirs: audioDirs, AllowOnline: false}
+		if err := engine.PlaySource(tab, bpm, src, ctx); err != nil {
+			return msgs.PlaybackErrorMsg{Err: err}
+		}
+		// Resume mid-song: PlaySource starts at the file's position 0,
+		// so seek to the cursor's mapped audio position before the
+		// monitor compares Elapsed() against it. MIDI fallbacks and
+		// first-ever plays (resume == 0) ignore the seek.
+		if opts.resume > 0 && engine.Mode() == "audio" {
+			if err := engine.RestartAt(opts.resume); err != nil {
+				return msgs.PlaybackErrorMsg{Err: err}
 			}
 		}
 		if engine.ShutdownRequested() {
@@ -67,24 +73,33 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 			return msgs.PlaybackErrorMsg{Err: errPlaybackStopped}
 		}
 		synced := syncedFor(engine.Mode())
-		if synced {
-			dur = 80 * time.Millisecond
+		dur := 80 * time.Millisecond
+		if !synced {
+			dur = stepDur(schedule[startIdx].Ticks, bpm)
 		}
 		return msgs.PlaybackStartedMsg{
 			Schedule:  schedule,
 			StepIdx:   startIdx,
 			Duration:  dur,
 			AudioSync: synced,
-			Started:   started,
 		}
 	}
 }
 
+// countInDuration returns the wall duration of a count-in lead-in.
+func countInDuration(bars, bpm int) time.Duration {
+	if bars <= 0 {
+		return 0
+	}
+	return time.Duration(bars*4*60) * time.Second / time.Duration(bpm)
+}
+
 // syncedFor reports whether the engine mode drives the playhead from the
-// actual audio (Elapsed()) instead of the tab deadline clock. Audio mode
-// alone decides: the duration may be unknown at start (no ffprobe, duration
-// not yet reported) and must not fall back to the deadline clock.
-func syncedFor(mode string) bool { return mode == "audio" }
+// actual audio (Elapsed()) instead of the tab deadline clock. Audio and
+// SMF-player MIDI both qualify: the duration may be unknown at start (no
+// ffprobe, duration not yet reported) and must not fall back to the
+// deadline clock.
+func syncedFor(mode string) bool { return mode == "audio" || mode == "midi" }
 
 // playbackOpts carries the practice-tool settings applied at playback start.
 type playbackOpts struct {

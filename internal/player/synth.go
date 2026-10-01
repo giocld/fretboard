@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -20,11 +19,15 @@ type Synth struct {
 	stdin        io.WriteCloser
 	running      bool
 	realtime     bool
+	smfPlayer    bool // shell-mode fluidsynth driving its built-in MIDI player
 	activeNotes  []int
 	Volume       int // 0-100
 	Soundfont    string
 	ActiveDriver string
 	LastError    string
+	// LastMidiPath is the temp .mid file of the most recent playback, for
+	// diagnostics and tests.
+	LastMidiPath string
 	// Practice helpers (realtime MIDI only).
 	Metronome bool // click on every beat (GM 37 woodblock)
 	Program   int  // GM program for channel 0; 0 = default (25, steel guitar)
@@ -70,9 +73,9 @@ func (s *Synth) Play(tab *model.Tab, bpm int) error {
 	if err != nil {
 		return fmt.Errorf("write smf: %w", err)
 	}
-	midPath := filepath.Join(os.TempDir(), "fretboard_playback.mid")
-	if err := os.WriteFile(midPath, data, 0644); err != nil {
-		return fmt.Errorf("write mid file: %w", err)
+	midPath, err := s.writeMidTemp(data)
+	if err != nil {
+		return err
 	}
 
 	candidates, err := s.synthCandidates(midPath)
@@ -118,12 +121,32 @@ func (s *Synth) Play(tab *model.Tab, bpm int) error {
 	return errors.New("no synthesizer found — install fluidsynth")
 }
 
+// writeMidTemp writes SMF bytes to a unique temp file — sessions must not
+// clobber each other's .mid (a concurrent playback would swap the timeline
+// under a running player).
+func (s *Synth) writeMidTemp(data []byte) (string, error) {
+	f, err := os.CreateTemp("", "fretboard_playback-*.mid")
+	if err != nil {
+		return "", fmt.Errorf("write mid file: %w", err)
+	}
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		return "", fmt.Errorf("write mid file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("write mid file: %w", err)
+	}
+	s.LastMidiPath = f.Name()
+	return f.Name(), nil
+}
+
 // Stop kills the running synthesizer process.
 func (s *Synth) Stop() error {
 	if s.realtime {
 		s.noteOffActive()
 		s.stopRealtime()
 	}
+	s.smfPlayer = false
 	if s.cmd == nil || s.cmd.Process == nil {
 		s.running = false
 		s.ActiveDriver = ""

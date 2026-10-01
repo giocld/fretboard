@@ -320,7 +320,7 @@ func TestSearchFooterTracksMode(t *testing.T) {
 	m := NewSearchModel(nil)
 	m.width, m.height = 80, 24
 	inputFooter := m.View()
-	if !strings.Contains(inputFooter, "[Enter]search") {
+	if !strings.Contains(inputFooter, "[Enter] search") {
 		t.Errorf("query mode footer should lead with search, got:\n%s", inputFooter)
 	}
 	if !strings.Contains(inputFooter, "results") {
@@ -331,13 +331,13 @@ func TestSearchFooterTracksMode(t *testing.T) {
 	m.focusResults()
 	m.viewport.SetContent(m.renderResults())
 	resultsFooter := m.View()
-	if !strings.Contains(resultsFooter, "[Enter]open") {
+	if !strings.Contains(resultsFooter, "[Enter] open") {
 		t.Errorf("results mode footer should lead with open, got:\n%s", resultsFooter)
 	}
 	if !strings.Contains(resultsFooter, "edit query") || !strings.Contains(resultsFooter, "more") {
 		t.Errorf("results mode footer should hint at editing the query and loading more:\n%s", resultsFooter)
 	}
-	if strings.Contains(resultsFooter, "[Enter]search") {
+	if strings.Contains(resultsFooter, "[Enter] search") {
 		t.Errorf("results mode footer must not advertise search:\n%s", resultsFooter)
 	}
 }

@@ -133,7 +133,7 @@ func (m *ViewerModel) downloadSelectedSourceCmd() tea.Cmd {
 	return func() tea.Msg {
 		defer st.end()
 		path, err := player.EnsureAudioSource(tab, src)
-		return msgs.AudioFetchedMsg{Path: path, Err: err, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
+		return msgs.AudioFetchedMsg{Path: path, Err: err, SourceID: src.ID, Artist: tab.Artist, Title: tab.Title, TabID: tabID, TabPath: tabPath}
 	}
 }
 

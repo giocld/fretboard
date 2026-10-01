@@ -129,6 +129,7 @@ func (m *ViewerModel) resetPlayback() {
 	m.schedule = nil
 	m.stepIdx = 0
 	m.tickDur = 0
+	m.midiTotal = 0
 	m.pendingPlay = false
 }
 

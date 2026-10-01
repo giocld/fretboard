@@ -17,6 +17,13 @@ func (m ViewerModel) handlePlaybackStarted(msg msgs.PlaybackStartedMsg) (ViewerM
 	m.tickDur = msg.Duration
 	m.audioSync = msg.AudioSync
 	m.endBanner = false // a new playback clears any previously shown track-ended banner
+	// SMF sessions end by position (the player process outlives the file);
+	// non-MIDI sessions keep midiTotal at 0 so the monitor ignores it.
+	if m.engine.Mode() == "midi" && m.selectedSource().Kind == player.SourceMIDI {
+		m.midiTotal = msg.Duration
+	} else {
+		m.midiTotal = 0
+	}
 	m.practiceStart = time.Now()
 	// Drift nudge: without sync points the cursor maps at the tab's
 	// BPM; if the recording is a different tempo, warn once so the user
@@ -147,6 +154,13 @@ func (m ViewerModel) handlePlaybackMonitor(msg msgs.PlaybackMonitorMsg) (ViewerM
 			m.cursorCol = step.Col
 			m.ensureCursorVisible()
 			m.refresh()
+		}
+		// The SMF player's process outlives the file, so live MIDI sessions
+		// end by position: past the last step (plus count-in) it's over.
+		if m.midiTotal > 0 && m.engine.Mode() == "midi" && elapsed >= m.midiTotal {
+			m.stopPlayback()
+			m.refresh()
+			return m, nil
 		}
 	}
 	if m.engine.PlaybackEnded() {

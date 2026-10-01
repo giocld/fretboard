@@ -28,7 +28,6 @@ func writeSMF(events []Event, bpm int, drum bool) ([]byte, error) {
 	if bpm <= 0 {
 		bpm = 120
 	}
-	const ticksPerQuarter = 480
 
 	var buf bytes.Buffer
 
@@ -62,22 +61,27 @@ func writeSMF(events []Event, bpm int, drum bool) ([]byte, error) {
 		lastTick = e.Tick
 
 		switch e.Type {
+		case ProgramChange:
+			track.WriteByte(0xC0 | byte(e.Ch))
+			track.WriteByte(byte(e.Note))
 		case NoteOn:
 			status, note := byte(0x90), byte(e.Note)
-			if drum {
+			if drum && e.Ch == 0 {
 				// GM channel 10 is always percussion: only the status
 				// nibble changes, the mapped pitch is the drum sound.
+				// An explicit e.Ch override (e.g. metronome clicks on
+				// their own channel) is respected as-is.
 				status, note = 0x99, byte(drumNoteForIndex(e.String))
 			}
-			track.WriteByte(status)
+			track.WriteByte(status | byte(e.Ch))
 			track.WriteByte(note)
 			track.WriteByte(byte(e.Vel))
 		case NoteOff:
 			status, note := byte(0x80), byte(e.Note)
-			if drum {
+			if drum && e.Ch == 0 {
 				status, note = 0x89, byte(drumNoteForIndex(e.String))
 			}
-			track.WriteByte(status)
+			track.WriteByte(status | byte(e.Ch))
 			track.WriteByte(note)
 			track.WriteByte(byte(0))
 		}

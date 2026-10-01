@@ -85,6 +85,7 @@ type ViewerModel struct {
 	schedule   []player.PlaybackStep
 	stepIdx    int
 	tickDur    time.Duration
+	midiTotal  time.Duration // SMF session length incl. count-in; 0 = not a live MIDI session
 	resumePos  time.Duration // audio position to resume at on the next play
 	bpm        int
 	jumpBuffer string

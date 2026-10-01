@@ -49,8 +49,10 @@ fretboard doctor               # check synth, soundfont, players, ffprobe
 
 - Go 1.25+
 - A MIDI synthesizer for playback:
-  - `fluidsynth` + a GM soundfont (set `FRETBOARD_SOUNDFONT` to override), or
-  - `timidity`
+  - `fluidsynth` + a GM soundfont (set `FRETBOARD_SOUNDFONT` to override) — 2.x
+    recommended: MIDI playback runs through its built-in player, sample-accurate
+    and independent of terminal timing, with live seek/tempo over the shell, or
+  - `timidity` (one-shot fallback, no cursor sync)
 ### Soundfonts
 
 The bundled soundfont search auto-detects common names (`FluidR3_GM.sf2`,

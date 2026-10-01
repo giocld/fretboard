@@ -105,6 +105,11 @@ func (m *ViewerModel) rejectCurrentSource() (ViewerModel, tea.Cmd) {
 	if newSrc.Kind == player.SourceOnline && (newSrc.Path == "" || !player.FileExists(newSrc.Path)) {
 		m.fetchingAudio = true
 		cmds = append(cmds, m.downloadSelectedSourceCmd())
+	} else {
+		// Dropping the rejected source invalidates its in-flight download:
+		// a stuck fetchingAudio kept Space dead until the fetch landed.
+		m.fetchingAudio = false
+		m.pendingPlay = false
 	}
 	if len(cmds) > 0 {
 		return *m, tea.Batch(cmds...)
@@ -258,13 +263,24 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 		if len(m.audioCatalog.Sources) == 0 {
 			return m, nil
 		}
-		if m.playing {
+		wasPlaying := m.playing
+		if wasPlaying {
 			m.stopPlayback()
 		}
 		m.selectedSourceIdx = m.audioCursor
 		m.showAudioPicker = false
 		m.manualPick = true // sticky: keep this choice across catalog refreshes
 		src := m.selectedSource()
+		needsDownload := src.Kind == player.SourceOnline && (src.Path == "" || !player.FileExists(src.Path))
+		if !needsDownload {
+			// The previous source's in-flight download (if any) is now
+			// irrelevant: leaving the flags set kept Space dead until the
+			// abandoned fetch landed, and its completion would hijack this
+			// source's catalog slot. The running fetch still completes, but
+			// handleAudioFetched drops it (SourceID no longer selected).
+			m.fetchingAudio = false
+			m.pendingPlay = false
+		}
 		// Switching recordings means switching calibration: restore the new
 		// source's intro offset and sync anchors.
 		m.restoreCalibrationForSource()
@@ -283,7 +299,7 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 				}
 			}
 		}
-		if src.Kind == player.SourceOnline && (src.Path == "" || !player.FileExists(src.Path)) {
+		if needsDownload {
 			m.fetchingAudio = true
 			m.pendingPlay = true
 			return m, m.downloadSelectedSourceCmd()
@@ -293,6 +309,12 @@ func (m ViewerModel) handleAudioPickerKey(msg tea.KeyMsg) (ViewerModel, tea.Cmd)
 			cmds = append(cmds, cmd)
 		}
 		cmds = append(cmds, m.saveTabPrefsCmd(), m.maybeDetectIntroCmd(), m.maybeAlignCmd())
+		if wasPlaying {
+			// Switching sources during playback swaps the audio live: stop
+			// above silenced the old source, so resume with the new one at
+			// the cursor instead of leaving silence until the next Space.
+			cmds = append(cmds, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, src, m.playbackStartIndex(), m.playbackOpts()))
+		}
 		return m, tea.Batch(cmds...)
 	}
 	return m, nil

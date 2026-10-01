@@ -39,7 +39,10 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.sessionTargetBPM = m.bpm
 		}
 		if m.playing && m.tab != nil {
-			if m.audioSync {
+			if m.engine.Mode() == "midi" {
+				// The SMF player retimes itself live — no restart needed.
+				_ = m.engine.MIDISetTempo(m.bpm)
+			} else if m.audioSync {
 				// Audio: restart the player so the mapping matches the new tempo.
 				_ = m.engine.Stop()
 				m.resetPlayback()
@@ -48,7 +51,9 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			}
 			// MIDI: re-base the deadline clock — the current step gets a
 			// fresh duration at the new tempo, the session never restarts.
-			m.stepClock.Rebase(stepDur(m.schedule[m.stepIdx].Ticks, m.bpm))
+			if !m.audioSync {
+				m.stepClock.Rebase(stepDur(m.schedule[m.stepIdx].Ticks, m.bpm))
+			}
 		}
 		m.refresh()
 	case "-", "_":
@@ -59,13 +64,17 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 			m.sessionTargetBPM = m.bpm
 		}
 		if m.playing && m.tab != nil {
-			if m.audioSync {
+			if m.engine.Mode() == "midi" {
+				_ = m.engine.MIDISetTempo(m.bpm)
+			} else if m.audioSync {
 				_ = m.engine.Stop()
 				m.resetPlayback()
 				m.refresh()
 				return m, startPlaybackCmd(m.engine, m.displayTab(), m.bpm, m.tabPath, m.audioDirs, m.selectedSource(), m.playbackStartIndex(), m.playbackOpts())
 			}
-			m.stepClock.Rebase(stepDur(m.schedule[m.stepIdx].Ticks, m.bpm))
+			if !m.audioSync {
+				m.stepClock.Rebase(stepDur(m.schedule[m.stepIdx].Ticks, m.bpm))
+			}
 		}
 		m.refresh()
 	case "P":
@@ -196,6 +205,10 @@ func (m ViewerModel) handleKeyPractice(msg tea.KeyMsg) (ViewerModel, tea.Cmd) {
 		return m.realignAudio()
 	case "m":
 		m.metronome = !m.metronome
+		if m.playing && m.engine.Mode() == "midi" {
+			// The click track is baked into the SMF; mute/unmute it live.
+			_ = m.engine.MIDISetClicks(m.metronome)
+		}
 		m.jumpBuffer = ""
 		m.refresh()
 	case "C":

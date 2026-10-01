@@ -16,6 +16,16 @@ func fluidsynthArgsRealtime(driver, gain, sf string) []string {
 	return []string{"-q", "-a", driver, "-g", gain, "-r", "44100", sf}
 }
 
+// fluidsynthArgsSMF launches fluidsynth in shell mode (no -i) with midPath
+// loaded into the built-in player, which auto-starts it. Shell commands
+// (player_seek, player_tempo_bpm, cc, ...) arrive over stdin.
+func fluidsynthArgsSMF(driver, gain, sf, midPath string) []string {
+	if driver == "default" {
+		return []string{"-q", "-g", gain, "-r", "44100", sf, midPath}
+	}
+	return []string{"-q", "-a", driver, "-g", gain, "-r", "44100", sf, midPath}
+}
+
 // Click sounds a metronome click (GM woodblock) with a short release.
 // Accented clicks are louder and land on the first beat of a bar.
 func (s *Synth) Click(accent bool) {

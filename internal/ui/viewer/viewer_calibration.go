@@ -308,8 +308,13 @@ func (m *ViewerModel) saveSyncPoints() {
 	m.tab.Metadata[model.MetaKeySyncPoints] = string(data)
 }
 
-// audioOffsetDur returns the calibrated intro offset as a duration.
+// audioOffsetDur returns the calibrated intro offset as a duration. Live
+// MIDI sessions ignore it: the tab itself is the timeline, so a stale offset
+// calibrated for a recording must not warp the SMF cursor or loop times.
 func (m ViewerModel) audioOffsetDur() time.Duration {
+	if m.engine.Mode() == "midi" {
+		return 0
+	}
 	return time.Duration(m.audioOffset * float64(time.Second))
 }
 
