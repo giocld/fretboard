@@ -177,9 +177,10 @@ func (m *HomeModel) loadPreview() string {
 	}
 	title := row.Title
 	if title == "" {
-		title = "Preview"
+		title = "preview"
 	}
-	return kit.RenderPanel(m.width-4, "Preview · "+title, kit.RenderTabPreview(tab, 10))
+	// Plain preview: dim caption line over the tab text — no panel box.
+	return kit.MutedStyle.Render("preview · "+title) + "\n" + kit.RenderTabPreview(tab, 10)
 }
 
 // SetAutoImportWarn updates the auto-import warning banner shown on home.

@@ -74,7 +74,7 @@ func RenderFooterWithStatus(width int, status string, hints []KeyHint) string {
 	render := func(hs []KeyHint) string {
 		var parts []string
 		for _, h := range hs {
-			parts = append(parts, FooterKeyStyle.Render("["+h.Key+"]")+FooterHintStyle.Render(h.Label))
+			parts = append(parts, FooterKeyStyle.Render("["+h.Key+"]")+FooterHintStyle.Render(" "+h.Label))
 		}
 		return strings.Join(parts, "  ")
 	}

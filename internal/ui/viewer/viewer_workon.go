@@ -611,6 +611,14 @@ func (m *ViewerModel) noteLoopPass() {
 // logic keeps it visible.
 func (m ViewerModel) footerHints() []kit.KeyHint {
 	quit := kit.KeyHint{Key: "q", Label: "quit"}
+	if m.showAudioPicker {
+		return []kit.KeyHint{
+			{Key: "j/k", Label: "move"},
+			{Key: "Enter", Label: "select"},
+			{Key: "r", Label: "refresh"},
+			{Key: "Esc", Label: "cancel"},
+		}
+	}
 	if m.tab == nil {
 		return []kit.KeyHint{quit}
 	}

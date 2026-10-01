@@ -28,14 +28,23 @@ func fetchAudioCatalogCmd(tab *model.Tab, tabPath string, tabID int64, audioDirs
 	}
 }
 
-// RenderAudioPicker draws the source selection overlay.
+// RenderAudioPicker draws the source selection overlay: a dim caption and a
+// divider rule, then plain rows — no box, selection carries the highlight.
 func RenderAudioPicker(width int, catalog player.AudioCatalog, cursor int, fetching bool, strict bool, recommended int, rejected map[string]bool) string {
-	title := "Audio source"
+	title := "audio source"
 	if fetching {
-		title += "  ... searching"
+		title += " — searching"
 	}
-	body := renderAudioPickerBody(catalog, cursor, fetching, strict, recommended, rejected)
-	return "\n" + kit.RenderPanel(width-2, title, body)
+	var b strings.Builder
+	b.WriteString("\n")
+	b.WriteString(kit.MutedStyle.Render(title))
+	b.WriteString("\n")
+	if w := width - 2; w > 0 {
+		b.WriteString(kit.PanelDividerStyle.Render(strings.Repeat("─", w)))
+		b.WriteString("\n")
+	}
+	b.WriteString(renderAudioPickerBody(catalog, cursor, fetching, strict, recommended, rejected))
+	return b.String()
 }
 
 // renderAlignmentConfirm draws the alignment confirm overlay: the top-N
@@ -104,7 +113,8 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 		notStudio := strict && src.Kind == player.SourceOnline && !src.StrictOK
 		userRejected := rejected[src.ID]
 		dim := notStudio || userRejected
-		line := fmt.Sprintf("%s%s %s%s", prefix, kind, categoryBadge(src.Category), src.Label)
+		// Fixed-width kind column keeps the rows scannable, tig-style.
+		line := fmt.Sprintf("%s%-6s %s %s", prefix, kind, categoryBadge(src.Category), src.Label)
 		if i == recommended && !dim {
 			line += kit.SuccessStyle.Render("  *")
 		}
@@ -133,9 +143,10 @@ func renderAudioPickerBody(catalog player.AudioCatalog, cursor int, fetching boo
 			lines = append(lines, kit.WarningStyle.Render("    · "+src.PickReason))
 		}
 	}
-	lines = append(lines, "")
-	lines = append(lines, kit.MutedStyle.Render("j/k move  Enter select  r refresh  Esc cancel"))
+	// Picker key hints live in the footer (see footerHints); the body ends
+	// with the rows. Strict mode explains itself once, dimly.
 	if strict {
+		lines = append(lines, "")
 		lines = append(lines, kit.MutedStyle.Render("strict on: live/cover/lesson recordings are excluded from auto-pick (* = recommended)"))
 	}
 	return strings.Join(lines, "\n")

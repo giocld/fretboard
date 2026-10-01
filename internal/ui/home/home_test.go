@@ -73,6 +73,7 @@ func TestHomeClampCursorOnTabsLoaded(t *testing.T) {
 }
 
 func TestHomeStatRowFitsAvailableWidth(t *testing.T) {
+	// The stats line is one dim sentence; it must stay inside narrow widths.
 	cases := []struct {
 		width int
 	}{
@@ -85,16 +86,16 @@ func TestHomeStatRowFitsAvailableWidth(t *testing.T) {
 
 		found := false
 		for _, line := range strings.Split(body, "\n") {
-			if !strings.Contains(line, "TABS") && !strings.Contains(line, "FAVORITES") {
+			if !strings.Contains(line, "·") {
 				continue
 			}
 			found = true
 			if got := lipgloss.Width(line); got > c.width {
-				t.Fatalf("width %d: stat line is %d cols wide, want ≤ %d: %q", c.width, got, c.width, line)
+				t.Fatalf("width %d: stats line is %d cols wide, want ≤ %d: %q", c.width, got, c.width, line)
 			}
 		}
 		if !found {
-			t.Fatalf("width %d: no stat lines found in rendered body", c.width)
+			t.Fatalf("width %d: no stats line found in rendered body", c.width)
 		}
 	}
 }
