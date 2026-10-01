@@ -2,7 +2,6 @@ package player
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,19 +9,8 @@ import (
 	"fretboard/internal/model"
 )
 
-// writeFakeSynth is a hermetic fluidsynth that echoes stdin lines to a log.
-func writeFakeSynth(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "fluidsynth")
-	log := filepath.Join(dir, "synth.log")
-	script := "#!/bin/sh\nwhile read line; do echo \"$line\" >> \"" + log + "\"; done\n"
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return log
-}
+// The fake synth comes from fakebin_unix_test.go / fakebin_windows_test.go:
+// writeFakeFluidsynth echoes every stdin line to a log on both platforms.
 
 func smfTestTab() *model.Tab {
 	return &model.Tab{
@@ -181,7 +169,7 @@ func TestScheduleTimeAtStepNoFloorDrift(t *testing.T) {
 }
 
 func TestPlayMIDIFileLifecycle(t *testing.T) {
-	log := writeFakeSynth(t)
+	log := writeFakeFluidsynth(t)
 	e := NewEngine()
 	e.Synth.Soundfont = "fake.sf2"
 	tab := smfTestTab()
@@ -247,7 +235,7 @@ func TestPlayMIDIFileLifecycle(t *testing.T) {
 }
 
 func TestPlayMIDIFileStartAtZeroSeek(t *testing.T) {
-	log := writeFakeSynth(t)
+	log := writeFakeFluidsynth(t)
 	e := NewEngine()
 	e.Synth.Soundfont = "fake.sf2"
 	if err := e.PlayMIDIFile(smfTestTab(), 120, MIDIFileOpts{StartAt: 2 * time.Second}); err != nil {
