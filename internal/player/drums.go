@@ -44,7 +44,9 @@ func DetectDrumTab(tab *model.Tab) bool {
 			}
 		}
 	}
-	// Distinct string rows with an x/o hit, across all bars.
+	// Distinct string rows with an x/o hit, across all bars. A guitar tab
+	// often uses 'x' for muted/ghost notes alongside fretted digits; only
+	// treat x/o as drum notation when there are no real fret numbers.
 	hit := make(map[int]bool)
 	for _, b := range tab.Bars {
 		for s, sl := range b.Strings {
@@ -53,7 +55,25 @@ func DetectDrumTab(tab *model.Tab) bool {
 			}
 		}
 	}
-	return hitRows+len(hit) >= 2
+	if hitRows+len(hit) < 2 {
+		return false
+	}
+	return !tabHasFrettedNotes(tab)
+}
+
+// tabHasFrettedNotes reports whether any bar string has a segment with a
+// real fret value (digits), as opposed to only x/o hits, rests, or dashes.
+func tabHasFrettedNotes(tab *model.Tab) bool {
+	for _, b := range tab.Bars {
+		for _, sl := range b.Strings {
+			for _, seg := range sl.Segments {
+				if seg.Width > 0 && seg.Value >= 0 && seg.Char >= '0' && seg.Char <= '9' {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // drumRowLabelRe matches a string row whose leading label is a drum row
