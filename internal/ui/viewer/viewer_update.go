@@ -12,12 +12,16 @@ import (
 )
 
 // handleAudioFetched applies a completed background audio download.
+// The result only counts when its source is still the selected one: picking
+// a different source in the picker abandons the download, and its completion
+// must not write into the new source's catalog slot or auto-play it.
 func (m ViewerModel) handleAudioFetched(msg msgs.AudioFetchedMsg) (ViewerModel, tea.Cmd) {
 	if m.matchesAudioTab(msg.TabID, msg.TabPath, msg.Artist, msg.Title) {
 		wantPlay := m.pendingPlay
 		m.fetchingAudio = false
 		m.pendingPlay = false
-		if msg.Err == nil && msg.Path != "" {
+		stillSelected := msg.SourceID == "" || msg.SourceID == m.selectedSource().ID
+		if stillSelected && msg.Err == nil && msg.Path != "" {
 			m.audioCatalog.SetSourcePath(m.selectedSourceIdx, msg.Path)
 			m.resolvedAudio = msg.Path
 			var cmds []tea.Cmd
@@ -46,7 +50,7 @@ func (m ViewerModel) handleAudioFetched(msg msgs.AudioFetchedMsg) (ViewerModel, 
 			if len(cmds) > 0 {
 				return m, tea.Batch(cmds...)
 			}
-		} else if msg.Err != nil {
+		} else if stillSelected && msg.Err != nil {
 			m.errMsg = msg.Err.Error()
 		}
 		m.refresh()

@@ -782,3 +782,52 @@ func TestAlignmentInvalidatedWhenAudioChanges(t *testing.T) {
 		t.Fatal("maybeAlignCmd must re-run after the file changed")
 	}
 }
+
+// TestPickerSwitchToMIDIWhileDownloadPending guards the reported bug: picking
+// MIDI while the previous source's download was still in flight left
+// fetchingAudio set — Space did nothing ("switching to MIDI doesn't work") —
+// and the stale completion then wrote its path into the MIDI catalog slot and
+// auto-played.
+func TestPickerSwitchToMIDIWhileDownloadPending(t *testing.T) {
+	m := NewViewerModel()
+	m.tab = &model.Tab{Title: "Layla", Artist: "Clapton"}
+	m.tabID = 42
+	m.audioCatalog = player.AudioCatalog{Sources: []player.AudioSource{
+		{ID: "midi", Kind: player.SourceMIDI, Label: "MIDI"},
+		{ID: "yt:abc", Kind: player.SourceOnline, Label: "YouTube", VideoID: "abc"},
+	}}
+	// State after picking the online source: it needs a download.
+	m.selectedSourceIdx = 1
+	m.fetchingAudio = true
+	m.pendingPlay = true
+
+	// Open the picker, land on MIDI, confirm.
+	m.showAudioPicker = true
+	m.audioCursor = 0
+	m, _ = m.Update(key("enter"))
+	if m.selectedSource().Kind != player.SourceMIDI {
+		t.Fatalf("selected source = %q, want midi", m.selectedSource().Kind)
+	}
+	if m.fetchingAudio || m.pendingPlay {
+		t.Fatalf("stale download flags survive the switch (fetching=%v pending=%v) — Space stays dead", m.fetchingAudio, m.pendingPlay)
+	}
+
+	// The abandoned download completes: it must not touch the MIDI slot,
+	// the resolved path, or start playback.
+	m, _ = m.Update(msgs.AudioFetchedMsg{
+		Path:     "/tmp/should-not-apply.mp3",
+		SourceID: "yt:abc",
+		Artist:   "Clapton",
+		Title:    "Layla",
+		TabID:    42,
+	})
+	if m.audioCatalog.Sources[0].Path != "" {
+		t.Fatalf("stale download hijacked the MIDI catalog slot: %q", m.audioCatalog.Sources[0].Path)
+	}
+	if m.resolvedAudio != "" {
+		t.Fatalf("resolvedAudio = %q, want empty for MIDI", m.resolvedAudio)
+	}
+	if m.playing {
+		t.Fatal("stale download auto-played after the user picked MIDI")
+	}
+}

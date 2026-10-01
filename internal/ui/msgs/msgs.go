@@ -116,12 +116,13 @@ type PlaybackMonitorMsg struct{ Gen uint64 }
 
 // AudioFetchedMsg is sent when a background audio lookup finishes.
 type AudioFetchedMsg struct {
-	Path    string
-	Err     error
-	Artist  string
-	Title   string
-	TabID   int64
-	TabPath string
+	Path     string
+	Err      error
+	SourceID string // the catalog source the download was started for
+	Artist   string
+	Title    string
+	TabID    int64
+	TabPath  string
 }
 
 // AudioCatalogMsg delivers ranked audio options for the current tab.
