@@ -44,13 +44,13 @@ func startPlaybackCmd(engine *player.Engine, tab *model.Tab, bpm int, tabPath st
 				_ = engine.Stop()
 				return msgs.PlaybackErrorMsg{Err: err}
 			}
-			// AudioSync mode: Duration carries the session total (including
-			// count-in) so the monitor can detect the natural end — the
-			// player process outlives the file.
+			// AudioSync mode: Duration is the music-only span. The cursor's
+			// Elapsed() excludes the count-in, so the end-by-position check
+			// must compare against the same reference frame.
 			return msgs.PlaybackStartedMsg{
 				Schedule:  schedule,
 				StepIdx:   startIdx,
-				Duration:  player.ScheduleSpan(schedule, bpm) + countInDuration(opts.countIn, bpm),
+				Duration:  player.ScheduleSpan(schedule, bpm),
 				AudioSync: true,
 				Started:   time.Now(),
 			}

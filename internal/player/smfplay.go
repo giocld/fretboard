@@ -86,12 +86,20 @@ func buildSMFEvents(tab *model.Tab, bpm int, opts MIDIFileOpts) (evts []Event, c
 		}
 	}
 	if opts.Metronome {
+		// Click on every quarter-note boundary of every bar in performance
+		// order, so the metronome keeps time even when a bar has no note
+		// on a particular beat.
+		perBar := BarSteps(tab)
 		tick := countInTicks
-		for _, step := range BuildSchedule(tab) {
-			if step.Onset%ticksPerQuarter == 0 {
-				evts = append(evts, clickEvent(clickChannel, step.Onset == 0, tick+int64(step.Onset))...)
+		for _, b := range RepeatOrder(tab) {
+			var barTicks int
+			for _, s := range perBar[b] {
+				barTicks += s.Ticks
 			}
-			tick += int64(step.Ticks)
+			for q := int64(0); q < int64(barTicks); q += ticksPerQuarter {
+				evts = append(evts, clickEvent(clickChannel, q == 0, tick+q)...)
+			}
+			tick += int64(barTicks)
 		}
 	}
 	for _, n := range notes {

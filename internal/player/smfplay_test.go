@@ -252,3 +252,51 @@ func TestPlayMIDIFileStartAtZeroSeek(t *testing.T) {
 	}
 	_ = e.Stop()
 }
+
+// TestBuildSMFMetronomeClickPositions guards that metronome clicks land on
+// the actual quarter-note boundaries, not at tick+Onset. A repeated bar with
+// a note on beat 3 used to place that beat's click one beat too late and
+// could emit clicks past the end of the file.
+func TestBuildSMFMetronomeClickPositions(t *testing.T) {
+	// One bar, two half notes (col 0 and col 4), repeated once.
+	bar := model.Bar{RepeatStart: true, RepeatEnd: true,
+		Strings: []model.StringLine{{Segments: []model.Segment{
+			{Char: '0', Value: 0, Position: 0, Width: 1},
+			{Char: '-', Position: 1}, {Char: '-', Position: 2}, {Char: '-', Position: 3},
+			{Char: '1', Value: 1, Position: 4, Width: 1},
+		}}}}
+	tab := &model.Tab{Tuning: model.Standard, Bars: []model.Bar{bar}}
+	evts, _, _, err := buildSMFEvents(tab, 120, MIDIFileOpts{Metronome: true, CountInBars: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var clickTicks []int64
+	for _, e := range evts {
+		if e.Type == NoteOn && e.Ch == clickChannel {
+			clickTicks = append(clickTicks, e.Tick)
+		}
+	}
+
+	// Bar is 1920 ticks (4 quarters). Repeated once = 8 quarters total.
+	want := []int64{0, 480, 960, 1440, 1920, 2400, 2880, 3360}
+	if len(clickTicks) != len(want) {
+		t.Fatalf("clicks = %v, want %v", clickTicks, want)
+	}
+	for i, w := range want {
+		if clickTicks[i] != w {
+			t.Fatalf("click %d = %d, want %d (clicks=%v)", i, clickTicks[i], w, clickTicks)
+		}
+	}
+
+	// No click should extend past the last note-off.
+	var lastEventTick int64
+	for _, e := range evts {
+		if e.Tick > lastEventTick {
+			lastEventTick = e.Tick
+		}
+	}
+	if lastClick := clickTicks[len(clickTicks)-1]; lastClick > lastEventTick {
+		t.Fatalf("last click %d is past last event tick %d", lastClick, lastEventTick)
+	}
+}
