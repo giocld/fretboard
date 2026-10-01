@@ -72,6 +72,7 @@ func TestDetectDrumTabFalse(t *testing.T) {
 		{"nil", nil},
 		{"normal guitar tab", parseTab(t, "Tuning: E Standard\n\ne|0-3-5|\n")},
 		{"chord sheet lyrics", parseTab(t, "Song\n\nAm C\nF G\n")},
+		{"chord sheet with pipes", parseTab(t, "Song\n\nC | F | G |\n")},
 		{"single muted string", parseTab(t, "Riff\n\ne|----------------|\nB|----------------|\nG|----------------|\nD|----------------|\nA|----x---x-------|\nE|----------------|\n")},
 		{"empty raw", &model.Tab{Metadata: map[string]string{"raw": "just text, no pipes"}}},
 	}
